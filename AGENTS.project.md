@@ -8,16 +8,16 @@
 - [ ] 仓库已确认：`zhou-yang-personal/sa-fbb-experience-workbench`。
 - [ ] 产品定位已确认：基于 SA 家宽应用体验数据的本地 EXE 分析工作台。
 - [ ] 核心用户场景已确认：CSV 大文件原样入库、MySQL 库内清洗、Cable/FTTH 体验对比、迁转升套机会识别、统计分析看板。
-- [ ] 推荐技术栈已确认：`Tauri + React + TypeScript + ECharts + Rust + MySQL 8.0`。
+- [ ] 推荐技术栈已确认：`Tauri 2 + React + TypeScript + Vite + ECharts + Rust + MySQL 8.0`。
 
 ## B1. 当前开发基线检查
 
 - [ ] 默认分支已确认：`main`。
-- [ ] 当前 source-of-truth 开发分支未最终确认；初始化阶段暂以 `main` 为治理文件落地点。
+- [ ] 当前 source-of-truth 开发分支已确认：`dev`。
 - [ ] 修改前已从目标分支读取最新目标文件。
 - [ ] 常规任务分支命名建议使用：`chatgpt/task-xxx`。
 - [ ] Codex 任务分支命名建议使用：`codex/task-xxx`。
-- [ ] PR 目标分支未最终确认；如后续建立 `dev`，常规 PR 应优先合入 `dev`。
+- [ ] PR 目标分支默认已确认：`dev`。
 - [ ] 只有用户明确要求直接修改目标分支时，才允许跳过任务分支。
 
 ## B2. 本项目必读文件检查
@@ -28,9 +28,9 @@
 - [ ] `AGENTS.common.md`
 - [ ] `AGENTS.project.md`
 - [ ] `README.md`
-- [ ] `docs/handoff/latest-handoff.md`，如存在。
-- [ ] `docs/design/current-core-design.md`，如存在。
+- [ ] `docs/design/current-core-design.md`
 - [ ] `docs/requirements/current-requirements.md`，如存在。
+- [ ] `docs/handoff/latest-handoff.md`，如存在。
 - [ ] `docs/changes/CHANGELOG-dev.md`，如存在。
 
 按任务类型追加读取：
@@ -58,6 +58,7 @@
 - [ ] DWS 层用于用户级、小时级、应用级、接入类型级、网络侧聚类级聚合。
 - [ ] ADS 层用于看板结果和名单结果，前端优先查询 ADS。
 - [ ] 必须保留导入日志、清洗日志、聚合日志和失败重跑能力。
+- [ ] SQL 参数不使用 `SET @var` 作为主链路，优先使用 CTE 参数块、临时参数表或配置表。
 - [ ] 不提交客户 CSV、数据库导出、运行日志、构建产物或安装包。
 
 ## B5. 看板与业务模块约束
@@ -74,32 +75,32 @@
 8. 迁转升套机会用户列表。
 9. 用户明细导出。
 
-看板参考方向：
-
-- Residential User General Internet Utilization 总览。
-- Application Usage Duration。
-- Effective Download / Upload Rate。
-- User-side / Network-side RTT。
-- User-side / Network-side PLR。
-- Heavy Users by Traffic Category。
-- Usage / Total Traffic by Category。
-
 ## B6. 本项目版本检查
 
-- [ ] 当前版本未建立，初始化阶段不得虚构版本体系。
-- [ ] 项目真实版本文件未确认：待前端 / 后端工程初始化后补齐。
-- [ ] README 当前版本未建立。
-- [ ] handoff 当前版本未建立。
-- [ ] changelog 当前版本未建立。
+- [ ] 当前版本已确认：`0.1.0`。
+- [ ] 前端版本文件已同步：`package.json`。
+- [ ] Tauri 版本文件已同步：`src-tauri/tauri.conf.json`。
+- [ ] Rust package 版本已同步：`src-tauri/Cargo.toml`。
+- [ ] README 当前版本已同步：`README.md`。
+- [ ] 最新交接版本已同步：`docs/handoff/latest-handoff.md`。
+- [ ] 变更记录已同步：`docs/changes/CHANGELOG-dev.md`。
 - [ ] 不改依赖时，未修改 lock 文件。
-- [ ] 版本体系未确认时，未强行新增版本机制。
 
 ## B7. 本项目构建与 CI 检查
 
-- [ ] 构建命令未建立；待 Tauri / React / Rust 工程初始化后确认。
-- [ ] 测试命令未建立；待工程初始化后确认。
-- [ ] 类型检查 / 后端检查命令未建立；待工程初始化后确认。
-- [ ] CI 文件未建立；未发现 CI 时，不得声称 CI 通过。
+本项目可用命令：
+
+- [ ] 安装依赖：`npm install`。
+- [ ] 前端开发：`npm run dev`。
+- [ ] 前端构建：`npm run build`。
+- [ ] 前端类型检查：`npm run check`。
+- [ ] Tauri 开发启动：`npm run tauri:dev`。
+- [ ] Tauri 打包：`npm run tauri:build`。
+- [ ] Rust 检查：`cd src-tauri && cargo check`。
+
+CI 状态：
+
+- [ ] 当前未建立 CI；未发现 CI 时，不得声称 CI 通过。
 
 ## B8. 本项目禁止事项检查
 
@@ -118,7 +119,7 @@
 - [ ] 目标分支。
 - [ ] 任务分支；若直接修改目标分支，说明用户已明确要求。
 - [ ] commit hash。
-- [ ] 最新版本号；如版本体系未建立，明确说明“未建立”。
+- [ ] 最新版本号。
 - [ ] 修改文件清单。
 - [ ] 做了什么。
 - [ ] 没做什么。
@@ -129,7 +130,7 @@
 ## B10. ChatGPT GitHub Connector 操作检查
 
 - [ ] 已读取项目内 connector guide。
-- [ ] 使用 `compare_commits` 检查分支差异，未用 `update_ref` 做探测。
+- [ ] 使用 `compare_commits` 检查分支差异；不得用 `update_ref` 做分支状态探测。
 - [ ] 使用 `fetch_file` 获取文件内容和 sha。
 - [ ] 使用 `update_file` 更新已有 UTF-8 文本文件。
 - [ ] 使用 `create_file` 新增小型 UTF-8 文本文件。
