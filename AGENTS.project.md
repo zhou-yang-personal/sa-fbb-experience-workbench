@@ -77,10 +77,10 @@
 
 ## B6. 本项目版本检查
 
-- [ ] 当前版本已确认：`0.2.1`。
+- [ ] 当前版本已确认：`1.0.0`。
 - [ ] 前端版本文件已同步：`package.json`。
 - [ ] Tauri 版本文件已同步：`src-tauri/tauri.conf.json`。
-- [ ] Rust package 版本已同步：`src-tauri/Cargo.toml`。
+- [ ] Rust package 版本文件仍需人工确认：`src-tauri/Cargo.toml` 可能因 connector safety block 未同步。
 - [ ] README 当前版本已同步：`README.md`。
 - [ ] 最新交接版本已同步：`docs/handoff/latest-handoff.md`。
 - [ ] 变更记录已同步：`docs/changes/CHANGELOG-dev.md`。
@@ -114,18 +114,7 @@ CI 状态：
 
 ## B9. 本项目交付附加要求
 
-每次修改完成后必须汇报：
-
-- [ ] 目标分支。
-- [ ] 任务分支；若直接修改目标分支，说明用户已明确要求。
-- [ ] commit hash。
-- [ ] 最新版本号。
-- [ ] 修改文件清单。
-- [ ] 做了什么。
-- [ ] 没做什么。
-- [ ] 是否修改依赖 / lock 文件。
-- [ ] 是否执行 build / test / check。
-- [ ] 未验证项和原因。
+每次修改完成后必须汇报：目标分支、任务分支、commit hash、最新版本号、修改文件清单、做了什么、没做什么、是否修改依赖 / lock 文件、是否执行 build / test / check、未验证项和原因。
 
 ## B10. ChatGPT GitHub Connector 操作检查
 
