@@ -1,0 +1,18 @@
+[package]
+name = "sa-fbb-experience-workbench"
+version = "0.1.0"
+description = "Local SA FBB experience analytics workbench"
+authors = ["zhou-yang-personal"]
+edition = "2021"
+
+[lib]
+name = "sa_fbb_experience_workbench_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
