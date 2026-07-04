@@ -6,6 +6,7 @@ mod db;
 mod etl_commands;
 mod final_fusion;
 mod import_commands;
+mod import_commands_mapped;
 mod job_runner;
 mod lead_commands;
 mod migrations;
@@ -13,6 +14,7 @@ mod models;
 mod phase_commands;
 mod probe;
 mod raw_import;
+mod raw_import_v2;
 mod sql_runner;
 
 fn main() {
@@ -22,7 +24,7 @@ fn main() {
             dashboard_commands::db_initialize,
             import_commands::import_probe_csv,
             import_commands::import_create_batch,
-            import_commands::import_start_raw_load,
+            import_commands_mapped::import_start_raw_load,
             import_commands::import_get_batch_status,
             etl_commands::etl_get_recent_jobs,
             dashboard_commands::quality_get_batch_report,
