@@ -1,5 +1,22 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { CommandAck, DashboardOverview, FinalLeadUserRow, ImportBatchResult, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
+import type { CommandAck, DashboardOverview, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, LeadQueryParams, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
+
+function normalizeFilter(value?: string) {
+  const normalized = value?.trim();
+  return normalized && normalized !== 'ALL' ? normalized : undefined;
+}
+
+function leadQueryRequest(settings: MySqlSettings, analysisRunId: string, params?: LeadQueryParams) {
+  return {
+    settings,
+    analysis_run_id: analysisRunId,
+    page: params?.page ?? 1,
+    page_size: params?.pageSize ?? 100,
+    lead_type: normalizeFilter(params?.leadType),
+    final_action: normalizeFilter(params?.finalAction),
+    keyword: normalizeFilter(params?.keyword),
+  };
+}
 
 export const workbenchApi = {
   testDb: (settings: MySqlSettings) => invoke<CommandAck>('db_test_connection', { settings }),
@@ -33,8 +50,12 @@ export const workbenchApi = {
     invoke<CommandAck>('leads_run_final_fusion', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
   leadSummary: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
     invoke<MetricCard[]>('leads_get_final_summary', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
-  leads: (settings: MySqlSettings, analysisRunId: string) => invoke<LeadUserRow[]>('leads_query_users', { req: { settings, analysis_run_id: analysisRunId, page: 1, page_size: 100 } }),
-  finalLeads: (settings: MySqlSettings, analysisRunId: string) => invoke<FinalLeadUserRow[]>('final_leads_query_users', { req: { settings, analysis_run_id: analysisRunId, page: 1, page_size: 100 } }),
-  exportLeads: (settings: MySqlSettings, analysisRunId: string, outputPath: string) => invoke<CommandAck>('export_leads_csv', { req: { settings, analysis_run_id: analysisRunId, output_path: outputPath } }),
-  exportFinal: (settings: MySqlSettings, analysisRunId: string, outputPath: string) => invoke<CommandAck>('export_final_leads_csv', { req: { settings, analysis_run_id: analysisRunId, output_path: outputPath } }),
+  leads: (settings: MySqlSettings, analysisRunId: string, params?: LeadQueryParams) =>
+    invoke<LeadUserRow[]>('leads_query_users', { req: leadQueryRequest(settings, analysisRunId, params) }),
+  finalLeads: (settings: MySqlSettings, analysisRunId: string, params?: LeadQueryParams) =>
+    invoke<FinalLeadUserRow[]>('final_leads_query_users', { req: leadQueryRequest(settings, analysisRunId, params) }),
+  exportLeads: (settings: MySqlSettings, analysisRunId: string, outputPath: string) =>
+    invoke<CommandAck>('export_leads_csv', { req: { settings, analysis_run_id: analysisRunId, output_path: outputPath } }),
+  exportFinal: (settings: MySqlSettings, analysisRunId: string, outputPath: string, options?: FinalLeadExportOptions) =>
+    invoke<CommandAck>('export_final_leads_csv', { req: { settings, analysis_run_id: analysisRunId, output_path: outputPath, final_actions: options?.finalActions?.length ? options.finalActions : undefined } }),
 };
