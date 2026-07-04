@@ -60,6 +60,7 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Reusable frontend components exist for connection, import, quality, ETL, dashboard, lead, metric grid, result tables, pagination, execution log and ECharts metric bar.
 - Dashboard commands for Overview, App Category, Experience Quality and Cable vs FTTH.
 - Lead query, final lead query, final lead summary, SA Lead CSV export and Final Lead CSV export commands.
+- Package, Cargo and Tauri app config are synchronized to `1.0.9`.
 
 ## Important rules
 
@@ -76,13 +77,11 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Rust check was not run.
 - Tauri package build was not run.
 - Real MySQL and CSV end-to-end flow was not executed.
-- `src-tauri/tauri.conf.json` remains at the previous version because connector JSON update was blocked by platform safety checks.
 
 ## Next recommended work
 
-1. Complete remaining blocked wiring locally/Codex: Tauri version.
-2. Run local dependency installation and build checks.
-3. Fix compile errors if any.
-4. Validate all five import data types on small samples.
-5. Validate final CRM / coverage / reachability lead fusion with real mapping keys.
-6. Continue deeper UI refinement after local compile feedback: backend result pagination, final-action export filters and richer dashboard charts.
+1. Run local dependency installation and build checks.
+2. Fix compile errors if any.
+3. Validate all five import data types on small samples.
+4. Validate final CRM / coverage / reachability lead fusion with real mapping keys.
+5. Continue deeper UI refinement after local compile feedback: backend result pagination, final-action export filters and richer dashboard charts.
