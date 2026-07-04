@@ -35,8 +35,8 @@ pub fn import_start_raw_load(req: RawLoadRequest) -> Result<CommandAck, String> 
 #[tauri::command]
 pub fn import_get_batch_status(settings: MySqlSettings, import_batch_id: String) -> Result<Vec<MetricCard>, String> {
     let mut conn = db::conn(&settings)?;
-    let row: Option<(String, u64, u64, String)> = conn.exec_first(
-        "SELECT status, COALESCE(imported_rows,0), COALESCE(total_rows,0), COALESCE(message,'') FROM meta_import_batch WHERE import_batch_id=?",
+    let row: Option<(String, i64, i64, String)> = conn.exec_first(
+        "SELECT status, CAST(COALESCE(imported_rows,0) AS SIGNED), CAST(COALESCE(total_rows,0) AS SIGNED), COALESCE(message,'') FROM meta_import_batch WHERE import_batch_id=?",
         (&import_batch_id,),
     ).map_err(|err| format!("failed to query import batch status: {err}"))?;
     let Some((status, imported_rows, total_rows, message)) = row else {
