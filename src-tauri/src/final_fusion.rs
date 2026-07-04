@@ -23,7 +23,7 @@ pub fn build_final_fusion_step(settings: &MySqlSettings, import_batch_id: &str, 
         "DELETE FROM ads_final_marketing_lead_user WHERE analysis_run_id = :analysis_run_id;\n\n\
 INSERT INTO ads_final_marketing_lead_user (analysis_run_id, user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, current_arpu, ftth_available_flag, reachable_flag, final_action, recommended_offer)\n\
 WITH params AS (SELECT :analysis_run_id AS analysis_run_id, :import_batch_id AS import_batch_id),\n\
-base AS (SELECT * FROM ads_migration_lead_user WHERE analysis_run_id = (SELECT analysis_run_id FROM params)),\n\
+base AS (SELECT * FROM ads_migration_lead_user WHERE analysis_run_id = (SELECT analysis_run_id FROM params) AND user_key IS NOT NULL AND TRIM(user_key) <> '' AND user_key <> 'UNKNOWN'),\n\
 crm AS (SELECT * FROM raw_crm_user_import WHERE import_batch_id = (SELECT import_batch_id FROM params)),\n\
 reach AS (SELECT * FROM raw_reachability_import WHERE import_batch_id = (SELECT import_batch_id FROM params)),\n\
 coverage AS (SELECT * FROM raw_ftth_coverage_import WHERE import_batch_id = (SELECT import_batch_id FROM params))\n\
@@ -48,7 +48,6 @@ JOIN params p\n\
 LEFT JOIN crm c ON {crm_on}\n\
 LEFT JOIN reach r ON {reach_on}\n\
 LEFT JOIN coverage cv ON {coverage_on}\n\
-WHERE b.user_key IS NOT NULL AND TRIM(b.user_key) <> ''\n\
 GROUP BY p.analysis_run_id, b.user_key, b.lead_type, b.demand_score, b.migration_motive_score, b.recommended_offer;"
     );
     let sql = sql_runner::bind_batch_params(&sql_template, import_batch_id, Some(analysis_run_id));
