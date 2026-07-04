@@ -41,6 +41,11 @@ REQUIRED_CARD_LABELS = [
     "ETL duration",
 ]
 
+FORBIDDEN_SQL_PATTERNS = [
+    "SELECT *",
+    "select *",
+]
+
 
 def find_duplicate_required_card_labels(content: str) -> list[str]:
     """Return required card labels that appear suspiciously more than once.
@@ -52,12 +57,23 @@ def find_duplicate_required_card_labels(content: str) -> list[str]:
     return [label for label in REQUIRED_CARD_LABELS if content.count(label) > 1]
 
 
+def find_forbidden_sql_patterns(content: str) -> list[str]:
+    """Return broad SQL patterns that should not appear in quality cards.
+
+    The quality report must stay cheap and explainable. Broad scans such as
+    ``SELECT *`` are almost never needed for summary cards and can accidentally
+    pull large RAW/CLEAN tables into memory when the report is opened.
+    """
+    return [pattern for pattern in FORBIDDEN_SQL_PATTERNS if pattern in content]
+
+
 def main() -> int:
     content = MAIN_RS.read_text(encoding="utf-8")
     missing_sql = [marker for marker in REQUIRED_SQL_MARKERS if marker not in content]
     missing_cards = [label for label in REQUIRED_CARD_LABELS if label not in content]
     duplicate_cards = find_duplicate_required_card_labels(content)
-    if missing_sql or missing_cards or duplicate_cards:
+    forbidden_sql = find_forbidden_sql_patterns(content)
+    if missing_sql or missing_cards or duplicate_cards or forbidden_sql:
         if missing_sql:
             print("missing SQL markers:")
             for marker in missing_sql:
@@ -70,6 +86,10 @@ def main() -> int:
             print("duplicate quality card labels:")
             for label in duplicate_cards:
                 print(f"- {label}")
+        if forbidden_sql:
+            print("forbidden broad SQL patterns:")
+            for pattern in forbidden_sql:
+                print(f"- {pattern}")
         return 1
     print("quality report SQL/card markers: ok")
     return 0
