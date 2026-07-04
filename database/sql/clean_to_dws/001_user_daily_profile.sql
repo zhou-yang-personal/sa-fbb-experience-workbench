@@ -23,7 +23,7 @@ WITH params AS (
   SELECT
     import_batch_id,
     user_key,
-    MAX(user_type) AS user_type,
+    COALESCE(MAX(user_type), 'UNKNOWN') AS user_type,
     stat_date,
     COUNT(*) AS video_rows,
     SUM(COALESCE(downloaded_gb, 0)) AS total_download_gb,
@@ -35,24 +35,30 @@ WITH params AS (
     SUM(CASE WHEN hour_of_day BETWEEN 18 AND 22 THEN 1 ELSE 0 END) / COUNT(*) * 100 AS peak_row_pct
   FROM dwd_tcp_detail_clean
   WHERE import_batch_id = (SELECT import_batch_id FROM params)
+    AND user_key IS NOT NULL
+    AND TRIM(user_key) <> ''
+    AND stat_date IS NOT NULL
   GROUP BY import_batch_id, user_key, stat_date
 ), game AS (
   SELECT
     import_batch_id,
     user_key,
-    MAX(user_type) AS user_type,
+    COALESCE(MAX(user_type), 'UNKNOWN') AS user_type,
     stat_date,
     COUNT(*) AS game_rows,
     SUM(COALESCE(game_hours, 0)) AS total_game_hours,
     AVG(mos) AS avg_mos
   FROM dwd_game_detail_clean
   WHERE import_batch_id = (SELECT import_batch_id FROM params)
+    AND user_key IS NOT NULL
+    AND TRIM(user_key) <> ''
+    AND stat_date IS NOT NULL
   GROUP BY import_batch_id, user_key, stat_date
 ), combined AS (
   SELECT
     COALESCE(v.import_batch_id, g.import_batch_id) AS import_batch_id,
     COALESCE(v.user_key, g.user_key) AS user_key,
-    COALESCE(v.user_type, g.user_type) AS user_type,
+    COALESCE(v.user_type, g.user_type, 'UNKNOWN') AS user_type,
     COALESCE(v.stat_date, g.stat_date) AS stat_date,
     COALESCE(v.video_rows, 0) AS video_rows,
     COALESCE(g.game_rows, 0) AS game_rows,
