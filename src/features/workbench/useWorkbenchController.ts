@@ -48,6 +48,15 @@ function writePersistedContext(context: PersistedWorkbenchContext) {
   }
 }
 
+function removePersistedContext() {
+  if (!isBrowserStorageAvailable()) return;
+  try {
+    window.localStorage.removeItem(PERSISTENCE_KEY);
+  } catch {
+    // Ignore privacy mode failures; runtime state can still be reset.
+  }
+}
+
 const persisted = readPersistedContext();
 
 export function useWorkbenchController() {
@@ -76,6 +85,28 @@ export function useWorkbenchController() {
   }, [settings, dataType, importMode, filePath, importBatchId, analysisRunId, outputPath, exportFinalActions]);
 
   function appendLog(entry: ExecutionLogEntry) { setLog((items) => [entry, ...items].slice(0, 120)); }
+  function clearPersistedContext() {
+    const startedAt = new Date();
+    removePersistedContext();
+    setSettings(defaultSettings);
+    setDataType('tcp');
+    setImportMode('load_data');
+    setFilePath('');
+    setImportBatchId('');
+    setAnalysisRunId('RUN_MANUAL_001');
+    setOutputPath('leads_export.csv');
+    setExportFinalActions([]);
+    setBatch(null);
+    appendLog({
+      id: `${Date.now()}-clear-local-context`,
+      command: 'clear_local_context',
+      status: 'success',
+      started_at: startedAt.toISOString(),
+      finished_at: new Date().toISOString(),
+      duration_ms: 0,
+      message: 'Local workbench context was cleared and reset to defaults. MySQL password was never persisted.',
+    });
+  }
   async function runAction(label: string, action: () => Promise<unknown>) {
     const startedAt = new Date();
     const startedMs = Date.now();
@@ -121,5 +152,5 @@ export function useWorkbenchController() {
     }
   }
 
-  return { settings, setSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, analysisRunId, setAnalysisRunId, outputPath, setOutputPath, exportFinalActions, setExportFinalActions, log, batch, allMetrics, dashboardCharts, setDashboardCharts, etlSteps, setEtlSteps, leads, setLeads, finalLeads, setFinalLeads, effectiveSettings, runAction, loadMetrics, createBatch, setOverview };
+  return { settings, setSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, analysisRunId, setAnalysisRunId, outputPath, setOutputPath, exportFinalActions, setExportFinalActions, log, batch, allMetrics, dashboardCharts, setDashboardCharts, etlSteps, setEtlSteps, leads, setLeads, finalLeads, setFinalLeads, effectiveSettings, runAction, loadMetrics, createBatch, clearPersistedContext, setOverview };
 }
