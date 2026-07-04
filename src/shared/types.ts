@@ -42,6 +42,18 @@ export interface DashboardOverview {
   metrics: MetricCard[];
 }
 
+export interface LeadQueryParams {
+  page?: number;
+  pageSize?: number;
+  leadType?: string;
+  finalAction?: string;
+  keyword?: string;
+}
+
+export interface FinalLeadExportOptions {
+  finalActions?: string[];
+}
+
 export interface LeadUserRow {
   user_key: string;
   user_type?: string;
