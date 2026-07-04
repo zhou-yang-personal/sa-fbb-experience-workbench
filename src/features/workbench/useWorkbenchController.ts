@@ -12,6 +12,7 @@ export function useWorkbenchController() {
   const [importBatchId, setImportBatchId] = useState('');
   const [analysisRunId, setAnalysisRunId] = useState('RUN_MANUAL_001');
   const [outputPath, setOutputPath] = useState('leads_export.csv');
+  const [exportFinalActions, setExportFinalActions] = useState<string[]>([]);
   const [log, setLog] = useState<string[]>([]);
   const [batch, setBatch] = useState<ImportBatchResult | null>(null);
   const [metrics, setMetrics] = useState<MetricCard[]>([]);
@@ -40,5 +41,5 @@ export function useWorkbenchController() {
     }
   }
 
-  return { settings, setSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, analysisRunId, setAnalysisRunId, outputPath, setOutputPath, log, batch, allMetrics, leads, setLeads, finalLeads, setFinalLeads, effectiveSettings, runAction, loadMetrics, createBatch, setOverview };
+  return { settings, setSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, analysisRunId, setAnalysisRunId, outputPath, setOutputPath, exportFinalActions, setExportFinalActions, log, batch, allMetrics, leads, setLeads, finalLeads, setFinalLeads, effectiveSettings, runAction, loadMetrics, createBatch, setOverview };
 }
