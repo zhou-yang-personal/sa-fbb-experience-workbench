@@ -16,6 +16,7 @@ mod migrations;
 mod models;
 mod phase_commands;
 mod probe;
+mod quality_result_commands;
 mod raw_import;
 mod raw_import_v2;
 mod sql_runner;
@@ -33,6 +34,8 @@ fn main() {
             etl_commands::etl_get_recent_jobs,
             job_inspection_commands::etl_get_recent_steps,
             job_inspection_commands::etl_get_failed_steps,
+            quality_result_commands::quality_get_gate_results,
+            quality_result_commands::quality_get_failed_results,
             dashboard_commands::quality_get_batch_report,
             etl_commands::etl_start_clean_job,
             etl_commands::etl_start_aggregate_job,
