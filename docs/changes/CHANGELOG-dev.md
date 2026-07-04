@@ -1,5 +1,27 @@
 # CHANGELOG-dev
 
+## 1.0.7 - 2026-07-04
+
+### Added
+
+- Expanded dataset profile refresh from row count only to row count, source line range, distinct accounts, distinct MACs and type-specific dimensions.
+- Added mapping validation result and summary commands.
+- Added frontend mapping result API wrapper.
+- Added Import Center actions for mapping summary, mapping result, dataset profile refresh and dataset profile view.
+- Updated Workbench header, package, Cargo, README, handoff and project rules to `1.0.7`.
+
+### Blocked / Not completed
+
+- `src-tauri/tauri.conf.json` version update to `1.0.7` remains blocked by platform safety checks.
+
+### Not verified
+
+- Dependency installation not run in ChatGPT GitHub connector environment.
+- Frontend build not run.
+- Rust check not run.
+- Tauri package build not run.
+- Real MySQL and CSV end-to-end flow not executed.
+
 ## 1.0.6 - 2026-07-04
 
 ### Added
