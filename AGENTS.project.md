@@ -77,7 +77,7 @@
 
 ## B6. 本项目版本检查
 
-- [ ] 当前版本已确认：`1.0.3`。
+- [ ] 当前版本已确认：`1.0.4`。
 - [ ] 前端版本文件已同步：`package.json`。
 - [ ] Tauri 版本文件已同步：`src-tauri/tauri.conf.json`。
 - [ ] Rust package 版本文件已同步：`src-tauri/Cargo.toml`。
