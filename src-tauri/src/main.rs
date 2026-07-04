@@ -146,12 +146,28 @@ fn leads_query_users(req: LeadsQueryRequest) -> Result<Vec<LeadUserRow>, String>
 
 #[tauri::command]
 fn export_leads_csv(req: ExportLeadsRequest) -> Result<CommandAck, String> {
-    let rows = leads_query_users(LeadsQueryRequest { settings: req.settings, analysis_run_id: req.analysis_run_id, page: Some(1), page_size: Some(1000) })?;
+    let mut conn = db::conn(&req.settings)?;
     let mut writer = csv::Writer::from_path(&req.output_path).map_err(|err| format!("failed to create export file: {err}"))?;
     writer.write_record(["user_key", "user_type", "lead_type", "demand_score", "migration_motive_score", "recommended_offer"]).map_err(|err| err.to_string())?;
-    for row in rows { writer.write_record([row.user_key, row.user_type.unwrap_or_default(), row.lead_type, row.demand_score.to_string(), row.migration_motive_score.to_string(), row.recommended_offer.unwrap_or_default()]).map_err(|err| err.to_string())?; }
+
+    let mut exported_rows = 0_u64;
+    let page_size = 1000_u64;
+    let mut offset = 0_u64;
+    loop {
+        let rows: Vec<LeadUserRow> = conn.exec_map(
+            "SELECT user_key, user_type, lead_type, demand_score, migration_motive_score, recommended_offer FROM ads_migration_lead_user WHERE analysis_run_id=? ORDER BY demand_score DESC, migration_motive_score DESC LIMIT ? OFFSET ?",
+            (&req.analysis_run_id, page_size, offset),
+            |(user_key, user_type, lead_type, demand_score, migration_motive_score, recommended_offer)| LeadUserRow { user_key, user_type, lead_type, demand_score, migration_motive_score, recommended_offer },
+        ).map_err(|err| format!("failed to query leads for export: {err}"))?;
+        if rows.is_empty() { break; }
+        for row in rows {
+            writer.write_record([row.user_key, row.user_type.unwrap_or_default(), row.lead_type, row.demand_score.to_string(), row.migration_motive_score.to_string(), row.recommended_offer.unwrap_or_default()]).map_err(|err| err.to_string())?;
+            exported_rows += 1;
+        }
+        offset += page_size;
+    }
     writer.flush().map_err(|err| err.to_string())?;
-    Ok(ack(format!("leads exported to {}", req.output_path)))
+    Ok(ack(format!("leads exported to {}, rows={exported_rows}", req.output_path)))
 }
 
 fn main() {
