@@ -33,7 +33,7 @@ export function WorkbenchAppV2() {
 
   function renderSection() {
     if (activeSection === 'settings') {
-      return <ConnectionPanel settings={c.settings} setSettings={c.setSettings} runAction={c.runAction} />;
+      return <ConnectionPanel settings={c.settings} setSettings={c.setSettings} runAction={c.runAction} clearPersistedContext={c.clearPersistedContext} />;
     }
     if (activeSection === 'import') {
       return (
