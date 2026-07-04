@@ -11,12 +11,16 @@
 - Updated database initialization to include the mapping schema and seed.
 - Added `config_commands.rs` as the command handler module for mapping and join rule inspection.
 - Added `final_fusion.rs` as a configurable final lead fusion SQL builder module.
+- Split command handlers into import, ETL, dashboard and lead modules to keep `main.rs` small and maintainable.
+- Registered configuration commands in `main.rs`.
+- Rewired Final Lead fusion execution to use the configurable final fusion builder.
+- Exposed configuration APIs in `src/shared/tauriApi.ts`.
 - Synchronized package and Cargo versions to `1.0.5`.
 
 ### Blocked / Not completed
 
 - `src-tauri/tauri.conf.json` version update was blocked by platform safety checks.
-- `src-tauri/src/main.rs` command registration update was blocked by platform safety checks.
+- `src/App.tsx` configuration UI update was blocked by platform safety checks.
 - `src-tauri/src/raw_import.rs` configurable alias integration was blocked by platform safety checks.
 
 ### Not verified
@@ -148,8 +152,4 @@
 - Created `dev` branch from the architecture design branch.
 - Added detailed architecture design: `docs/design/current-core-design.md`.
 - Initialized React + TypeScript + Vite frontend skeleton.
-- Initialized Tauri 2 / Rust command skeleton.
 - Added MySQL core layered schema baseline.
-- Added TCP and Game RAW to CLEAN SQL templates.
-- Added DWS user daily aggregate SQL template.
-- Added migration lead ADS SQL template.
