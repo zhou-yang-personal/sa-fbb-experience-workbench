@@ -1,5 +1,32 @@
 # CHANGELOG-dev
 
+## 1.0.5 - 2026-07-04
+
+### Added
+
+- Added configurable import mapping schema: `database/migrations/003_mapping_schema.sql`.
+- Added `cfg_import_field_mapping` for CSV header to RAW target column mapping.
+- Added `cfg_final_join_rule` for configurable CRM / Reachability / Coverage join keys.
+- Added default mapping and join seed: `database/seeds/002_default_mapping_seed.sql`.
+- Updated database initialization to include the mapping schema and seed.
+- Added `config_commands.rs` as the command handler module for mapping and join rule inspection.
+- Added `final_fusion.rs` as a configurable final lead fusion SQL builder module.
+- Synchronized package and Cargo versions to `1.0.5`.
+
+### Blocked / Not completed
+
+- `src-tauri/tauri.conf.json` version update was blocked by platform safety checks.
+- `src-tauri/src/main.rs` command registration update was blocked by platform safety checks.
+- `src-tauri/src/raw_import.rs` configurable alias integration was blocked by platform safety checks.
+
+### Not verified
+
+- Dependency installation not run in ChatGPT GitHub connector environment.
+- Frontend build not run.
+- Rust check not run.
+- Tauri package build not run.
+- Real MySQL and CSV end-to-end flow not executed.
+
 ## 1.0.4 - 2026-07-04
 
 ### Fixed
@@ -126,4 +153,3 @@
 - Added TCP and Game RAW to CLEAN SQL templates.
 - Added DWS user daily aggregate SQL template.
 - Added migration lead ADS SQL template.
-- Added README, requirements and handoff baseline documents.
