@@ -20,7 +20,7 @@ fn normalized_filter(value: &Option<String>) -> Option<String> {
 pub fn recent_steps(settings: &MySqlSettings, import_batch_id: &str, limit: u64) -> Result<Vec<MetricCard>, String> {
     let mut conn = db::conn(settings)?;
     conn.exec_map(
-        "SELECT CONCAT(j.job_type, ':', s.step_name), s.status, CONCAT('target=', COALESCE(s.target_table,''), ', rows=', COALESCE(s.affected_rows,0), ', message=', COALESCE(s.message,'')) FROM meta_etl_job j JOIN meta_etl_job_step s ON s.job_id=j.job_id WHERE j.import_batch_id=? ORDER BY s.started_at DESC LIMIT ?",
+        "SELECT CONCAT(j.job_type, ':', s.step_name), s.status, CONCAT('target=', COALESCE(s.target_table,''), ', rows=', COALESCE(CAST(s.affected_rows AS SIGNED),0), ', message=', COALESCE(s.message,'')) FROM meta_etl_job j JOIN meta_etl_job_step s ON s.job_id=j.job_id WHERE j.import_batch_id=? ORDER BY s.started_at DESC LIMIT ?",
         (import_batch_id, limit),
         |(label, value, hint): (String, String, String)| MetricCard { label, value, hint },
     ).map_err(|err| format!("failed to query ETL job steps: {err}"))
@@ -50,7 +50,7 @@ pub fn job_step_rows(req: &EtlJobStepsRequest) -> Result<Vec<EtlJobStepRow>, Str
     let limit = req.limit.unwrap_or(100).clamp(1, 500);
     params.push(Value::UInt(limit));
     let sql = format!(
-        "SELECT j.job_id, j.job_type, s.step_name, s.target_table, s.status, s.affected_rows, DATE_FORMAT(s.started_at, '%Y-%m-%d %H:%i:%s'), DATE_FORMAT(s.finished_at, '%Y-%m-%d %H:%i:%s'), s.message FROM meta_etl_job j JOIN meta_etl_job_step s ON s.job_id=j.job_id WHERE {} ORDER BY COALESCE(s.started_at, j.started_at) DESC, s.id DESC LIMIT ?",
+        "SELECT j.job_id, j.job_type, s.step_name, s.target_table, s.status, CAST(s.affected_rows AS SIGNED), DATE_FORMAT(s.started_at, '%Y-%m-%d %H:%i:%s'), DATE_FORMAT(s.finished_at, '%Y-%m-%d %H:%i:%s'), s.message FROM meta_etl_job j JOIN meta_etl_job_step s ON s.job_id=j.job_id WHERE {} ORDER BY COALESCE(s.started_at, j.started_at) DESC, s.id DESC LIMIT ?",
         where_sql.join(" AND ")
     );
     conn.exec_map(
