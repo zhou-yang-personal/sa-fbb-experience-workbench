@@ -84,7 +84,7 @@ pub fn leads_get_final_summary(req: DashboardRequest) -> Result<Vec<MetricCard>,
     let run_id = req.analysis_run_id.unwrap_or_else(|| "RUN_DEFAULT".to_string());
     let mut conn = db::conn(&req.settings)?;
     conn.exec_map(
-        "SELECT final_action, CAST(COUNT(*) AS SIGNED) FROM ads_final_marketing_lead_user WHERE analysis_run_id=? GROUP BY final_action ORDER BY COUNT(*) DESC",
+        "SELECT COALESCE(final_action,'UNKNOWN'), CAST(COUNT(*) AS SIGNED) FROM ads_final_marketing_lead_user WHERE analysis_run_id=? GROUP BY COALESCE(final_action,'UNKNOWN') ORDER BY COUNT(*) DESC",
         (&run_id,),
         |(action, count): (String, i64)| MetricCard { label: action, value: count.to_string(), hint: "final marketing lead action".to_string() }
     ).map_err(|err| format!("failed to query final lead summary: {err}"))
