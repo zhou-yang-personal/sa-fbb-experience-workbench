@@ -1,7 +1,7 @@
 use mysql::prelude::*;
 
 use crate::db;
-use crate::models::{ack, CommandAck, MySqlSettings};
+use crate::models::{ack, CommandAck, MetricCard, MySqlSettings};
 
 #[tauri::command]
 pub fn dataset_profile_refresh(settings: MySqlSettings, import_batch_id: String, data_type: String) -> Result<CommandAck, String> {
@@ -22,4 +22,14 @@ pub fn dataset_profile_refresh(settings: MySqlSettings, import_batch_id: String,
         (&import_batch_id, &data_type, rows.unwrap_or(0).to_string(), rows.unwrap_or(0)),
     ).map_err(|err| format!("failed to write dataset profile: {err}"))?;
     Ok(ack(format!("dataset profile refreshed: data_type={data_type}, rows={}", rows.unwrap_or(0))))
+}
+
+#[tauri::command]
+pub fn dataset_profile_get(settings: MySqlSettings, import_batch_id: String, data_type: String) -> Result<Vec<MetricCard>, String> {
+    let mut conn = db::conn(&settings)?;
+    conn.exec_map(
+        "SELECT profile_key, COALESCE(profile_value, ''), COALESCE(CAST(profile_number AS CHAR), '') FROM meta_dataset_profile WHERE import_batch_id=? AND data_type=? ORDER BY profile_key",
+        (&import_batch_id, &data_type),
+        |(label, value, hint): (String, String, String)| MetricCard { label, value, hint },
+    ).map_err(|err| format!("failed to query dataset profile: {err}"))
 }
