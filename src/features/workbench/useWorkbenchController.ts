@@ -1,19 +1,59 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import type { DashboardChartGroup, DashboardOverview, EtlJobStepRow, ExecutionLogEntry, FinalLeadUserRow, ImportBatchResult, ImportDataType, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
 import { workbenchApi } from './workbenchApi';
 
 const defaultSettings: MySqlSettings = { host: '127.0.0.1', port: 3306, database: 'sa_vbp', user: 'root', secret: '', local_infile: true };
 const PERSISTENCE_KEY = 'sa-fbb-experience-workbench.context.v1';
+const dataTypes: ImportDataType[] = ['tcp', 'game', 'crm', 'coverage', 'reachability'];
+const importModes = ['load_data', 'streaming_insert'] as const;
+
+type ImportMode = typeof importModes[number];
 
 type PersistedWorkbenchContext = {
-  settings?: Omit<MySqlSettings, 'secret'>;
-  dataType?: ImportDataType;
-  importMode?: 'load_data' | 'streaming_insert';
-  filePath?: string;
-  importBatchId?: string;
-  analysisRunId?: string;
-  outputPath?: string;
-  exportFinalActions?: string[];
+  settings?: Partial<Omit<MySqlSettings, 'secret'>>;
+  dataType?: unknown;
+  importMode?: unknown;
+  filePath?: unknown;
+  importBatchId?: unknown;
+  analysisRunId?: unknown;
+  outputPath?: unknown;
+  exportFinalActions?: unknown;
+};
+
+export type WorkbenchController = {
+  settings: MySqlSettings;
+  setSettings: Dispatch<SetStateAction<MySqlSettings>>;
+  dataType: ImportDataType;
+  setDataType: Dispatch<SetStateAction<ImportDataType>>;
+  importMode: ImportMode;
+  setImportMode: Dispatch<SetStateAction<ImportMode>>;
+  filePath: string;
+  setFilePath: Dispatch<SetStateAction<string>>;
+  importBatchId: string;
+  setImportBatchId: Dispatch<SetStateAction<string>>;
+  analysisRunId: string;
+  setAnalysisRunId: Dispatch<SetStateAction<string>>;
+  outputPath: string;
+  setOutputPath: Dispatch<SetStateAction<string>>;
+  exportFinalActions: string[];
+  setExportFinalActions: Dispatch<SetStateAction<string[]>>;
+  log: ExecutionLogEntry[];
+  batch: ImportBatchResult | null;
+  allMetrics: MetricCard[];
+  dashboardCharts: DashboardChartGroup[];
+  setDashboardCharts: Dispatch<SetStateAction<DashboardChartGroup[]>>;
+  etlSteps: EtlJobStepRow[];
+  setEtlSteps: Dispatch<SetStateAction<EtlJobStepRow[]>>;
+  leads: LeadUserRow[];
+  setLeads: Dispatch<SetStateAction<LeadUserRow[]>>;
+  finalLeads: FinalLeadUserRow[];
+  setFinalLeads: Dispatch<SetStateAction<FinalLeadUserRow[]>>;
+  effectiveSettings: MySqlSettings;
+  runAction: (label: string, action: () => Promise<unknown>) => Promise<unknown>;
+  loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<void>;
+  createBatch: () => Promise<void>;
+  clearPersistedContext: () => void;
+  setOverview: Dispatch<SetStateAction<DashboardOverview | null>>;
 };
 
 function stringifyPreview(value: unknown) {
@@ -57,17 +97,49 @@ function removePersistedContext() {
   }
 }
 
+function safeString(value: unknown, fallback = '') {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function safePort(value: unknown) {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) && parsed > 0 && parsed <= 65535 ? parsed : defaultSettings.port;
+}
+
+function safeDataType(value: unknown): ImportDataType {
+  return dataTypes.includes(value as ImportDataType) ? value as ImportDataType : 'tcp';
+}
+
+function safeImportMode(value: unknown): ImportMode {
+  return importModes.includes(value as ImportMode) ? value as ImportMode : 'load_data';
+}
+
+function safeStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function safeSettings(value: PersistedWorkbenchContext['settings']): MySqlSettings {
+  return {
+    host: safeString(value?.host, defaultSettings.host),
+    port: safePort(value?.port),
+    database: safeString(value?.database, defaultSettings.database),
+    user: safeString(value?.user, defaultSettings.user),
+    secret: '',
+    local_infile: typeof value?.local_infile === 'boolean' ? value.local_infile : defaultSettings.local_infile,
+  };
+}
+
 const persisted = readPersistedContext();
 
-export function useWorkbenchController() {
-  const [settings, setSettings] = useState<MySqlSettings>({ ...defaultSettings, ...persisted.settings, secret: '' });
-  const [dataType, setDataType] = useState<ImportDataType>(persisted.dataType ?? 'tcp');
-  const [importMode, setImportMode] = useState<'load_data' | 'streaming_insert'>(persisted.importMode ?? 'load_data');
-  const [filePath, setFilePath] = useState(persisted.filePath ?? '');
-  const [importBatchId, setImportBatchId] = useState(persisted.importBatchId ?? '');
-  const [analysisRunId, setAnalysisRunId] = useState(persisted.analysisRunId ?? 'RUN_MANUAL_001');
-  const [outputPath, setOutputPath] = useState(persisted.outputPath ?? 'leads_export.csv');
-  const [exportFinalActions, setExportFinalActions] = useState<string[]>(persisted.exportFinalActions ?? []);
+export function useWorkbenchController(): WorkbenchController {
+  const [settings, setSettings] = useState<MySqlSettings>(safeSettings(persisted.settings));
+  const [dataType, setDataType] = useState<ImportDataType>(safeDataType(persisted.dataType));
+  const [importMode, setImportMode] = useState<ImportMode>(safeImportMode(persisted.importMode));
+  const [filePath, setFilePath] = useState(safeString(persisted.filePath));
+  const [importBatchId, setImportBatchId] = useState(safeString(persisted.importBatchId));
+  const [analysisRunId, setAnalysisRunId] = useState(safeString(persisted.analysisRunId, 'RUN_MANUAL_001'));
+  const [outputPath, setOutputPath] = useState(safeString(persisted.outputPath, 'leads_export.csv'));
+  const [exportFinalActions, setExportFinalActions] = useState<string[]>(safeStringArray(persisted.exportFinalActions));
   const [log, setLog] = useState<ExecutionLogEntry[]>([]);
   const [batch, setBatch] = useState<ImportBatchResult | null>(null);
   const [metrics, setMetrics] = useState<MetricCard[]>([]);
@@ -80,8 +152,8 @@ export function useWorkbenchController() {
   const allMetrics = useMemo(() => overview?.metrics ?? metrics, [overview, metrics]);
 
   useEffect(() => {
-    const { secret: _secret, ...safeSettings } = settings;
-    writePersistedContext({ settings: safeSettings, dataType, importMode, filePath, importBatchId, analysisRunId, outputPath, exportFinalActions });
+    const { secret: _secret, ...persistableSettings } = settings;
+    writePersistedContext({ settings: persistableSettings, dataType, importMode, filePath, importBatchId, analysisRunId, outputPath, exportFinalActions });
   }, [settings, dataType, importMode, filePath, importBatchId, analysisRunId, outputPath, exportFinalActions]);
 
   function appendLog(entry: ExecutionLogEntry) { setLog((items) => [entry, ...items].slice(0, 120)); }
