@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.2
+1.0.3
 ```
 
 ## Source-of-truth branch
@@ -21,12 +21,14 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Tauri 2 / Rust command implementation.
 - MySQL metadata / dim / raw / dwd / dws / ads schema baseline.
 - Extended schema for CRM, FTTH coverage, reachability, dashboard ADS and final marketing leads.
+- CRM, coverage and reachability RAW tables now include source trace fields.
 - Database initialization command with both core and extended schema.
 - CSV probe, import batch and RAW load command path.
-- RAW import uses explicit TCP / Game column lists for `LOAD DATA LOCAL INFILE`.
+- RAW import supports TCP, Game, CRM, FTTH Coverage and Reachability data types.
+- RAW import uses explicit column lists for all supported data types.
 - RAW import has streaming INSERT fallback selected by `mode=streaming_insert` or `local_infile=false`.
 - Streaming fallback updates import progress while inserting chunks.
-- RAW import now writes `total_rows` and `imported_rows` for row reconciliation.
+- RAW import writes `total_rows` and `imported_rows` for row reconciliation.
 - RAW quality gate checks row count, CSV vs RAW row diff, identity, access mix, time range, active hours, app count and topology UNKNOWN.
 - RAW to CLEAN SQL runner.
 - ETL job commands write `meta_etl_job` and `meta_etl_job_step` for step status and failure diagnostics.
@@ -35,7 +37,7 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Complete ADS dashboard SQL and command.
 - Migration lead scoring and final CRM / coverage / reachability fusion SQL.
 - Dashboard commands for Overview, App Category, Experience Quality and Cable vs FTTH.
-- Lead query, final lead summary and CSV export command.
+- Lead query, final lead summary and full paginated CSV export command.
 
 ## Important rules
 
@@ -57,7 +59,7 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 
 1. Run local dependency installation and build checks.
 2. Fix compile errors if any.
-3. Validate LOAD DATA and streaming fallback on TCP and Game samples.
-4. Validate quality gate row reconciliation against real CSV files.
-5. Validate Phase 1-7 SQL chain on sample data.
+3. Validate all five import data types on small samples.
+4. Validate final CRM / coverage / reachability lead fusion with real mapping keys.
+5. Add final lead table query and export UI if required.
 6. Replace remaining baseline SQL with measured production SQL after local test.
