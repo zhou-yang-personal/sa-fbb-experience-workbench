@@ -9,7 +9,7 @@ type Props = {
   dashboardCharts: DashboardChartGroup[];
   setDashboardCharts: (value: DashboardChartGroup[]) => void;
   runAction: (label: string, action: () => Promise<unknown>) => Promise<unknown>;
-  loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<void>;
+  loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<MetricCard[]>;
   setOverview: (value: DashboardOverview) => void;
 };
 

@@ -50,7 +50,7 @@ export type WorkbenchController = {
   setFinalLeads: Dispatch<SetStateAction<FinalLeadUserRow[]>>;
   effectiveSettings: MySqlSettings;
   runAction: (label: string, action: () => Promise<unknown>) => Promise<unknown>;
-  loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<void>;
+  loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<MetricCard[]>;
   createBatch: () => Promise<void>;
   clearPersistedContext: () => void;
   setOverview: Dispatch<SetStateAction<DashboardOverview | null>>;
@@ -214,6 +214,7 @@ export function useWorkbenchController(): WorkbenchController {
   async function loadMetrics(label: string, action: () => Promise<MetricCard[]>) {
     const result = await runAction(label, action);
     if (Array.isArray(result)) setMetrics(result as MetricCard[]);
+    return Array.isArray(result) ? (result as MetricCard[]) : [];
   }
 
   async function createBatch() {
