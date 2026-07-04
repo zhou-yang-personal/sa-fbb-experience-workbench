@@ -183,8 +183,8 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
     let dws_users: Option<u64> = conn.exec_first("SELECT COUNT(DISTINCT user_key) FROM dws_user_daily_profile WHERE import_batch_id=?", (&import_batch_id,)).map_err(|err| err.to_string())?;
     let ads_leads: Option<u64> = conn.exec_first("SELECT COUNT(*) FROM ads_migration_lead_user WHERE analysis_run_id IN (SELECT analysis_run_id FROM meta_analysis_run WHERE import_batch_id=?)", (&import_batch_id,)).map_err(|err| err.to_string())?;
     let job_health: Option<(u64, u64, String)> = conn.exec_first(
-        "SELECT SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END), SUM(CASE WHEN status IN ('running','pending') THEN 1 ELSE 0 END), COALESCE(MAX(status),'') FROM meta_etl_job WHERE import_batch_id=?",
-        (&import_batch_id,),
+        "SELECT COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN status IN ('running','pending') THEN 1 ELSE 0 END),0), COALESCE((SELECT status FROM meta_etl_job WHERE import_batch_id=? ORDER BY COALESCE(finished_at, started_at) DESC LIMIT 1),'') FROM meta_etl_job WHERE import_batch_id=?",
+        (&import_batch_id, &import_batch_id),
     ).map_err(|err| err.to_string())?;
     let import_meta: Option<(String, u64, u64, String)> = conn.exec_first(
         "SELECT COALESCE(status,''), COALESCE(imported_rows,0), COALESCE(total_rows,0), COALESCE(data_type,'') FROM meta_import_batch WHERE import_batch_id=?",
