@@ -10,11 +10,7 @@
 - Added `ExportPresetActions` for SA Lead, Final Lead, Market Upsell and Reachability export filename presets.
 - Updated Final Lead Center to expose export presets before executing CSV export.
 - Added result table toolbar, pagination, table header and action summary styles.
-- Synchronized Workbench header, package, Cargo, README, handoff and project rules to `1.0.9`.
-
-### Blocked / Not completed
-
-- `src-tauri/tauri.conf.json` version update to `1.0.9` remains blocked by platform safety checks.
+- Synchronized Workbench header, package, Cargo, Tauri config, README, handoff and project rules to `1.0.9`.
 
 ### Not verified
 
