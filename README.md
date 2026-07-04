@@ -77,4 +77,4 @@ cd src-tauri && cargo check
 
 ## 7. 当前状态
 
-1.0.9 继续补齐结果浏览与导出使用体验：ResultTables 已支持筛选、分页、final_action 分组；Final Lead Center 已增加导出路径预设。没有在本地执行依赖安装、前端构建、Rust 检查、Tauri 打包和真实 MySQL / CSV 端到端验证。`src-tauri/tauri.conf.json` 仍因 connector safety block 未同步到 1.0.9。
+1.0.9 继续补齐结果浏览与导出使用体验：ResultTables 已支持筛选、分页、final_action 分组；Final Lead Center 已增加导出路径预设。没有在本地执行依赖安装、前端构建、Rust 检查、Tauri 打包和真实 MySQL / CSV 端到端验证。
