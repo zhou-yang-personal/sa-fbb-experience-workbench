@@ -139,6 +139,21 @@ fn etl_job_health_card(failed_jobs: u64, running_jobs: u64, latest_status: &str)
     MetricCard { label: "ETL job health".to_string(), value: value.to_string(), hint: format!("failed_jobs={failed_jobs}, running_jobs={running_jobs}, latest_status={latest_status}; inspect recent jobs before rerunning downstream phases") }
 }
 
+fn pipeline_stage_summary_card(raw_rows: u64, clean_rows: u64, dws_users: u64, ads_leads: u64) -> MetricCard {
+    let value = if raw_rows == 0 {
+        "raw_missing"
+    } else if clean_rows == 0 {
+        "raw_loaded"
+    } else if dws_users == 0 {
+        "clean_ready"
+    } else if ads_leads == 0 {
+        "dws_ready"
+    } else {
+        "ads_ready"
+    };
+    MetricCard { label: "Pipeline stage".to_string(), value: value.to_string(), hint: format!("raw_rows={raw_rows}, clean_rows={clean_rows}, dws_distinct_users={dws_users}, ads_leads={ads_leads}; use this as the next-action stage summary") }
+}
+
 #[tauri::command]
 fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) -> Result<Vec<MetricCard>, String> {
     let mut conn = db::conn(&settings)?;
@@ -172,6 +187,7 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
         MetricCard { label: "Clean TCP rows".to_string(), value: clean_video_rows.to_string(), hint: "dwd_tcp_detail_clean".to_string() },
         MetricCard { label: "Clean Game rows".to_string(), value: clean_game_rows.to_string(), hint: "dwd_game_detail_clean".to_string() },
         import_completion_card(&import_status, imported_rows, total_rows, raw_rows),
+        pipeline_stage_summary_card(raw_rows, clean_rows, dws_users, ads_leads),
         row_consistency_card(imported_rows, total_rows, raw_rows),
         typed_raw_distribution_card(tcp_rows, game_rows),
         source_data_presence_card(&data_type, tcp_rows, game_rows),
@@ -218,38 +234,4 @@ fn dashboard_get_overview(req: DashboardRequest) -> Result<DashboardOverview, St
         MetricCard { label: "Game hours".to_string(), value: format!("{:.2}", game_hours.unwrap_or(0.0)), hint: "sum total_game_hours".to_string() },
         MetricCard { label: "A1 leads".to_string(), value: a1_users.unwrap_or(0).to_string(), hint: "priority marketing users".to_string() },
     ]})
-}
-
-#[tauri::command]
-fn leads_query_users(req: LeadsQueryRequest) -> Result<Vec<LeadUserRow>, String> {
-    let mut conn = db::conn(&req.settings)?;
-    let page = req.page.unwrap_or(1).max(1);
-    let page_size = req.page_size.unwrap_or(100).clamp(1, 1000);
-    let offset = (page - 1) * page_size;
-    conn.exec_map("SELECT user_key, user_type, lead_type, demand_score, migration_motive_score, recommended_offer FROM ads_migration_lead_user WHERE analysis_run_id=? ORDER BY demand_score DESC, migration_motive_score DESC LIMIT ? OFFSET ?", (&req.analysis_run_id, page_size, offset), |(user_key, user_type, lead_type, demand_score, migration_motive_score, recommended_offer)| LeadUserRow { user_key, user_type, lead_type, demand_score, migration_motive_score, recommended_offer }).map_err(|err| format!("failed to query leads: {err}"))
-}
-
-#[tauri::command]
-fn export_leads_csv(req: ExportLeadsRequest) -> Result<CommandAck, String> {
-    let rows = leads_query_users(LeadsQueryRequest { settings: req.settings, analysis_run_id: req.analysis_run_id, page: Some(1), page_size: Some(1000) })?;
-    let mut writer = csv::Writer::from_path(&req.output_path).map_err(|err| format!("failed to create export file: {err}"))?;
-    writer.write_record(["user_key", "user_type", "lead_type", "demand_score", "migration_motive_score", "recommended_offer"]).map_err(|err| err.to_string())?;
-    for row in rows { writer.write_record([row.user_key, row.user_type.unwrap_or_default(), row.lead_type, row.demand_score.to_string(), row.migration_motive_score.to_string(), row.recommended_offer.unwrap_or_default()]).map_err(|err| err.to_string())?; }
-    writer.flush().map_err(|err| err.to_string())?;
-    Ok(ack(format!("leads exported to {}", req.output_path)))
-}
-
-fn main() {
-    tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![
-            db_test_connection, db_initialize, import_probe_csv, import_create_batch, import_start_raw_load,
-            import_get_batch_status, etl_get_recent_jobs, quality_get_batch_report, etl_start_clean_job,
-            etl_start_aggregate_job, dashboard_get_overview, leads_query_users, export_leads_csv,
-            phase_commands::quality_run_gate, phase_commands::etl_run_complete_aggregates,
-            phase_commands::ads_run_complete_dashboards, phase_commands::leads_run_final_fusion,
-            phase_commands::dashboard_get_app_category, phase_commands::dashboard_get_experience_quality,
-            phase_commands::dashboard_get_cable_fiber_compare, phase_commands::leads_get_final_summary
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running SA FBB Experience Workbench");
 }
