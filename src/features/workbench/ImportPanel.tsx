@@ -1,4 +1,5 @@
 import type { ImportBatchResult, ImportDataType, MetricCard, MySqlSettings } from '../../shared/types';
+import { profileApi } from './profileApi';
 import { workbenchApi } from './workbenchApi';
 
 type Props = {
@@ -33,6 +34,7 @@ export function ImportPanel(props: Props) {
         <button onClick={() => runAction('import_probe_csv', () => workbenchApi.probeCsv(filePath))}>Probe</button>
         <button onClick={createBatch}>创建批次</button>
         <button onClick={() => runAction('import_validate_mapping', () => workbenchApi.validateMapping(settings, importBatchId, dataType, filePath))}>映射校验</button>
+        <button onClick={() => runAction('dataset_profile_refresh', () => profileApi.refresh(settings, importBatchId, dataType))}>数据画像</button>
         <button onClick={() => runAction('import_start_raw_load', () => workbenchApi.loadRaw(effectiveSettings, importBatchId, dataType, filePath, importMode))}>RAW 入库</button>
         <button onClick={() => loadMetrics('import_get_batch_status', () => workbenchApi.importStatus(settings, importBatchId))}>刷新导入状态</button>
         <button onClick={() => loadMetrics('config_get_import_mappings', () => workbenchApi.importMappings(settings, dataType))}>字段映射</button>
