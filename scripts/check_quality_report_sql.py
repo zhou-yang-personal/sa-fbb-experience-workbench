@@ -8,6 +8,7 @@ SQL dependency list visible for manual validation.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,6 +47,10 @@ FORBIDDEN_SQL_PATTERNS = [
     "select *",
 ]
 
+UNBOUNDED_QUALITY_COUNT_RE = re.compile(
+    r"(?is)SELECT\s+COUNT\s*\(\s*\*\s*\)\s+FROM\s+(raw_|dwd_|dws_|ads_)[a-z0-9_]+(?![^;]{0,180}\bWHERE\b)"
+)
+
 
 def find_duplicate_required_card_labels(content: str) -> list[str]:
     """Return required card labels that appear suspiciously more than once.
@@ -67,13 +72,19 @@ def find_forbidden_sql_patterns(content: str) -> list[str]:
     return [pattern for pattern in FORBIDDEN_SQL_PATTERNS if pattern in content]
 
 
+def find_unbounded_quality_counts(content: str) -> list[str]:
+    """Return broad COUNT(*) scans over pipeline tables without a WHERE guard."""
+    return [match.group(0).replace("\n", " ")[:160] for match in UNBOUNDED_QUALITY_COUNT_RE.finditer(content)]
+
+
 def main() -> int:
     content = MAIN_RS.read_text(encoding="utf-8")
     missing_sql = [marker for marker in REQUIRED_SQL_MARKERS if marker not in content]
     missing_cards = [label for label in REQUIRED_CARD_LABELS if label not in content]
     duplicate_cards = find_duplicate_required_card_labels(content)
     forbidden_sql = find_forbidden_sql_patterns(content)
-    if missing_sql or missing_cards or duplicate_cards or forbidden_sql:
+    unbounded_counts = find_unbounded_quality_counts(content)
+    if missing_sql or missing_cards or duplicate_cards or forbidden_sql or unbounded_counts:
         if missing_sql:
             print("missing SQL markers:")
             for marker in missing_sql:
@@ -90,6 +101,10 @@ def main() -> int:
             print("forbidden broad SQL patterns:")
             for pattern in forbidden_sql:
                 print(f"- {pattern}")
+        if unbounded_counts:
+            print("unbounded quality COUNT(*) scans:")
+            for query in unbounded_counts:
+                print(f"- {query}")
         return 1
     print("quality report SQL/card markers: ok")
     return 0
