@@ -71,6 +71,9 @@ pub struct LeadsQueryRequest {
     pub analysis_run_id: String,
     pub page: Option<u64>,
     pub page_size: Option<u64>,
+    pub lead_type: Option<String>,
+    pub final_action: Option<String>,
+    pub keyword: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -78,6 +81,7 @@ pub struct ExportLeadsRequest {
     pub settings: MySqlSettings,
     pub analysis_run_id: String,
     pub output_path: String,
+    pub final_actions: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
