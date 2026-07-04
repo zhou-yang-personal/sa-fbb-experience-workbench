@@ -64,7 +64,7 @@ function App() {
           <h2>MySQL 连接与初始化</h2>
           <div className="form-grid">
             <input value={settings.host} onChange={(e) => setSettings({ ...settings, host: e.target.value })} placeholder="host" />
-            <input value={settings.port} onChange={(e) => setSettings({ ...settings, port: Number(e.target.value })} placeholder="port" />
+            <input value={settings.port} onChange={(e) => setSettings({ ...settings, port: Number(e.target.value) })} placeholder="port" />
             <input value={settings.database} onChange={(e) => setSettings({ ...settings, database: e.target.value })} placeholder="database" />
             <input value={settings.user} onChange={(e) => setSettings({ ...settings, user: e.target.value })} placeholder="user" />
             <input type="password" value={settings.secret} onChange={(e) => setSettings({ ...settings, secret: e.target.value })} placeholder="password" />
