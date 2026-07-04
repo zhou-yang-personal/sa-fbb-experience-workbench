@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.9
+1.0.10
 ```
 
 ## Source-of-truth branch
@@ -57,10 +57,17 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - ResultTables supports SA Lead / Final Lead text filters, type/action filters, pagination and empty states.
 - Final Lead results support final_action summary pills with click-to-filter behavior.
 - Final Lead Center exposes export filename presets for SA Lead, Final Lead, Market Upsell and Reachability lists.
+- Lead query backend supports page / page_size / lead_type / final_action / keyword request fields.
+- SA Lead query applies server-side pagination plus optional lead_type and keyword filters.
+- Final Lead query applies server-side pagination plus optional final_action and keyword filters.
+- Final Lead CSV export supports `final_actions` filtering for action-specific delivery files.
+- Export presets now set both output filename and Final Action export scope.
+- Market Upsell preset exports `MARKET_FIBER_UPSELL` and `FTTH_SPEED_UPSELL`.
+- Reachability preset exports `REACHABILITY_FIX_FIRST` and `BUILD_OR_COVERAGE_CHECK`.
 - Reusable frontend components exist for connection, import, quality, ETL, dashboard, lead, metric grid, result tables, pagination, execution log and ECharts metric bar.
 - Dashboard commands for Overview, App Category, Experience Quality and Cable vs FTTH.
 - Lead query, final lead query, final lead summary, SA Lead CSV export and Final Lead CSV export commands.
-- Package, Cargo and Tauri app config are synchronized to `1.0.9`.
+- Package, Cargo and Tauri app config are synchronized to `1.0.10`.
 
 ## Important rules
 
@@ -82,6 +89,6 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 
 1. Run local dependency installation and build checks.
 2. Fix compile errors if any.
-3. Validate all five import data types on small samples.
-4. Validate final CRM / coverage / reachability lead fusion with real mapping keys.
-5. Continue deeper UI refinement after local compile feedback: backend result pagination, final-action export filters and richer dashboard charts.
+3. Validate server-side Lead query filtering and final-action export filters against real MySQL data.
+4. Validate all five import data types on small samples.
+5. Continue deeper UI refinement after local compile feedback: ETL Step detail table and richer Dashboard Center charts.
