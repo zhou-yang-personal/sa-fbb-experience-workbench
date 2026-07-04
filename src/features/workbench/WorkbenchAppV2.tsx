@@ -8,6 +8,7 @@ import { ImportPanel } from './ImportPanel';
 import { MetricGrid } from './MetricGrid';
 import { NextActionHint } from './NextActionHint';
 import { PipelineStatusBar, type PipelineStep, type PipelineStepId } from './PipelineStatusBar';
+import { QualityCenter } from './QualityCenter';
 import { ResultTables } from './ResultTables';
 import { RunLogDrawer } from './RunLogDrawer';
 import { WorkbenchContextBar } from './WorkbenchContextBar';
@@ -42,7 +43,7 @@ export function WorkbenchAppV2() {
   const [logOpen, setLogOpen] = useState(false);
 
   const pipeline = useMemo<PipelineStep[]>(() => {
-    const startDone = hasSuccess(c.actionStates.db_initialize) || hasSuccess(c.actionStates.config_seed_defaults) || hasSuccess(c.actionStates.db_test_connection);
+    const startDone = hasSuccess(c.actionStates.db_initialize) || hasSuccess(c.actionStates.config_seed_defaults) || hasSuccess(c.actionStates.db_test_connection) || hasSuccess(c.actionStates.start_prepare_database);
     const importDone = Boolean(c.batch || c.importBatchId || hasSuccess(c.actionStates.import_current_file) || hasSuccess(c.actionStates.import_start_raw_load));
     const validateDone = hasSuccess(c.actionStates.quality_run_gate) || hasSuccess(c.actionStates.quality_get_gate_results);
     const analyzeDone = hasSuccess(c.actionStates.analyze_generate_results) || hasSuccess(c.actionStates.leads_run_final_fusion) || c.dashboardCharts.length > 0;
@@ -74,7 +75,7 @@ export function WorkbenchAppV2() {
     if (activeSection === 'validate') {
       return (
         <section className="workbench-section-stack">
-          <QualityCenterBridge controller={c} />
+          <QualityCenter {...c} />
           <MetricGrid metrics={c.allMetrics} />
         </section>
       );
@@ -127,9 +128,4 @@ export function WorkbenchAppV2() {
       <RunLogDrawer open={logOpen} log={c.log} onClose={() => setLogOpen(false)} />
     </main>
   );
-}
-
-function QualityCenterBridge({ controller }: { controller: ReturnType<typeof useWorkbenchController> }) {
-  const { QualityCenter } = require('./QualityCenter') as typeof import('./QualityCenter');
-  return <QualityCenter {...controller} />;
 }
