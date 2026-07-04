@@ -1,5 +1,26 @@
 # CHANGELOG-dev
 
+## 1.0.11 - 2026-07-04
+
+### Added
+
+- Added backend model `EtlJobStepsRequest` for structured ETL step detail queries.
+- Added backend model `EtlJobStepRow` with job_id, job_type, step_name, target_table, status, affected_rows, started_at, finished_at and message.
+- Added `etl_get_job_steps` Tauri command and registered it in `main.rs`.
+- Added parameterized ETL step detail query with optional job_id, status and limit filters.
+- Added frontend `EtlJobStepRow` / `EtlJobStepsQuery` types and `jobApi.jobSteps` wrapper.
+- Added ETL Step Detail and Failed Detail actions in `JobStepActions`.
+- Added structured ETL Step Detail table to `EtlJobCenter`.
+- Synchronized Workbench header, package, Cargo, Tauri config, README, handoff and project rules to `1.0.11`.
+
+### Not verified
+
+- Dependency installation not run in ChatGPT GitHub connector environment.
+- Frontend build not run.
+- Rust check not run.
+- Tauri package build not run.
+- Real MySQL and CSV end-to-end flow not executed.
+
 ## 1.0.10 - 2026-07-04
 
 ### Added
@@ -38,7 +59,6 @@
 - Frontend build not run.
 - Rust check not run.
 - Tauri package build not run.
-- Real MySQL and CSV end-to-end flow not executed.
 
 ## 1.0.8 - 2026-07-04
 
@@ -125,7 +145,7 @@
 - Added `final_fusion.rs` as a configurable final lead fusion SQL builder module.
 - Split command handlers into import, ETL, dashboard and lead modules to keep `main.rs` small and maintainable.
 - Registered configuration commands in `main.rs`.
-- Rewired Final Lead fusion execution to use the configurable final fusion builder.
+- Rewired Final Lead fusion execution to use the configurable fusion builder.
 - Exposed configuration APIs in `src/shared/tauriApi.ts`.
 - Synchronized package and Cargo versions to `1.0.5`.
 
