@@ -113,6 +113,26 @@ fn typed_raw_distribution_card(tcp_rows: u64, game_rows: u64) -> MetricCard {
     }
 }
 
+fn clean_conversion_card(raw_rows: u64, clean_rows: u64) -> MetricCard {
+    let ratio = if raw_rows > 0 { clean_rows as f64 / raw_rows as f64 * 100.0 } else { 0.0 };
+    let value = if raw_rows == 0 {
+        "unknown".to_string()
+    } else if clean_rows == 0 {
+        "not_cleaned".to_string()
+    } else if clean_rows > raw_rows {
+        "over_cleaned".to_string()
+    } else if ratio < 90.0 {
+        "low_yield".to_string()
+    } else {
+        "ok".to_string()
+    };
+    MetricCard {
+        label: "CLEAN conversion".to_string(),
+        value,
+        hint: format!("raw_rows={raw_rows}, clean_rows={clean_rows}, clean_to_raw_ratio={ratio:.2}%"),
+    }
+}
+
 #[tauri::command]
 fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) -> Result<Vec<MetricCard>, String> {
     let mut conn = db::conn(&settings)?;
@@ -126,14 +146,19 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
     ).map_err(|err| err.to_string())?;
     let tcp_rows = tcp_rows.unwrap_or(0);
     let game_rows = game_rows.unwrap_or(0);
+    let clean_video_rows = clean_video_rows.unwrap_or(0);
+    let clean_game_rows = clean_game_rows.unwrap_or(0);
+    let raw_rows = tcp_rows + game_rows;
+    let clean_rows = clean_video_rows + clean_game_rows;
     let (imported_rows, total_rows) = import_meta.unwrap_or((0, 0));
     Ok(vec![
         MetricCard { label: "RAW TCP rows".to_string(), value: tcp_rows.to_string(), hint: "raw_tcp_detail_import".to_string() },
         MetricCard { label: "RAW Game rows".to_string(), value: game_rows.to_string(), hint: "raw_game_detail_import".to_string() },
-        MetricCard { label: "Clean TCP rows".to_string(), value: clean_video_rows.unwrap_or(0).to_string(), hint: "dwd_tcp_detail_clean".to_string() },
-        MetricCard { label: "Clean Game rows".to_string(), value: clean_game_rows.unwrap_or(0).to_string(), hint: "dwd_game_detail_clean".to_string() },
-        row_consistency_card(imported_rows, total_rows, tcp_rows + game_rows),
+        MetricCard { label: "Clean TCP rows".to_string(), value: clean_video_rows.to_string(), hint: "dwd_tcp_detail_clean".to_string() },
+        MetricCard { label: "Clean Game rows".to_string(), value: clean_game_rows.to_string(), hint: "dwd_game_detail_clean".to_string() },
+        row_consistency_card(imported_rows, total_rows, raw_rows),
         typed_raw_distribution_card(tcp_rows, game_rows),
+        clean_conversion_card(raw_rows, clean_rows),
     ])
 }
 
