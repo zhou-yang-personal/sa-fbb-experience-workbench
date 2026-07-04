@@ -6,6 +6,12 @@
 .table-toolbar select { min-width: 140px; width: auto; }
 .lead-query-toolbar input[inputmode="numeric"] { min-width: 90px; max-width: 120px; flex: 0 0 100px; }
 .lead-query-toolbar select { min-width: 220px; }
+.etl-step-actions input[inputmode="numeric"] { width: 90px; }
+.etl-step-actions select { min-width: 140px; }
+.etl-step-table { margin-top: 12px; max-height: 360px; overflow: auto; }
+.etl-step-row { grid-template-columns: 1.1fr 1.2fr 0.8fr 1.2fr 1.2fr 2fr; align-items: start; }
+.etl-step-row small { color: #94a3b8; font-size: 11px; }
+.etl-step-row span:last-child { word-break: break-word; }
 .table-head { color: #93c5fd; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(15, 23, 42, 0.9); }
 .summary-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .summary-pills .status-pill { border: 1px solid rgba(148, 163, 184, 0.22); cursor: pointer; }
