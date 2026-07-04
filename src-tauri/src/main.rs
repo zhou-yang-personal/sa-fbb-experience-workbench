@@ -2,6 +2,7 @@
 
 mod config_commands;
 mod dashboard_commands;
+mod dataset_profile_commands;
 mod db;
 mod etl_commands;
 mod final_fusion;
@@ -31,6 +32,7 @@ fn main() {
             import_commands_mapped::import_start_raw_load,
             import_commands::import_get_batch_status,
             mapping_validation_commands::import_validate_mapping,
+            dataset_profile_commands::dataset_profile_refresh,
             etl_commands::etl_get_recent_jobs,
             job_inspection_commands::etl_get_recent_steps,
             job_inspection_commands::etl_get_failed_steps,
