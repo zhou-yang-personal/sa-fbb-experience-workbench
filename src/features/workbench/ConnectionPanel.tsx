@@ -1,4 +1,5 @@
-import type { MySqlSettings } from '../../shared/types';
+import type { ActionState, MySqlSettings } from '../../shared/types';
+import { ActionButton } from './ActionButton';
 import { workbenchApi } from './workbenchApi';
 
 type Props = {
@@ -6,13 +7,29 @@ type Props = {
   setSettings: (settings: MySqlSettings) => void;
   runAction: (label: string, action: () => Promise<unknown>) => Promise<unknown>;
   clearPersistedContext: () => void;
+  actionStates: Record<string, ActionState>;
 };
 
-export function ConnectionPanel({ settings, setSettings, runAction, clearPersistedContext }: Props) {
+export function ConnectionPanel({ settings, setSettings, runAction, clearPersistedContext, actionStates }: Props) {
+  async function prepareDatabase() {
+    await runAction('start_prepare_database', async () => {
+      await workbenchApi.testDb(settings);
+      await workbenchApi.initDb(settings);
+      await workbenchApi.seedConfig(settings);
+      return { status: 'ready', database: settings.database };
+    });
+  }
+
   return (
     <section className="workbench-section-stack">
-      <section className="panel form-panel">
-        <h2>MySQL 连接与配置初始化</h2>
+      <section className="panel form-panel step-card">
+        <div className="step-card-head">
+          <div>
+            <h2>Start：数据库连接与初始化</h2>
+            <p className="hero-text">第一步只做一件事：让 MySQL schema 和默认映射配置就绪。</p>
+          </div>
+          <span className="step-badge">1 / 5</span>
+        </div>
         <div className="form-grid">
           <input value={settings.host} onChange={(e) => setSettings({ ...settings, host: e.target.value })} placeholder="host" />
           <input value={settings.port} onChange={(e) => setSettings({ ...settings, port: Number(e.target.value) })} placeholder="port" />
@@ -20,11 +37,17 @@ export function ConnectionPanel({ settings, setSettings, runAction, clearPersist
           <input value={settings.user} onChange={(e) => setSettings({ ...settings, user: e.target.value })} placeholder="user" />
           <input type="password" value={settings.secret} onChange={(e) => setSettings({ ...settings, secret: e.target.value })} placeholder="password" />
         </div>
-        <div className="action-row">
-          <button onClick={() => runAction('db_test_connection', () => workbenchApi.testDb(settings))}>测试连接</button>
-          <button onClick={() => runAction('db_initialize', () => workbenchApi.initDb(settings))}>初始化数据库</button>
-          <button onClick={() => runAction('config_seed_defaults', () => workbenchApi.seedConfig(settings))}>初始化映射配置</button>
+        <div className="primary-action-row">
+          <ActionButton actionKey="start_prepare_database" actionStates={actionStates} primary label="测试并初始化数据库" onClick={prepareDatabase} />
         </div>
+        <details className="advanced-actions">
+          <summary>高级操作</summary>
+          <div className="action-row">
+            <ActionButton actionKey="db_test_connection" actionStates={actionStates} label="仅测试连接" onClick={() => runAction('db_test_connection', () => workbenchApi.testDb(settings))} />
+            <ActionButton actionKey="db_initialize" actionStates={actionStates} label="仅初始化数据库" onClick={() => runAction('db_initialize', () => workbenchApi.initDb(settings))} />
+            <ActionButton actionKey="config_seed_defaults" actionStates={actionStates} label="仅初始化映射配置" onClick={() => runAction('config_seed_defaults', () => workbenchApi.seedConfig(settings))} />
+          </div>
+        </details>
       </section>
 
       <section className="panel persistence-panel">
