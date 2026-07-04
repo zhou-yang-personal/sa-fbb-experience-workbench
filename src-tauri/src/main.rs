@@ -36,10 +36,7 @@ fn import_probe_csv(path: String) -> Result<models::CsvProbeResult, String> { pr
 #[tauri::command]
 fn import_create_batch(req: CreateBatchRequest) -> Result<ImportBatchResult, String> {
     let import_batch_id = format!("BATCH_{}", Uuid::new_v4().simple());
-    let source_file_name = std::path::Path::new(&req.file_path)
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_else(|| req.file_path.clone());
+    let source_file_name = std::path::Path::new(&req.file_path).file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_else(|| req.file_path.clone());
     let file_size = std::fs::metadata(&req.file_path).map(|m| m.len()).ok();
     let mut conn = db::conn(&req.settings)?;
     conn.exec_drop(
@@ -50,8 +47,39 @@ fn import_create_batch(req: CreateBatchRequest) -> Result<ImportBatchResult, Str
 }
 
 #[tauri::command]
-fn import_start_raw_load(req: RawLoadRequest) -> Result<CommandAck, String> {
-    raw_import::start_raw_load(req).map(ack)
+fn import_start_raw_load(req: RawLoadRequest) -> Result<CommandAck, String> { raw_import::start_raw_load(req).map(ack) }
+
+#[tauri::command]
+fn import_get_batch_status(settings: MySqlSettings, import_batch_id: String) -> Result<Vec<MetricCard>, String> {
+    let mut conn = db::conn(&settings)?;
+    let row: Option<(String, u64, u64, String)> = conn.exec_first(
+        "SELECT status, COALESCE(imported_rows,0), COALESCE(total_rows,0), COALESCE(message,'') FROM meta_import_batch WHERE import_batch_id=?",
+        (&import_batch_id,),
+    ).map_err(|err| format!("failed to query import batch status: {err}"))?;
+    let Some((status, imported_rows, total_rows, message)) = row else {
+        return Ok(vec![MetricCard { label: "Import batch".to_string(), value: "not_found".to_string(), hint: import_batch_id }]);
+    };
+    let progress = if total_rows > 0 { imported_rows as f64 / total_rows as f64 * 100.0 } else { 0.0 };
+    Ok(vec![
+        MetricCard { label: "Import status".to_string(), value: status, hint: message },
+        MetricCard { label: "Imported rows".to_string(), value: imported_rows.to_string(), hint: "meta_import_batch.imported_rows".to_string() },
+        MetricCard { label: "Total rows".to_string(), value: total_rows.to_string(), hint: "meta_import_batch.total_rows".to_string() },
+        MetricCard { label: "Progress".to_string(), value: format!("{progress:.2}%"), hint: "imported_rows / total_rows".to_string() },
+    ])
+}
+
+#[tauri::command]
+fn etl_get_recent_jobs(settings: MySqlSettings, import_batch_id: String) -> Result<Vec<MetricCard>, String> {
+    let mut conn = db::conn(&settings)?;
+    conn.exec_map(
+        "SELECT job_type, status, COALESCE(current_step,'-'), COALESCE(affected_rows,0) FROM meta_etl_job WHERE import_batch_id=? ORDER BY started_at DESC LIMIT 12",
+        (&import_batch_id,),
+        |(job_type, status, current_step, affected_rows): (String, String, String, u64)| MetricCard {
+            label: job_type,
+            value: status,
+            hint: format!("step={current_step}, affected_rows={affected_rows}"),
+        },
+    ).map_err(|err| format!("failed to query ETL jobs: {err}"))
 }
 
 #[tauri::command]
@@ -130,12 +158,12 @@ fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             db_test_connection, db_initialize, import_probe_csv, import_create_batch, import_start_raw_load,
-            quality_get_batch_report, etl_start_clean_job, etl_start_aggregate_job, dashboard_get_overview,
-            leads_query_users, export_leads_csv, phase_commands::quality_run_gate,
-            phase_commands::etl_run_complete_aggregates, phase_commands::ads_run_complete_dashboards,
-            phase_commands::leads_run_final_fusion, phase_commands::dashboard_get_app_category,
-            phase_commands::dashboard_get_experience_quality, phase_commands::dashboard_get_cable_fiber_compare,
-            phase_commands::leads_get_final_summary
+            import_get_batch_status, etl_get_recent_jobs, quality_get_batch_report, etl_start_clean_job,
+            etl_start_aggregate_job, dashboard_get_overview, leads_query_users, export_leads_csv,
+            phase_commands::quality_run_gate, phase_commands::etl_run_complete_aggregates,
+            phase_commands::ads_run_complete_dashboards, phase_commands::leads_run_final_fusion,
+            phase_commands::dashboard_get_app_category, phase_commands::dashboard_get_experience_quality,
+            phase_commands::dashboard_get_cable_fiber_compare, phase_commands::leads_get_final_summary
         ])
         .run(tauri::generate_context!())
         .expect("error while running SA FBB Experience Workbench");
