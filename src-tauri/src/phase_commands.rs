@@ -1,6 +1,7 @@
 use mysql::prelude::*;
 
 use crate::db;
+use crate::final_fusion;
 use crate::job_runner::{self, JobStep};
 use crate::models::{ack, CommandAck, DashboardRequest, EtlRequest, MetricCard};
 use crate::sql_runner;
@@ -8,7 +9,6 @@ use crate::sql_runner;
 const QUALITY_SQL: &str = include_str!("../../database/sql/quality/001_raw_quality_gate.sql");
 const COMPLETE_DWS_SQL: &str = include_str!("../../database/sql/clean_to_dws/002_complete_aggregates.sql");
 const COMPLETE_DASHBOARD_SQL: &str = include_str!("../../database/sql/dws_to_ads/002_complete_dashboards.sql");
-const FINAL_LEADS_SQL: &str = include_str!("../../database/sql/crm_coverage/001_final_marketing_leads.sql");
 
 #[tauri::command]
 pub fn quality_run_gate(req: EtlRequest) -> Result<CommandAck, String> {
@@ -41,10 +41,8 @@ pub fn ads_run_complete_dashboards(req: EtlRequest) -> Result<CommandAck, String
 #[tauri::command]
 pub fn leads_run_final_fusion(req: EtlRequest) -> Result<CommandAck, String> {
     let run_id = req.analysis_run_id.clone().unwrap_or_else(|| "RUN_DEFAULT".to_string());
-    let sql = sql_runner::bind_batch_params(FINAL_LEADS_SQL, &req.import_batch_id, Some(&run_id));
-    let message = job_runner::run_job(&req.settings, &req.import_batch_id, "final_lead_fusion", vec![
-        JobStep { step_name: "final_marketing_lead_fusion", source_table: "ads_migration_lead_user,raw_crm_user_import,raw_ftth_coverage_import,raw_reachability_import", target_table: "ads_final_marketing_lead_user", sql_template: "001_final_marketing_leads.sql", sql },
-    ])?;
+    let step = final_fusion::build_final_fusion_step(&req.settings, &req.import_batch_id, &run_id)?;
+    let message = job_runner::run_job(&req.settings, &req.import_batch_id, "final_lead_fusion", vec![step])?;
     Ok(ack(format!("analysis_run_id={run_id}; {message}")))
 }
 
