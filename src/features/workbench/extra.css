@@ -24,6 +24,7 @@
 .log-entry-head { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; margin-bottom: 8px; }
 .log-entry-head strong { color: #e8eefc; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .log-entry-head button { padding: 4px 8px; border-radius: 8px; font-size: 12px; }
+.log-meta { display: flex; flex-wrap: wrap; gap: 8px; color: #94a3b8; font-size: 11px; margin-bottom: 8px; }
 .status-success { color: #bbf7d0; border-color: rgba(74, 222, 128, 0.32); }
 .status-failure { color: #fecaca; border-color: rgba(248, 113, 113, 0.52); }
 .dashboard-center-panel { grid-column: span 1; }
