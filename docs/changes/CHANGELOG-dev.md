@@ -1,5 +1,24 @@
 # CHANGELOG-dev
 
+## 1.0.2 - 2026-07-04
+
+### Fixed
+
+- Added import progress updates for streaming INSERT fallback.
+- Added `total_rows` and `imported_rows` reconciliation on RAW import completion.
+- Expanded quality gate with `csv_vs_raw_rows` check.
+- Added `import_get_batch_status` command and frontend action.
+- Added `etl_get_recent_jobs` command and frontend action.
+- Synchronized package, Tauri and Cargo versions to `1.0.2`.
+
+### Not verified
+
+- Dependency installation not run in ChatGPT GitHub connector environment.
+- Frontend build not run.
+- Rust check not run.
+- Tauri package build not run.
+- Real MySQL and CSV end-to-end flow not executed.
+
 ## 1.0.1 - 2026-07-04
 
 ### Fixed
