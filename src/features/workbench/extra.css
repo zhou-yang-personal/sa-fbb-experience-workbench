@@ -6,6 +6,13 @@
 .table-toolbar select { min-width: 140px; width: auto; }
 .lead-query-toolbar input[inputmode="numeric"] { min-width: 90px; max-width: 120px; flex: 0 0 100px; }
 .lead-query-toolbar select { min-width: 220px; }
+.dashboard-center-panel { grid-column: span 1; }
+.dashboard-actions { gap: 8px; }
+.dashboard-chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-top: 12px; }
+.dashboard-chart-card { min-width: 0; padding: 12px; }
+.dashboard-chart-card .chart-shell { height: 300px; }
+.chart-footnote { display: flex; flex-wrap: wrap; gap: 8px; color: #94a3b8; font-size: 11px; margin-top: 6px; }
+.chart-footnote span { border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 999px; padding: 3px 8px; }
 .etl-step-actions input[inputmode="numeric"] { width: 90px; }
 .etl-step-actions select { min-width: 140px; }
 .etl-step-table { margin-top: 12px; max-height: 360px; overflow: auto; }
