@@ -14,9 +14,16 @@ input, select { width: 100%; color: #e8eefc; background: rgba(15, 23, 42, 0.95);
 .app-shell { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
 .sidebar { border-right: 1px solid rgba(148, 163, 184, 0.2); background: rgba(5, 10, 20, 0.72); padding: 24px 18px; }
 .brand { font-size: 18px; font-weight: 700; line-height: 1.35; margin-bottom: 28px; }
-.nav-item { width: 100%; display: block; text-align: left; color: #cbd5e1; background: transparent; border: 1px solid transparent; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; cursor: default; }
-.nav-item:first-child, .nav-item:hover { border-color: rgba(96, 165, 250, 0.42); background: rgba(37, 99, 235, 0.18); color: #ffffff; }
+.nav-item { width: 100%; display: block; text-align: left; color: #cbd5e1; background: transparent; border: 1px solid transparent; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
+.nav-item span { display: block; font-weight: 650; }
+.nav-item small { display: block; margin-top: 4px; color: #64748b; font-size: 11px; line-height: 1.35; }
+.nav-item:hover, .nav-item.is-active { border-color: rgba(96, 165, 250, 0.42); background: rgba(37, 99, 235, 0.18); color: #ffffff; }
+.nav-item.is-active small, .nav-item:hover small { color: #bfdbfe; }
 .content { padding: 28px; }
+.section-shell { margin-top: 18px; }
+.workbench-section-stack { display: grid; gap: 18px; }
+.workbench-section-stack > .panel, .workbench-section-stack > .metric-grid { margin-top: 0; }
+.workbench-section-grid { margin-top: 0; }
 
 .hero-card, .panel, .metric-card, .version-card, .lead-card { border: 1px solid rgba(148, 163, 184, 0.22); background: rgba(15, 23, 42, 0.82); border-radius: 18px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22); }
 .hero-card { display: flex; justify-content: space-between; gap: 24px; padding: 28px; }
