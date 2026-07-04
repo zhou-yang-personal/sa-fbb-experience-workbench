@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.2
+1.0.3
 ```
 
 ## Source-of-truth branch
@@ -28,6 +28,7 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Streaming fallback updates import progress while inserting chunks.
 - RAW import now writes `total_rows` and `imported_rows` for row reconciliation.
 - RAW quality gate checks row count, CSV vs RAW row diff, identity, access mix, time range, active hours, app count and topology UNKNOWN.
+- Quality report includes RAW type distribution and CLEAN conversion cards for import/cleaning observability.
 - RAW to CLEAN SQL runner.
 - ETL job commands write `meta_etl_job` and `meta_etl_job_step` for step status and failure diagnostics.
 - Import status and recent ETL job status commands are available from the UI.
@@ -59,5 +60,6 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 2. Fix compile errors if any.
 3. Validate LOAD DATA and streaming fallback on TCP and Game samples.
 4. Validate quality gate row reconciliation against real CSV files.
-5. Validate Phase 1-7 SQL chain on sample data.
-6. Replace remaining baseline SQL with measured production SQL after local test.
+5. Validate RAW type distribution and CLEAN conversion cards after RAW → CLEAN.
+6. Validate Phase 1-7 SQL chain on sample data.
+7. Replace remaining baseline SQL with measured production SQL after local test.
