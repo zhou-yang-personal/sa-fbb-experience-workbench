@@ -2,6 +2,8 @@ export type ImportDataType = 'tcp' | 'game' | 'crm' | 'coverage' | 'reachability
 export type JobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
 export type DashboardChartKind = 'bar' | 'radar';
 export type ExecutionLogStatus = 'success' | 'failure';
+export type ActionRunStatus = 'idle' | 'running' | 'success' | 'failure';
+export type PipelineStepStatus = 'not_started' | 'running' | 'success' | 'warning' | 'failed';
 
 export interface MySqlSettings {
   host: string;
@@ -59,6 +61,14 @@ export interface ExecutionLogEntry {
   duration_ms: number;
   message: string;
   result_preview?: string;
+}
+
+export interface ActionState {
+  status: ActionRunStatus;
+  message?: string;
+  started_at?: string;
+  finished_at?: string;
+  duration_ms?: number;
 }
 
 export interface EtlJobStepRow {
