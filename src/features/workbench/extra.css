@@ -49,3 +49,46 @@
 .summary-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .summary-pills .status-pill { border: 1px solid rgba(148, 163, 184, 0.22); cursor: pointer; }
 .status-pill:disabled, button:disabled { opacity: 0.45; cursor: not-allowed; }
+.guided-sidebar nav { display: none; }
+.pipeline-status-bar { display: grid; gap: 8px; margin-top: 14px; }
+.pipeline-step { display: grid; grid-template-columns: 26px 1fr; gap: 8px; width: 100%; text-align: left; padding: 10px; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 12px; background: rgba(15, 23, 42, 0.48); color: #dbeafe; }
+.pipeline-step.is-active { border-color: rgba(96, 165, 250, 0.62); background: rgba(37, 99, 235, 0.22); }
+.pipeline-step-success { border-color: rgba(74, 222, 128, 0.28); }
+.pipeline-step-running { border-color: rgba(250, 204, 21, 0.42); }
+.pipeline-step-failed { border-color: rgba(248, 113, 113, 0.45); }
+.pipeline-step-index { width: 24px; height: 24px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: rgba(30, 41, 59, 0.9); color: #bfdbfe; font-size: 12px; }
+.pipeline-step-body strong, .pipeline-step-body small { display: block; }
+.pipeline-step-body small { color: #94a3b8; margin-top: 3px; }
+.sidebar-log-card { margin-top: 14px; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 12px; padding: 10px; background: rgba(15, 23, 42, 0.48); display: grid; gap: 8px; }
+.sidebar-log-card small { color: #94a3b8; }
+.next-action-hint { margin-top: 12px; border: 1px solid rgba(96, 165, 250, 0.3); border-radius: 14px; padding: 10px 12px; background: rgba(37, 99, 235, 0.14); display: grid; gap: 4px; }
+.next-action-hint span { color: #93c5fd; text-transform: uppercase; font-size: 11px; letter-spacing: 0.08em; }
+.next-action-hint strong { color: #e8eefc; }
+.next-action-hint small { color: #cbd5e1; }
+.next-action-warning { border-color: rgba(250, 204, 21, 0.4); background: rgba(113, 63, 18, 0.22); }
+.next-action-blocked { border-color: rgba(248, 113, 113, 0.45); background: rgba(127, 29, 29, 0.18); }
+.next-action-success { border-color: rgba(74, 222, 128, 0.32); background: rgba(20, 83, 45, 0.16); }
+.action-feedback-bar { margin-top: 10px; display: flex; justify-content: space-between; gap: 12px; border: 1px solid rgba(148, 163, 184, 0.14); border-radius: 12px; padding: 8px 10px; color: #cbd5e1; background: rgba(15, 23, 42, 0.42); }
+.action-feedback-bar strong { color: #facc15; }
+.step-card-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.step-badge { border: 1px solid rgba(96, 165, 250, 0.34); border-radius: 999px; padding: 4px 10px; color: #bfdbfe; font-size: 12px; }
+.primary-action-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+.action-button { display: inline-flex; align-items: center; gap: 8px; justify-content: center; min-height: 34px; }
+.action-button small { opacity: 0.76; font-size: 11px; }
+.action-button-primary { min-width: 190px; border-color: rgba(96, 165, 250, 0.55); background: rgba(37, 99, 235, 0.28); }
+.action-button-running { border-color: rgba(250, 204, 21, 0.56); }
+.action-button-done { border-color: rgba(74, 222, 128, 0.45); }
+.action-button-failed { border-color: rgba(248, 113, 113, 0.62); }
+.advanced-actions { margin: 10px 0; border: 1px solid rgba(148, 163, 184, 0.14); border-radius: 12px; padding: 8px 10px; background: rgba(15, 23, 42, 0.3); }
+.advanced-actions summary { cursor: pointer; color: #bfdbfe; }
+.inline-advanced-actions { flex: 1 1 100%; }
+.file-picker-card { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 12px; padding: 10px; background: rgba(15, 23, 42, 0.42); margin-top: 10px; }
+.file-picker-card span, .file-picker-card small { display: block; color: #94a3b8; }
+.file-picker-card strong { color: #e8eefc; }
+.import-form-grid label { display: grid; gap: 6px; color: #94a3b8; font-size: 12px; }
+.quality-conclusion { border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 12px; padding: 10px; margin-bottom: 10px; background: rgba(15, 23, 42, 0.36); display: grid; gap: 4px; }
+.run-log-drawer-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(2, 6, 23, 0.64); display: flex; justify-content: flex-end; }
+.run-log-drawer { width: min(760px, 92vw); height: 100%; overflow: auto; background: #020617; border-left: 1px solid rgba(148, 163, 184, 0.24); padding: 16px; box-shadow: -24px 0 80px rgba(0, 0, 0, 0.35); }
+.run-log-drawer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.run-log-drawer .execution-log-panel { border: 0; padding: 0; background: transparent; }
+.export-preset-pills button { background: rgba(15, 23, 42, 0.56); }
