@@ -15,8 +15,8 @@ use uuid::Uuid;
 use job_runner::JobStep;
 use models::{
     ack, CommandAck, CreateBatchRequest, DashboardOverview, DashboardRequest, EtlRequest,
-    ExportLeadsRequest, ImportBatchResult, LeadUserRow, LeadsQueryRequest, MetricCard,
-    MySqlSettings, RawLoadRequest,
+    ExportLeadsRequest, FinalLeadUserRow, ImportBatchResult, LeadUserRow, LeadsQueryRequest,
+    MetricCard, MySqlSettings, RawLoadRequest,
 };
 
 const TCP_CLEAN_SQL: &str = include_str!("../../database/sql/raw_to_clean/001_tcp_raw_to_clean.sql");
@@ -145,6 +145,19 @@ fn leads_query_users(req: LeadsQueryRequest) -> Result<Vec<LeadUserRow>, String>
 }
 
 #[tauri::command]
+fn final_leads_query_users(req: LeadsQueryRequest) -> Result<Vec<FinalLeadUserRow>, String> {
+    let mut conn = db::conn(&req.settings)?;
+    let page = req.page.unwrap_or(1).max(1);
+    let page_size = req.page_size.unwrap_or(100).clamp(1, 1000);
+    let offset = (page - 1) * page_size;
+    conn.exec_map(
+        "SELECT user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, current_arpu, ftth_available_flag, reachable_flag, final_action, recommended_offer FROM ads_final_marketing_lead_user WHERE analysis_run_id=? ORDER BY final_action, demand_score DESC, migration_motive_score DESC LIMIT ? OFFSET ?",
+        (&req.analysis_run_id, page_size, offset),
+        |(user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, current_arpu, ftth_available_flag, reachable_flag, final_action, recommended_offer)| FinalLeadUserRow { user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, current_arpu, ftth_available_flag, reachable_flag, final_action, recommended_offer },
+    ).map_err(|err| format!("failed to query final leads: {err}"))
+}
+
+#[tauri::command]
 fn export_leads_csv(req: ExportLeadsRequest) -> Result<CommandAck, String> {
     let mut conn = db::conn(&req.settings)?;
     let mut writer = csv::Writer::from_path(&req.output_path).map_err(|err| format!("failed to create export file: {err}"))?;
@@ -170,16 +183,55 @@ fn export_leads_csv(req: ExportLeadsRequest) -> Result<CommandAck, String> {
     Ok(ack(format!("leads exported to {}, rows={exported_rows}", req.output_path)))
 }
 
+#[tauri::command]
+fn export_final_leads_csv(req: ExportLeadsRequest) -> Result<CommandAck, String> {
+    let mut conn = db::conn(&req.settings)?;
+    let mut writer = csv::Writer::from_path(&req.output_path).map_err(|err| format!("failed to create final lead export file: {err}"))?;
+    writer.write_record(["user_key", "crm_user_id", "lead_type", "demand_score", "migration_motive_score", "current_plan_name", "current_arpu", "ftth_available_flag", "reachable_flag", "final_action", "recommended_offer"]).map_err(|err| err.to_string())?;
+
+    let mut exported_rows = 0_u64;
+    let page_size = 1000_u64;
+    let mut offset = 0_u64;
+    loop {
+        let rows: Vec<FinalLeadUserRow> = conn.exec_map(
+            "SELECT user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, current_arpu, ftth_available_flag, reachable_flag, final_action, recommended_offer FROM ads_final_marketing_lead_user WHERE analysis_run_id=? ORDER BY final_action, demand_score DESC, migration_motive_score DESC LIMIT ? OFFSET ?",
+            (&req.analysis_run_id, page_size, offset),
+            |(user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, current_arpu, ftth_available_flag, reachable_flag, final_action, recommended_offer)| FinalLeadUserRow { user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, current_arpu, ftth_available_flag, reachable_flag, final_action, recommended_offer },
+        ).map_err(|err| format!("failed to query final leads for export: {err}"))?;
+        if rows.is_empty() { break; }
+        for row in rows {
+            writer.write_record([
+                row.user_key,
+                row.crm_user_id.unwrap_or_default(),
+                row.lead_type,
+                row.demand_score.to_string(),
+                row.migration_motive_score.to_string(),
+                row.current_plan_name.unwrap_or_default(),
+                row.current_arpu.map(|v| v.to_string()).unwrap_or_default(),
+                row.ftth_available_flag.unwrap_or_default(),
+                row.reachable_flag.unwrap_or_default(),
+                row.final_action.unwrap_or_default(),
+                row.recommended_offer.unwrap_or_default(),
+            ]).map_err(|err| err.to_string())?;
+            exported_rows += 1;
+        }
+        offset += page_size;
+    }
+    writer.flush().map_err(|err| err.to_string())?;
+    Ok(ack(format!("final leads exported to {}, rows={exported_rows}", req.output_path)))
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             db_test_connection, db_initialize, import_probe_csv, import_create_batch, import_start_raw_load,
             import_get_batch_status, etl_get_recent_jobs, quality_get_batch_report, etl_start_clean_job,
-            etl_start_aggregate_job, dashboard_get_overview, leads_query_users, export_leads_csv,
-            phase_commands::quality_run_gate, phase_commands::etl_run_complete_aggregates,
-            phase_commands::ads_run_complete_dashboards, phase_commands::leads_run_final_fusion,
-            phase_commands::dashboard_get_app_category, phase_commands::dashboard_get_experience_quality,
-            phase_commands::dashboard_get_cable_fiber_compare, phase_commands::leads_get_final_summary
+            etl_start_aggregate_job, dashboard_get_overview, leads_query_users, final_leads_query_users,
+            export_leads_csv, export_final_leads_csv, phase_commands::quality_run_gate,
+            phase_commands::etl_run_complete_aggregates, phase_commands::ads_run_complete_dashboards,
+            phase_commands::leads_run_final_fusion, phase_commands::dashboard_get_app_category,
+            phase_commands::dashboard_get_experience_quality, phase_commands::dashboard_get_cable_fiber_compare,
+            phase_commands::leads_get_final_summary
         ])
         .run(tauri::generate_context!())
         .expect("error while running SA FBB Experience Workbench");
