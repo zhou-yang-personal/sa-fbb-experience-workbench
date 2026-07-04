@@ -12,6 +12,9 @@
 .context-item span { display: block; color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
 .context-item strong { display: block; overflow: hidden; color: #e8eefc; font-size: 13px; white-space: nowrap; text-overflow: ellipsis; }
 .context-item small { display: block; margin-top: 4px; color: #93c5fd; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.persistence-panel { border-color: rgba(59, 130, 246, 0.22); background: rgba(15, 23, 42, 0.54); }
+.persistence-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; margin: 12px 0; }
+.persistence-grid span { border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 10px; padding: 8px 10px; color: #cbd5e1; font-size: 12px; background: rgba(15, 23, 42, 0.48); }
 .execution-log-panel .muted-row { margin-bottom: 0; }
 .log-header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
 .log-summary { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
