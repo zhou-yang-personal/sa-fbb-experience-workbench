@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
-import type { DashboardChartGroup, DashboardOverview, EtlJobStepRow, ExecutionLogEntry, FinalLeadUserRow, ImportBatchResult, ImportDataType, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
+import type { ActionState, DashboardChartGroup, DashboardOverview, EtlJobStepRow, ExecutionLogEntry, FinalLeadUserRow, ImportBatchResult, ImportDataType, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
 import { workbenchApi } from './workbenchApi';
 
 const defaultSettings: MySqlSettings = { host: '127.0.0.1', port: 3306, database: 'sa_vbp', user: 'root', secret: '', local_infile: true };
@@ -39,6 +39,7 @@ export type WorkbenchController = {
   setExportFinalActions: Dispatch<SetStateAction<string[]>>;
   log: ExecutionLogEntry[];
   batch: ImportBatchResult | null;
+  setBatch: Dispatch<SetStateAction<ImportBatchResult | null>>;
   allMetrics: MetricCard[];
   dashboardCharts: DashboardChartGroup[];
   setDashboardCharts: Dispatch<SetStateAction<DashboardChartGroup[]>>;
@@ -49,9 +50,12 @@ export type WorkbenchController = {
   finalLeads: FinalLeadUserRow[];
   setFinalLeads: Dispatch<SetStateAction<FinalLeadUserRow[]>>;
   effectiveSettings: MySqlSettings;
+  actionStates: Record<string, ActionState>;
+  currentAction: string;
+  lastActionMessage: string;
   runAction: (label: string, action: () => Promise<unknown>) => Promise<unknown>;
   loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<MetricCard[]>;
-  createBatch: () => Promise<void>;
+  createBatch: () => Promise<ImportBatchResult | null>;
   clearPersistedContext: () => void;
   setOverview: Dispatch<SetStateAction<DashboardOverview | null>>;
 };
@@ -149,6 +153,9 @@ export function useWorkbenchController(): WorkbenchController {
   const [etlSteps, setEtlSteps] = useState<EtlJobStepRow[]>([]);
   const [leads, setLeads] = useState<LeadUserRow[]>([]);
   const [finalLeads, setFinalLeads] = useState<FinalLeadUserRow[]>([]);
+  const [actionStates, setActionStates] = useState<Record<string, ActionState>>({});
+  const [currentAction, setCurrentAction] = useState('');
+  const [lastActionMessage, setLastActionMessage] = useState('等待操作。');
   const effectiveSettings = useMemo(() => ({ ...settings, local_infile: importMode === 'load_data' }), [settings, importMode]);
   const allMetrics = useMemo(() => overview?.metrics ?? metrics, [overview, metrics]);
 
@@ -158,6 +165,9 @@ export function useWorkbenchController(): WorkbenchController {
   }, [settings, dataType, importMode, filePath, importBatchId, analysisRunId, outputPath, exportFinalActions]);
 
   function appendLog(entry: ExecutionLogEntry) { setLog((items) => [entry, ...items].slice(0, 120)); }
+  function setActionState(label: string, state: ActionState) {
+    setActionStates((items) => ({ ...items, [label]: state }));
+  }
   function clearPersistedContext() {
     const startedAt = new Date();
     removePersistedContext();
@@ -170,6 +180,15 @@ export function useWorkbenchController(): WorkbenchController {
     setOutputPath('leads_export.csv');
     setExportFinalActions([]);
     setBatch(null);
+    setMetrics([]);
+    setOverview(null);
+    setDashboardCharts([]);
+    setEtlSteps([]);
+    setLeads([]);
+    setFinalLeads([]);
+    setActionStates({});
+    setCurrentAction('');
+    setLastActionMessage('本地上下文已清除。');
     appendLog({
       id: `${Date.now()}-clear-local-context`,
       command: 'clear_local_context',
@@ -183,32 +202,45 @@ export function useWorkbenchController(): WorkbenchController {
   async function runAction(label: string, action: () => Promise<unknown>) {
     const startedAt = new Date();
     const startedMs = Date.now();
+    setCurrentAction(label);
+    setLastActionMessage(`正在执行：${label}`);
+    setActionState(label, { status: 'running', started_at: startedAt.toISOString(), message: 'Running...' });
     try {
       const result = await action();
       const finishedAt = new Date();
+      const duration = finishedAt.getTime() - startedMs;
+      const message = 'Command completed successfully.';
+      setActionState(label, { status: 'success', started_at: startedAt.toISOString(), finished_at: finishedAt.toISOString(), duration_ms: duration, message });
+      setLastActionMessage(`${label} 已完成。`);
       appendLog({
         id: `${startedMs}-${label}`,
         command: label,
         status: 'success',
         started_at: startedAt.toISOString(),
         finished_at: finishedAt.toISOString(),
-        duration_ms: finishedAt.getTime() - startedMs,
-        message: 'Command completed successfully.',
+        duration_ms: duration,
+        message,
         result_preview: stringifyPreview(result),
       });
       return result;
     } catch (error) {
       const finishedAt = new Date();
+      const duration = finishedAt.getTime() - startedMs;
+      const message = error instanceof Error ? error.message : String(error);
+      setActionState(label, { status: 'failure', started_at: startedAt.toISOString(), finished_at: finishedAt.toISOString(), duration_ms: duration, message });
+      setLastActionMessage(`${label} 失败：${message}`);
       appendLog({
         id: `${startedMs}-${label}`,
         command: label,
         status: 'failure',
         started_at: startedAt.toISOString(),
         finished_at: finishedAt.toISOString(),
-        duration_ms: finishedAt.getTime() - startedMs,
-        message: error instanceof Error ? error.message : String(error),
+        duration_ms: duration,
+        message,
       });
       return null;
+    } finally {
+      setCurrentAction('');
     }
   }
   async function loadMetrics(label: string, action: () => Promise<MetricCard[]>) {
@@ -223,8 +255,10 @@ export function useWorkbenchController(): WorkbenchController {
       const next = result as ImportBatchResult;
       setBatch(next);
       setImportBatchId(next.import_batch_id);
+      return next;
     }
+    return null;
   }
 
-  return { settings, setSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, analysisRunId, setAnalysisRunId, outputPath, setOutputPath, exportFinalActions, setExportFinalActions, log, batch, allMetrics, dashboardCharts, setDashboardCharts, etlSteps, setEtlSteps, leads, setLeads, finalLeads, setFinalLeads, effectiveSettings, runAction, loadMetrics, createBatch, clearPersistedContext, setOverview };
+  return { settings, setSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, analysisRunId, setAnalysisRunId, outputPath, setOutputPath, exportFinalActions, setExportFinalActions, log, batch, setBatch, allMetrics, dashboardCharts, setDashboardCharts, etlSteps, setEtlSteps, leads, setLeads, finalLeads, setFinalLeads, effectiveSettings, actionStates, currentAction, lastActionMessage, runAction, loadMetrics, createBatch, clearPersistedContext, setOverview };
 }
