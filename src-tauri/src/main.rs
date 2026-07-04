@@ -33,6 +33,7 @@ fn main() {
             import_commands::import_get_batch_status,
             mapping_validation_commands::import_validate_mapping,
             dataset_profile_commands::dataset_profile_refresh,
+            dataset_profile_commands::dataset_profile_get,
             etl_commands::etl_get_recent_jobs,
             job_inspection_commands::etl_get_recent_steps,
             job_inspection_commands::etl_get_failed_steps,
