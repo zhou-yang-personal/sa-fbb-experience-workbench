@@ -1,5 +1,23 @@
 # CHANGELOG-dev
 
+## 1.0.3 - 2026-07-04
+
+### Fixed
+
+- Extended Import Center data type support to TCP, Game, CRM, FTTH Coverage and Reachability.
+- Added RAW import support for CRM, coverage and reachability CSV files.
+- Added trace fields to commercial helper RAW tables: `source_file_name` and `source_line_no`.
+- Reworked Lead CSV export from first-page-only to full paginated export.
+- Synchronized package, Tauri and Cargo versions to `1.0.3`.
+
+### Not verified
+
+- Dependency installation not run in ChatGPT GitHub connector environment.
+- Frontend build not run.
+- Rust check not run.
+- Tauri package build not run.
+- Real MySQL and CSV end-to-end flow not executed.
+
 ## 1.0.2 - 2026-07-04
 
 ### Fixed
