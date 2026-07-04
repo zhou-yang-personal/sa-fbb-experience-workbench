@@ -102,6 +102,21 @@ pub struct LeadUserRow {
     pub recommended_offer: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct FinalLeadUserRow {
+    pub user_key: String,
+    pub crm_user_id: Option<String>,
+    pub lead_type: String,
+    pub demand_score: i32,
+    pub migration_motive_score: i32,
+    pub current_plan_name: Option<String>,
+    pub current_arpu: Option<f64>,
+    pub ftth_available_flag: Option<String>,
+    pub reachable_flag: Option<String>,
+    pub final_action: Option<String>,
+    pub recommended_offer: Option<String>,
+}
+
 pub fn ack(message: impl Into<String>) -> CommandAck {
     CommandAck {
         status: "ok".to_string(),
