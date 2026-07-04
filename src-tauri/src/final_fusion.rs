@@ -27,14 +27,14 @@ base AS (SELECT * FROM ads_migration_lead_user WHERE analysis_run_id = (SELECT a
 crm AS (SELECT * FROM raw_crm_user_import WHERE import_batch_id = (SELECT import_batch_id FROM params)),\n\
 reach AS (SELECT * FROM raw_reachability_import WHERE import_batch_id = (SELECT import_batch_id FROM params)),\n\
 coverage AS (SELECT * FROM raw_ftth_coverage_import WHERE import_batch_id = (SELECT import_batch_id FROM params))\n\
-SELECT p.analysis_run_id, b.user_key, c.crm_user_id, b.lead_type, b.demand_score, b.migration_motive_score, c.current_plan_name, c.current_arpu,\n\
+SELECT p.analysis_run_id, b.user_key, MAX(c.crm_user_id), b.lead_type, b.demand_score, b.migration_motive_score, MAX(c.current_plan_name), MAX(c.current_arpu),\n\
 COALESCE(MAX(cv.ftth_available_flag), 'UNKNOWN') AS ftth_available_flag,\n\
 CASE WHEN MAX(r.phone_available_flag) = 'Y' OR MAX(r.sms_available_flag) = 'Y' OR MAX(r.app_push_available_flag) = 'Y' THEN 'Y' ELSE 'N' END AS reachable_flag,\n\
 CASE\n\
-  WHEN c.crm_user_id IS NULL THEN 'IDENTITY_MAPPING_REQUIRED'\n\
-  WHEN UPPER(COALESCE(c.blacklist_flag, 'N')) = 'Y' THEN 'EXCLUDE_BLACKLIST'\n\
-  WHEN UPPER(COALESCE(c.arrears_flag, 'N')) = 'Y' THEN 'ARREARS_CHECK_FIRST'\n\
-  WHEN UPPER(COALESCE(c.contract_status, '')) IN ('LOCKED', 'IN_CONTRACT', 'CONTRACT_LOCK') THEN 'CONTRACT_CHECK_FIRST'\n\
+  WHEN MAX(c.crm_user_id) IS NULL THEN 'IDENTITY_MAPPING_REQUIRED'\n\
+  WHEN MAX(UPPER(COALESCE(c.blacklist_flag, 'N'))) = 'Y' THEN 'EXCLUDE_BLACKLIST'\n\
+  WHEN MAX(UPPER(COALESCE(c.arrears_flag, 'N'))) = 'Y' THEN 'ARREARS_CHECK_FIRST'\n\
+  WHEN MAX(UPPER(COALESCE(c.contract_status, ''))) IN ('LOCKED', 'IN_CONTRACT', 'CONTRACT_LOCK') THEN 'CONTRACT_CHECK_FIRST'\n\
   WHEN b.lead_type LIKE 'A2_%' THEN 'NETWORK_OPTIMIZATION_FIRST'\n\
   WHEN b.lead_type LIKE 'A1_%' AND COALESCE(MAX(cv.ftth_available_flag), 'UNKNOWN') = 'Y' AND (MAX(r.phone_available_flag) = 'Y' OR MAX(r.sms_available_flag) = 'Y' OR MAX(r.app_push_available_flag) = 'Y') THEN 'MARKET_FIBER_UPSELL'\n\
   WHEN b.lead_type LIKE 'A1_%' AND COALESCE(MAX(cv.ftth_available_flag), 'UNKNOWN') = 'Y' THEN 'REACHABILITY_FIX_FIRST'\n\
@@ -48,7 +48,8 @@ JOIN params p\n\
 LEFT JOIN crm c ON {crm_on}\n\
 LEFT JOIN reach r ON {reach_on}\n\
 LEFT JOIN coverage cv ON {coverage_on}\n\
-GROUP BY p.analysis_run_id, b.user_key, c.crm_user_id, b.lead_type, b.demand_score, b.migration_motive_score, c.current_plan_name, c.current_arpu, c.blacklist_flag, c.arrears_flag, c.contract_status, b.recommended_offer;"
+WHERE b.user_key IS NOT NULL AND TRIM(b.user_key) <> ''\n\
+GROUP BY p.analysis_run_id, b.user_key, b.lead_type, b.demand_score, b.migration_motive_score, b.recommended_offer;"
     );
     let sql = sql_runner::bind_batch_params(&sql_template, import_batch_id, Some(analysis_run_id));
     Ok(JobStep {
