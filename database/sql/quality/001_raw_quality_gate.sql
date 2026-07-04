@@ -32,13 +32,13 @@ WITH params AS (SELECT :import_batch_id AS import_batch_id), batch AS (
            STR_TO_DATE(NULLIF(TRIM(statistics_duration), ''), '%d/%m/%Y %H:%i'),
            STR_TO_DATE(NULLIF(TRIM(statistics_duration), ''), '%Y-%m-%d %H:%i')
          ))) AS active_hours,
-         SUM(CASE WHEN NULLIF(TRIM(user_account), '') IS NULL THEN 1 ELSE 0 END) AS empty_account_rows,
-         SUM(CASE WHEN UPPER(TRIM(COALESCE(user_type, ''))) LIKE '%CABLE%' OR UPPER(TRIM(COALESCE(wan_type, ''))) LIKE '%CABLE%' THEN 1 ELSE 0 END) AS cable_rows,
-         SUM(CASE WHEN UPPER(TRIM(COALESCE(user_type, ''))) LIKE '%FTTH%' OR UPPER(TRIM(COALESCE(user_type, ''))) LIKE '%FIBER%' THEN 1 ELSE 0 END) AS ftth_rows,
-         SUM(CASE WHEN NULLIF(TRIM(bras), '') IS NULL OR UPPER(TRIM(bras)) = 'UNKNOWN' THEN 1 ELSE 0 END) AS unknown_bras_rows,
-         SUM(CASE WHEN NULLIF(TRIM(olt), '') IS NULL OR UPPER(TRIM(olt)) = 'UNKNOWN' THEN 1 ELSE 0 END) AS unknown_olt_rows,
-         SUM(CASE WHEN NULLIF(TRIM(pon), '') IS NULL OR UPPER(TRIM(pon)) = 'UNKNOWN' THEN 1 ELSE 0 END) AS unknown_pon_rows,
-         SUM(CASE WHEN NULLIF(TRIM(wan_type), '') IS NULL OR UPPER(TRIM(wan_type)) = 'UNKNOWN' THEN 1 ELSE 0 END) AS unknown_wan_rows
+         COALESCE(SUM(CASE WHEN NULLIF(TRIM(user_account), '') IS NULL THEN 1 ELSE 0 END), 0) AS empty_account_rows,
+         COALESCE(SUM(CASE WHEN UPPER(TRIM(COALESCE(user_type, ''))) LIKE '%CABLE%' OR UPPER(TRIM(COALESCE(wan_type, ''))) LIKE '%CABLE%' THEN 1 ELSE 0 END), 0) AS cable_rows,
+         COALESCE(SUM(CASE WHEN UPPER(TRIM(COALESCE(user_type, ''))) LIKE '%FTTH%' OR UPPER(TRIM(COALESCE(user_type, ''))) LIKE '%FIBER%' THEN 1 ELSE 0 END), 0) AS ftth_rows,
+         COALESCE(SUM(CASE WHEN NULLIF(TRIM(bras), '') IS NULL OR UPPER(TRIM(bras)) = 'UNKNOWN' THEN 1 ELSE 0 END), 0) AS unknown_bras_rows,
+         COALESCE(SUM(CASE WHEN NULLIF(TRIM(olt), '') IS NULL OR UPPER(TRIM(olt)) = 'UNKNOWN' THEN 1 ELSE 0 END), 0) AS unknown_olt_rows,
+         COALESCE(SUM(CASE WHEN NULLIF(TRIM(pon), '') IS NULL OR UPPER(TRIM(pon)) = 'UNKNOWN' THEN 1 ELSE 0 END), 0) AS unknown_pon_rows,
+         COALESCE(SUM(CASE WHEN NULLIF(TRIM(wan_type), '') IS NULL OR UPPER(TRIM(wan_type)) = 'UNKNOWN' THEN 1 ELSE 0 END), 0) AS unknown_wan_rows
   FROM raw_tcp_detail_import WHERE import_batch_id = (SELECT import_batch_id FROM params)
   UNION ALL
   SELECT 'game',
@@ -64,29 +64,29 @@ WITH params AS (SELECT :import_batch_id AS import_batch_id), batch AS (
            STR_TO_DATE(NULLIF(TRIM(statistical_time), ''), '%d/%m/%Y %H:%i'),
            STR_TO_DATE(NULLIF(TRIM(statistical_time), ''), '%Y-%m-%d %H:%i')
          ))),
-         SUM(CASE WHEN NULLIF(TRIM(user_account), '') IS NULL THEN 1 ELSE 0 END),
-         SUM(CASE WHEN UPPER(TRIM(COALESCE(user_type, ''))) LIKE '%CABLE%' OR UPPER(TRIM(COALESCE(wan_type, ''))) LIKE '%CABLE%' THEN 1 ELSE 0 END),
-         SUM(CASE WHEN UPPER(TRIM(COALESCE(user_type, ''))) LIKE '%FTTH%' OR UPPER(TRIM(COALESCE(user_type, ''))) LIKE '%FIBER%' THEN 1 ELSE 0 END),
-         SUM(CASE WHEN NULLIF(TRIM(bras), '') IS NULL OR UPPER(TRIM(bras)) = 'UNKNOWN' THEN 1 ELSE 0 END),
-         SUM(CASE WHEN NULLIF(TRIM(olt), '') IS NULL OR UPPER(TRIM(olt)) = 'UNKNOWN' THEN 1 ELSE 0 END),
-         SUM(CASE WHEN NULLIF(TRIM(pon), '') IS NULL OR UPPER(TRIM(pon)) = 'UNKNOWN' THEN 1 ELSE 0 END),
-         SUM(CASE WHEN NULLIF(TRIM(wan_type), '') IS NULL OR UPPER(TRIM(wan_type)) = 'UNKNOWN' THEN 1 ELSE 0 END)
+         COALESCE(SUM(CASE WHEN NULLIF(TRIM(user_account), '') IS NULL THEN 1 ELSE 0 END), 0),
+         COALESCE(SUM(CASE WHEN UPPER(TRIM(COALESCE(user_type, ''))) LIKE '%CABLE%' OR UPPER(TRIM(COALESCE(wan_type, ''))) LIKE '%CABLE%' THEN 1 ELSE 0 END), 0),
+         COALESCE(SUM(CASE WHEN UPPER(TRIM(COALESCE(user_type, ''))) LIKE '%FTTH%' OR UPPER(TRIM(COALESCE(user_type, ''))) LIKE '%FIBER%' THEN 1 ELSE 0 END), 0),
+         COALESCE(SUM(CASE WHEN NULLIF(TRIM(bras), '') IS NULL OR UPPER(TRIM(bras)) = 'UNKNOWN' THEN 1 ELSE 0 END), 0),
+         COALESCE(SUM(CASE WHEN NULLIF(TRIM(olt), '') IS NULL OR UPPER(TRIM(olt)) = 'UNKNOWN' THEN 1 ELSE 0 END), 0),
+         COALESCE(SUM(CASE WHEN NULLIF(TRIM(pon), '') IS NULL OR UPPER(TRIM(pon)) = 'UNKNOWN' THEN 1 ELSE 0 END), 0),
+         COALESCE(SUM(CASE WHEN NULLIF(TRIM(wan_type), '') IS NULL OR UPPER(TRIM(wan_type)) = 'UNKNOWN' THEN 1 ELSE 0 END), 0)
   FROM raw_game_detail_import WHERE import_batch_id = (SELECT import_batch_id FROM params)
 ), clean_counts AS (
   SELECT 'tcp' AS data_type,
          COUNT(*) AS clean_rows,
-         SUM(CASE WHEN data_quality_flag = 'WARN_UNKNOWN_USER_KEY' THEN 1 ELSE 0 END) AS warn_unknown_user_key_rows,
-         SUM(CASE WHEN data_quality_flag = 'WARN_INVALID_STAT_TIME' THEN 1 ELSE 0 END) AS warn_invalid_stat_time_rows,
-         SUM(CASE WHEN data_quality_flag = 'WARN_UNKNOWN_ACCESS_TYPE' THEN 1 ELSE 0 END) AS warn_unknown_access_type_rows,
-         SUM(CASE WHEN data_quality_flag = 'OK' THEN 1 ELSE 0 END) AS ok_rows
+         COALESCE(SUM(CASE WHEN data_quality_flag = 'WARN_UNKNOWN_USER_KEY' THEN 1 ELSE 0 END), 0) AS warn_unknown_user_key_rows,
+         COALESCE(SUM(CASE WHEN data_quality_flag = 'WARN_INVALID_STAT_TIME' THEN 1 ELSE 0 END), 0) AS warn_invalid_stat_time_rows,
+         COALESCE(SUM(CASE WHEN data_quality_flag = 'WARN_UNKNOWN_ACCESS_TYPE' THEN 1 ELSE 0 END), 0) AS warn_unknown_access_type_rows,
+         COALESCE(SUM(CASE WHEN data_quality_flag = 'OK' THEN 1 ELSE 0 END), 0) AS ok_rows
   FROM dwd_tcp_detail_clean WHERE import_batch_id = (SELECT import_batch_id FROM params)
   UNION ALL
   SELECT 'game',
          COUNT(*),
-         SUM(CASE WHEN data_quality_flag = 'WARN_UNKNOWN_USER_KEY' THEN 1 ELSE 0 END),
-         SUM(CASE WHEN data_quality_flag = 'WARN_INVALID_STAT_TIME' THEN 1 ELSE 0 END),
-         SUM(CASE WHEN data_quality_flag = 'WARN_UNKNOWN_ACCESS_TYPE' THEN 1 ELSE 0 END),
-         SUM(CASE WHEN data_quality_flag = 'OK' THEN 1 ELSE 0 END)
+         COALESCE(SUM(CASE WHEN data_quality_flag = 'WARN_UNKNOWN_USER_KEY' THEN 1 ELSE 0 END), 0),
+         COALESCE(SUM(CASE WHEN data_quality_flag = 'WARN_INVALID_STAT_TIME' THEN 1 ELSE 0 END), 0),
+         COALESCE(SUM(CASE WHEN data_quality_flag = 'WARN_UNKNOWN_ACCESS_TYPE' THEN 1 ELSE 0 END), 0),
+         COALESCE(SUM(CASE WHEN data_quality_flag = 'OK' THEN 1 ELSE 0 END), 0)
   FROM dwd_game_detail_clean WHERE import_batch_id = (SELECT import_batch_id FROM params)
 )
 SELECT import_batch_id, 'raw_quality', CONCAT(data_type, '_row_count'), 'row_cnt', row_cnt, NULL,
