@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.10
+1.0.11
 ```
 
 ## Source-of-truth branch
@@ -40,6 +40,9 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - RAW to CLEAN SQL runner.
 - ETL job commands write `meta_etl_job` and `meta_etl_job_step` for step status and failure diagnostics.
 - ETL job step inspection commands are registered.
+- Structured ETL step inspection command `etl_get_job_steps` is registered.
+- `EtlJobStepRow` exposes job_id, job_type, step_name, target_table, status, affected_rows, started_at, finished_at and message.
+- ETL Job Center renders a structured Step Detail table and Failed Detail shortcut.
 - Quality gate result inspection commands are registered.
 - Complete DWS aggregate SQL and command.
 - Complete ADS dashboard SQL and command.
@@ -49,7 +52,7 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Configurable final join rule schema: `cfg_final_join_rule`.
 - Default mapping and join rule seed: `database/seeds/002_default_mapping_seed.sql`.
 - Command handlers are split into import, ETL, dashboard, lead, config and phase modules.
-- `main.rs` registers split command modules, config commands, mapped import, mapping validation, mapping result, dataset profile, ETL step inspection and quality result inspection.
+- `main.rs` registers split command modules, config commands, mapped import, mapping validation, mapping result, dataset profile, ETL step inspection, structured ETL step detail and quality result inspection.
 - Final Lead fusion command uses the configurable fusion builder.
 - Modular frontend shell exists in `src/features/workbench/WorkbenchAppV2.tsx` and is mounted from `src/main.tsx`.
 - Import Center exposes mapping validation, mapping summary, mapping results, dataset profile refresh and dataset profile view.
@@ -67,7 +70,7 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Reusable frontend components exist for connection, import, quality, ETL, dashboard, lead, metric grid, result tables, pagination, execution log and ECharts metric bar.
 - Dashboard commands for Overview, App Category, Experience Quality and Cable vs FTTH.
 - Lead query, final lead query, final lead summary, SA Lead CSV export and Final Lead CSV export commands.
-- Package, Cargo and Tauri app config are synchronized to `1.0.10`.
+- Package, Cargo and Tauri app config are synchronized to `1.0.11`.
 
 ## Important rules
 
@@ -89,6 +92,6 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 
 1. Run local dependency installation and build checks.
 2. Fix compile errors if any.
-3. Validate server-side Lead query filtering and final-action export filters against real MySQL data.
+3. Validate server-side Lead query filtering, final-action export filters and ETL Step Detail against real MySQL data.
 4. Validate all five import data types on small samples.
-5. Continue deeper UI refinement after local compile feedback: ETL Step detail table and richer Dashboard Center charts.
+5. Continue deeper UI refinement after local compile feedback: richer Dashboard Center charts and old-entry legacy cleanup.
