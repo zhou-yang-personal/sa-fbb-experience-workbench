@@ -1,6 +1,8 @@
 -- RAW TCP → DWD TCP clean baseline
 -- Parameters are expressed with CTE instead of SET @var statements.
 
+DELETE FROM dwd_tcp_detail_clean WHERE import_batch_id = :import_batch_id;
+
 INSERT INTO dwd_tcp_detail_clean (
   import_batch_id,
   user_key,
@@ -28,39 +30,58 @@ INSERT INTO dwd_tcp_detail_clean (
 )
 WITH params AS (
   SELECT :import_batch_id AS import_batch_id
+), raw_normalized AS (
+  SELECT
+    r.*,
+    NULLIF(TRIM(r.user_account), '') AS account_key,
+    NULLIF(TRIM(r.user_mac), '') AS mac_key,
+    NULLIF(TRIM(r.local_ip_address), '') AS ip_key,
+    COALESCE(
+      STR_TO_DATE(NULLIF(TRIM(r.statistics_duration), ''), '%d/%m/%Y %H:%i:%s'),
+      STR_TO_DATE(NULLIF(TRIM(r.statistics_duration), ''), '%Y-%m-%d %H:%i:%s'),
+      STR_TO_DATE(NULLIF(TRIM(r.statistics_duration), ''), '%d/%m/%Y %H:%i'),
+      STR_TO_DATE(NULLIF(TRIM(r.statistics_duration), ''), '%Y-%m-%d %H:%i')
+    ) AS parsed_stat_time
+  FROM raw_tcp_detail_import r
+  JOIN params p ON p.import_batch_id = r.import_batch_id
 ), normalized AS (
   SELECT
     r.import_batch_id,
     CASE
-      WHEN r.user_account IS NOT NULL AND r.user_account <> '' AND r.user_account NOT REGEXP '^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$' THEN r.user_account
-      WHEN r.user_mac IS NOT NULL AND r.user_mac <> '' AND r.user_mac <> '--' THEN r.user_mac
-      ELSE COALESCE(r.user_account, r.local_ip_address, 'UNKNOWN')
+      WHEN r.account_key IS NOT NULL AND r.account_key <> '--' AND r.account_key NOT REGEXP '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' THEN r.account_key
+      WHEN r.mac_key IS NOT NULL AND r.mac_key <> '--' THEN r.mac_key
+      WHEN r.account_key REGEXP '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' THEN r.account_key
+      WHEN r.ip_key IS NOT NULL AND r.ip_key <> '--' THEN r.ip_key
+      ELSE 'UNKNOWN'
     END AS user_key,
     CASE
-      WHEN r.user_account IS NOT NULL AND r.user_account <> '' AND r.user_account NOT REGEXP '^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$' THEN 'HIGH_ACCOUNT_KEY'
-      WHEN r.user_mac IS NOT NULL AND r.user_mac <> '' AND r.user_mac <> '--' THEN 'MEDIUM_MAC_USER_KEY'
-      WHEN r.user_account REGEXP '^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$' THEN 'LOW_IP_ONLY_KEY'
+      WHEN r.account_key IS NOT NULL AND r.account_key <> '--' AND r.account_key NOT REGEXP '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' THEN 'HIGH_ACCOUNT_KEY'
+      WHEN r.mac_key IS NOT NULL AND r.mac_key <> '--' THEN 'MEDIUM_MAC_USER_KEY'
+      WHEN r.account_key REGEXP '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' OR r.ip_key IS NOT NULL THEN 'LOW_IP_ONLY_KEY'
       ELSE 'UNKNOWN_KEY'
     END AS key_confidence,
-    r.user_account,
-    r.user_mac,
-    UPPER(TRIM(r.user_type)) AS user_type,
-    COALESCE(m.standard_app_name, r.universal_video_applications) AS app_name,
-    COALESCE(m.app_category, 'other') AS app_category,
-    STR_TO_DATE(r.statistics_duration, '%d/%m/%Y %H:%i:%s') AS stat_time,
-    CAST(NULLIF(r.downloaded_data_volume_kb, '') AS DECIMAL(24,6)) / 1024 / 1024 AS downloaded_gb,
-    CAST(NULLIF(r.user_avg_effective_download_rate_kbps, '') AS DECIMAL(18,6)) / 1000 AS effective_download_mbps,
-    CAST(NULLIF(r.vmos, '') AS DECIMAL(18,6)) AS vmos,
-    CAST(NULLIF(r.subscriber_side_rtt_ms, '') AS DECIMAL(18,6)) AS subscriber_side_rtt_ms,
-    CAST(NULLIF(r.network_side_rtt_ms, '') AS DECIMAL(18,6)) AS network_side_rtt_ms,
-    CAST(NULLIF(r.user_side_downstream_packet_loss_rate, '') AS DECIMAL(18,6)) AS user_down_loss,
-    CAST(NULLIF(r.network_side_downstream_packet_loss_rate, '') AS DECIMAL(18,6)) AS network_down_loss,
-    CAST(NULLIF(r.wifi_delay_ms, '') AS DECIMAL(18,6)) AS wifi_delay_ms,
-    r.bras,
-    r.olt,
-    r.pon
-  FROM raw_tcp_detail_import r
-  JOIN params p ON p.import_batch_id = r.import_batch_id
+    r.account_key AS user_account,
+    r.mac_key AS user_mac,
+    CASE
+      WHEN UPPER(TRIM(COALESCE(r.user_type, ''))) LIKE '%FTTH%' OR UPPER(TRIM(COALESCE(r.user_type, ''))) LIKE '%FIBER%' THEN 'FTTH'
+      WHEN UPPER(TRIM(COALESCE(r.user_type, ''))) LIKE '%CABLE%' OR UPPER(TRIM(COALESCE(r.wan_type, ''))) LIKE '%CABLE%' THEN 'CABLE'
+      ELSE 'UNKNOWN'
+    END AS user_type,
+    COALESCE(NULLIF(TRIM(m.standard_app_name), ''), NULLIF(TRIM(r.universal_video_applications), ''), 'UNKNOWN_APP') AS app_name,
+    COALESCE(NULLIF(TRIM(m.app_category), ''), 'other') AS app_category,
+    r.parsed_stat_time AS stat_time,
+    CAST(NULLIF(NULLIF(TRIM(r.downloaded_data_volume_kb), ''), '--') AS DECIMAL(24,6)) / 1024 / 1024 AS downloaded_gb,
+    CAST(NULLIF(NULLIF(TRIM(r.user_avg_effective_download_rate_kbps), ''), '--') AS DECIMAL(18,6)) / 1000 AS effective_download_mbps,
+    CAST(NULLIF(NULLIF(TRIM(r.vmos), ''), '--') AS DECIMAL(18,6)) AS vmos,
+    CAST(NULLIF(NULLIF(TRIM(r.subscriber_side_rtt_ms), ''), '--') AS DECIMAL(18,6)) AS subscriber_side_rtt_ms,
+    CAST(NULLIF(NULLIF(TRIM(r.network_side_rtt_ms), ''), '--') AS DECIMAL(18,6)) AS network_side_rtt_ms,
+    CAST(NULLIF(NULLIF(TRIM(r.user_side_downstream_packet_loss_rate), ''), '--') AS DECIMAL(18,6)) AS user_down_loss,
+    CAST(NULLIF(NULLIF(TRIM(r.network_side_downstream_packet_loss_rate), ''), '--') AS DECIMAL(18,6)) AS network_down_loss,
+    CAST(NULLIF(NULLIF(TRIM(r.wifi_delay_ms), ''), '--') AS DECIMAL(18,6)) AS wifi_delay_ms,
+    NULLIF(TRIM(r.bras), '') AS bras,
+    NULLIF(TRIM(r.olt), '') AS olt,
+    NULLIF(TRIM(r.pon), '') AS pon
+  FROM raw_normalized r
   LEFT JOIN dim_app_mapping m ON m.raw_app_name = r.universal_video_applications
 )
 SELECT
@@ -86,5 +107,11 @@ SELECT
   bras,
   olt,
   pon,
-  CASE WHEN stat_time IS NULL OR user_key = 'UNKNOWN' THEN 'WARN' ELSE 'OK' END
-FROM normalized;
+  CASE
+    WHEN user_key = 'UNKNOWN' THEN 'WARN_UNKNOWN_USER_KEY'
+    WHEN stat_time IS NULL THEN 'WARN_INVALID_STAT_TIME'
+    WHEN user_type = 'UNKNOWN' THEN 'WARN_UNKNOWN_ACCESS_TYPE'
+    ELSE 'OK'
+  END AS data_quality_flag
+FROM normalized
+WHERE user_key IS NOT NULL AND TRIM(user_key) <> '';
