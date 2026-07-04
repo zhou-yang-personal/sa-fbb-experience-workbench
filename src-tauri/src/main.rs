@@ -95,7 +95,21 @@ fn row_consistency_card(imported_rows: u64, total_rows: u64, raw_rows: u64) -> M
     MetricCard {
         label: "CSV vs RAW rows".to_string(),
         value,
-        hint: format!("raw_rows={raw_rows}, expected_rows={expected_rows}, diff={diff}"),
+        hint: format!("raw_rows={raw_rows}, expected_rows={expected_rows}, diff={diff}, rule=total_rows_or_imported_rows"),
+    }
+}
+
+fn typed_raw_distribution_card(tcp_rows: u64, game_rows: u64) -> MetricCard {
+    let loaded_types = [tcp_rows > 0, game_rows > 0].into_iter().filter(|loaded| *loaded).count();
+    let value = match loaded_types {
+        0 => "empty".to_string(),
+        1 => "single_type".to_string(),
+        _ => "mixed_type".to_string(),
+    };
+    MetricCard {
+        label: "RAW type distribution".to_string(),
+        value,
+        hint: format!("tcp_rows={tcp_rows}, game_rows={game_rows}; mixed_type is expected only when one batch intentionally loads multiple source types"),
     }
 }
 
@@ -119,6 +133,7 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
         MetricCard { label: "Clean TCP rows".to_string(), value: clean_video_rows.unwrap_or(0).to_string(), hint: "dwd_tcp_detail_clean".to_string() },
         MetricCard { label: "Clean Game rows".to_string(), value: clean_game_rows.unwrap_or(0).to_string(), hint: "dwd_game_detail_clean".to_string() },
         row_consistency_card(imported_rows, total_rows, tcp_rows + game_rows),
+        typed_raw_distribution_card(tcp_rows, game_rows),
     ])
 }
 
