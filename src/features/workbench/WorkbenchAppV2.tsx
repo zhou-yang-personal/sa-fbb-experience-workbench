@@ -1,8 +1,11 @@
 import { ConnectionPanel } from './ConnectionPanel';
+import { DashboardCenter } from './DashboardCenter';
+import { EtlJobCenter } from './EtlJobCenter';
 import { ExecutionLog } from './ExecutionLog';
+import { FinalLeadCenter } from './FinalLeadCenter';
 import { ImportPanel } from './ImportPanel';
 import { MetricGrid } from './MetricGrid';
-import { OpsPanel } from './OpsPanel';
+import { QualityCenter } from './QualityCenter';
 import { ResultTables } from './ResultTables';
 import { WorkbenchHeader } from './WorkbenchHeader';
 import { useWorkbenchController } from './useWorkbenchController';
@@ -25,7 +28,14 @@ export function WorkbenchAppV2() {
           <ImportPanel {...c} />
           <article className="panel"><h2>Pipeline</h2><ol className="pipeline-list">{pipelineSteps.map((step) => <li key={step}>{step}</li>)}</ol></article>
         </section>
-        <OpsPanel {...c} />
+        <section className="two-column">
+          <QualityCenter {...c} />
+          <EtlJobCenter {...c} />
+        </section>
+        <section className="two-column">
+          <DashboardCenter {...c} />
+          <FinalLeadCenter {...c} />
+        </section>
         <MetricGrid metrics={c.allMetrics} />
         <ResultTables leads={c.leads} finalLeads={c.finalLeads} />
         <ExecutionLog log={c.log} />
