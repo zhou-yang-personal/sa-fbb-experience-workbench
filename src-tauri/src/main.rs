@@ -9,6 +9,7 @@ mod import_commands;
 mod import_commands_mapped;
 mod job_runner;
 mod lead_commands;
+mod mapping_validation_commands;
 mod migrations;
 mod models;
 mod phase_commands;
@@ -26,6 +27,7 @@ fn main() {
             import_commands::import_create_batch,
             import_commands_mapped::import_start_raw_load,
             import_commands::import_get_batch_status,
+            mapping_validation_commands::import_validate_mapping,
             etl_commands::etl_get_recent_jobs,
             dashboard_commands::quality_get_batch_report,
             etl_commands::etl_start_clean_job,
