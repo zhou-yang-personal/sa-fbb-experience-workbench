@@ -12,6 +12,7 @@ mod job_inspection_commands;
 mod job_inspector;
 mod job_runner;
 mod lead_commands;
+mod mapping_result_commands;
 mod mapping_validation_commands;
 mod migrations;
 mod models;
@@ -32,6 +33,8 @@ fn main() {
             import_commands_mapped::import_start_raw_load,
             import_commands::import_get_batch_status,
             mapping_validation_commands::import_validate_mapping,
+            mapping_result_commands::import_get_mapping_results,
+            mapping_result_commands::import_get_mapping_summary,
             dataset_profile_commands::dataset_profile_refresh,
             dataset_profile_commands::dataset_profile_get,
             etl_commands::etl_get_recent_jobs,
