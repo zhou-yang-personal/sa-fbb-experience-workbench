@@ -1,38 +1,17 @@
-import type { DashboardOverview, FinalLeadUserRow, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
-import { DashboardActions } from './DashboardActions';
-import { EtlActions } from './EtlActions';
-import { JobStepActions } from './JobStepActions';
-import { LeadActions } from './LeadActions';
-import { QualityActions } from './QualityActions';
-import { RunFields } from './RunFields';
+type LegacyOpsPanelProps = Record<string, unknown>;
 
-type Props = {
-  settings: MySqlSettings;
-  importBatchId: string;
-  setImportBatchId: (value: string) => void;
-  analysisRunId: string;
-  setAnalysisRunId: (value: string) => void;
-  outputPath: string;
-  setOutputPath: (value: string) => void;
-  runAction: (label: string, action: () => Promise<unknown>) => Promise<unknown>;
-  loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<void>;
-  setOverview: (value: DashboardOverview) => void;
-  setLeads: (value: LeadUserRow[]) => void;
-  setFinalLeads: (value: FinalLeadUserRow[]) => void;
-};
-
-export function OpsPanel(props: Props) {
+/**
+ * Legacy placeholder.
+ *
+ * The current workflow is split into `QualityCenter`, `EtlJobCenter`,
+ * `DashboardCenter` and `FinalLeadCenter` inside `WorkbenchAppV2`.
+ * Keep this component only for stale imports; do not wire new operations here.
+ */
+export function OpsPanel(_props: LegacyOpsPanelProps) {
   return (
-    <section className="panel form-panel">
-      <h2>Operations</h2>
-      <RunFields {...props} />
-      <div className="action-row">
-        <QualityActions {...props} />
-        <JobStepActions {...props} />
-        <EtlActions {...props} />
-        <DashboardActions {...props} />
-        <LeadActions {...props} />
-      </div>
+    <section className="panel form-panel empty-panel">
+      <h2>Legacy Operations Panel</h2>
+      <p>Operations are now handled by the V2 workbench centers.</p>
     </section>
   );
 }
