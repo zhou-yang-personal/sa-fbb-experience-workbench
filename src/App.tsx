@@ -18,6 +18,7 @@ const pipelineSteps = [
 function App() {
   const [settings, setSettings] = useState<MySqlSettings>(defaultSettings);
   const [dataType, setDataType] = useState<'tcp' | 'game'>('tcp');
+  const [importMode, setImportMode] = useState<'load_data' | 'streaming_insert'>('load_data');
   const [filePath, setFilePath] = useState('');
   const [importBatchId, setImportBatchId] = useState('');
   const [analysisRunId, setAnalysisRunId] = useState('RUN_MANUAL_001');
@@ -29,6 +30,7 @@ function App() {
   const [leads, setLeads] = useState<LeadUserRow[]>([]);
 
   const allMetrics = useMemo(() => overview?.metrics ?? qualityMetrics, [overview, qualityMetrics]);
+  const effectiveSettings = { ...settings, local_infile: importMode === 'load_data' };
 
   function appendLog(message: string) { setLog((items) => [`${new Date().toLocaleTimeString()} ${message}`, ...items].slice(0, 40)); }
   async function runAction(label: string, action: () => Promise<unknown>) {
@@ -53,7 +55,7 @@ function App() {
             <h1>SA 家宽应用体验本地分析工作台</h1>
             <p className="hero-text">Phase 1-7 的设计入口已落到 dev：导入、质量门禁、ETL、四类看板、Lead 模型、CRM/覆盖/触达融合、导出闭环。</p>
           </div>
-          <div className="version-card"><span>Version</span><strong>1.0.0</strong></div>
+          <div className="version-card"><span>Version</span><strong>1.0.1</strong></div>
         </header>
 
         <section className="panel form-panel">
@@ -75,11 +77,12 @@ function App() {
           <article className="panel form-panel">
             <h2>CSV 导入</h2>
             <select value={dataType} onChange={(e) => setDataType(e.target.value as 'tcp' | 'game')}><option value="tcp">TCP</option><option value="game">Game</option></select>
+            <select value={importMode} onChange={(e) => setImportMode(e.target.value as 'load_data' | 'streaming_insert')}><option value="load_data">LOAD DATA LOCAL INFILE</option><option value="streaming_insert">Streaming INSERT fallback</option></select>
             <input value={filePath} onChange={(e) => setFilePath(e.target.value)} placeholder="CSV absolute path" />
             <div className="action-row">
               <button onClick={() => runAction('import_probe_csv', () => api.importProbeCsv(filePath))}>Probe</button>
-              <button onClick={async () => { const result = await runAction('import_create_batch', () => api.importCreateBatch(settings, dataType, filePath)); if (result && typeof result === 'object' && 'import_batch_id' in result) { const next = result as ImportBatchResult; setBatch(next); setImportBatchId(next.import_batch_id); } }}>创建批次</button>
-              <button onClick={() => runAction('import_start_raw_load', () => api.importStartRawLoad(settings, importBatchId, dataType, filePath))}>RAW 入库</button>
+              <button onClick={async () => { const result = await runAction('import_create_batch', () => api.importCreateBatch(effectiveSettings, dataType, filePath)); if (result && typeof result === 'object' && 'import_batch_id' in result) { const next = result as ImportBatchResult; setBatch(next); setImportBatchId(next.import_batch_id); } }}>创建批次</button>
+              <button onClick={() => runAction('import_start_raw_load', () => api.importStartRawLoad(effectiveSettings, importBatchId, dataType, filePath, importMode))}>RAW 入库</button>
             </div>
             <small>{batch ? `current batch: ${batch.import_batch_id}` : 'no batch created'}</small>
           </article>
