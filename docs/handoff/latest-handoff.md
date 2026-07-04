@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.13
+1.0.14
 ```
 
 ## Source-of-truth branch
@@ -77,7 +77,7 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Reusable frontend components exist for connection, import, quality, ETL, dashboard, lead, metric grid, result tables, pagination, execution log and ECharts metric bar.
 - Dashboard commands for Overview, App Category, Experience Quality and Cable vs FTTH.
 - Lead query, final lead query, final lead summary, SA Lead CSV export and Final Lead CSV export commands.
-- Package, Cargo and Tauri app config are synchronized to `1.0.13`.
+- Package, Cargo and Tauri app config are synchronized to `1.0.14`.
 
 ## Important rules
 

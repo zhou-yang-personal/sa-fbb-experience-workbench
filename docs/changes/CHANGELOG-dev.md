@@ -1,5 +1,29 @@
 # CHANGELOG-dev
 
+## 1.0.14 - 2026-07-04
+
+### Changed
+
+- Tightened Import Center with structured mapping summary, mapping result, dataset profile and mapping catalog rendering.
+- Tightened Quality Center with structured quality gate result table, severity counters and empty-state messaging.
+- Added `passed=` markers to quality gate result values so frontend can distinguish passed, failed, warning and info rows.
+- Kept backend command shape stable while improving display readability for Import / Quality smoke.
+- Synchronized package, Cargo, Tauri config, README and handoff version markers to `1.0.14`.
+
+### Verified
+
+- `npm install`
+- `npm run check`
+- `npm run build`
+- `cd src-tauri && cargo check`
+- Import page smoke
+- Quality page smoke
+
+### Not verified
+
+- Real Tauri desktop interaction.
+- Full MySQL import / ETL E2E in this round.
+
 ## 1.0.13 - 2026-07-04
 
 ### Changed
