@@ -1,5 +1,29 @@
 # CHANGELOG-dev
 
+## 1.0.9 - 2026-07-04
+
+### Added
+
+- Added reusable `PaginationControls` for frontend result tables.
+- Enhanced `ResultTables` with SA Lead / Final Lead text filters, type/action filters, pagination and empty states.
+- Added Final Lead action summary pills with click-to-filter behavior.
+- Added `ExportPresetActions` for SA Lead, Final Lead, Market Upsell and Reachability export filename presets.
+- Updated Final Lead Center to expose export presets before executing CSV export.
+- Added result table toolbar, pagination, table header and action summary styles.
+- Synchronized Workbench header, package, Cargo, README, handoff and project rules to `1.0.9`.
+
+### Blocked / Not completed
+
+- `src-tauri/tauri.conf.json` version update to `1.0.9` remains blocked by platform safety checks.
+
+### Not verified
+
+- Dependency installation not run in ChatGPT GitHub connector environment.
+- Frontend build not run.
+- Rust check not run.
+- Tauri package build not run.
+- Real MySQL and CSV end-to-end flow not executed.
+
 ## 1.0.8 - 2026-07-04
 
 ### Added
@@ -102,126 +126,3 @@
 - Rust check not run.
 - Tauri package build not run.
 - Real MySQL and CSV end-to-end flow not executed.
-
-## 1.0.4 - 2026-07-04
-
-### Fixed
-
-- Added Final Lead query command and frontend list entry.
-- Added full paginated Final Lead CSV export command.
-- Added final lead frontend type and Rust model.
-- Enhanced CRM / coverage / reachability fusion SQL with commercial action separation: identity mapping, blacklist exclusion, arrears check, contract check, reachability fix, coverage/build check and market upsell.
-- Synchronized package, Tauri and Cargo versions to `1.0.4`.
-
-### Not verified
-
-- Dependency installation not run in ChatGPT GitHub connector environment.
-- Frontend build not run.
-- Rust check not run.
-- Tauri package build not run.
-- Real MySQL and CSV end-to-end flow not executed.
-
-## 1.0.3 - 2026-07-04
-
-### Fixed
-
-- Extended Import Center data type support to TCP, Game, CRM, FTTH Coverage and Reachability.
-- Added RAW import support for CRM, coverage and reachability CSV files.
-- Added trace fields to commercial helper RAW tables: `source_file_name` and `source_line_no`.
-- Reworked Lead CSV export from first-page-only to full paginated export.
-- Synchronized package, Tauri and Cargo versions to `1.0.3`.
-
-### Not verified
-
-- Dependency installation not run in ChatGPT GitHub connector environment.
-- Frontend build not run.
-- Rust check not run.
-- Tauri package build not run.
-- Real MySQL and CSV end-to-end flow not executed.
-
-## 1.0.2 - 2026-07-04
-
-### Fixed
-
-- Added import progress updates for streaming INSERT fallback.
-- Added `total_rows` and `imported_rows` reconciliation on RAW import completion.
-- Expanded quality gate with `csv_vs_raw_rows` check.
-- Added `import_get_batch_status` command and frontend action.
-- Added `etl_get_recent_jobs` command and frontend action.
-- Synchronized package, Tauri and Cargo versions to `1.0.2`.
-
-### Not verified
-
-- Dependency installation not run in ChatGPT GitHub connector environment.
-- Frontend build not run.
-- Rust check not run.
-- Tauri package build not run.
-- Real MySQL and CSV end-to-end flow not executed.
-
-## 1.0.1 - 2026-07-04
-
-### Fixed
-
-- Reworked RAW CSV import to use explicit TCP / Game field lists for `LOAD DATA LOCAL INFILE`.
-- Added streaming INSERT fallback for environments where local infile is disabled.
-- Added `raw_import.rs` to isolate RAW import logic from `main.rs`.
-- Added `job_runner.rs` to write `meta_etl_job` and `meta_etl_job_step` during ETL execution.
-- Routed RAW to CLEAN, base aggregate and Phase commands through job logging.
-- Expanded RAW quality gate to cover row count, identity, access mix, time range, active hours, app count and topology UNKNOWN checks.
-- Synchronized package, Tauri and Cargo versions to `1.0.1`.
-
-### Not verified
-
-- Dependency installation not run in ChatGPT GitHub connector environment.
-- Frontend build not run.
-- Rust check not run.
-- Tauri package build not run.
-- Real MySQL and CSV end-to-end flow not executed.
-
-## 1.0.0 - 2026-07-03
-
-### Added
-
-- Implemented Phase 1-7 complete application baseline on `dev`.
-- Added complete app schema extension: metadata, CRM, coverage, reachability, DWS and ADS tables.
-- Added RAW quality gate SQL.
-- Added complete DWS aggregate SQL.
-- Added complete dashboard ADS SQL for Overview, App Category, Experience Quality and Cable vs FTTH.
-- Added final CRM / coverage / reachability lead fusion SQL.
-- Added Rust phase command handlers for quality, complete DWS, complete ADS, final lead fusion and dashboard queries.
-- Registered Phase 1-7 Tauri commands in `src-tauri/src/main.rs`.
-- Added frontend `phaseApi` wrapper and exposed Phase 1-7 workflow buttons in the UI.
-- Updated package and Tauri app version to `1.0.0`.
-
-### Not verified
-
-- Dependency installation not run in ChatGPT GitHub connector environment.
-- Frontend build not run.
-- Rust check not run.
-- Tauri package build not run.
-- Real MySQL and CSV end-to-end flow not executed.
-
-## 0.2.1 - 2026-07-03
-
-### Added
-
-- Implemented the initial usable workflow across steps 1-8.
-- Added MySQL connection command and database initialization command.
-- Added Rust SQL runner for migration and ETL scripts.
-- Added CSV/file probe command entry.
-- Added import batch creation and RAW load command path.
-- Added RAW quality report command.
-- Added RAW to CLEAN and aggregate command wiring.
-- Added dashboard overview query command.
-- Added migration lead query and CSV export command.
-- Rewired frontend from mock-only view to Tauri command workflow UI.
-- Updated version files to `0.2.1`.
-
-## 0.1.0 - 2026-07-03
-
-### Added
-
-- Created `dev` branch from the architecture design branch.
-- Added detailed architecture design: `docs/design/current-core-design.md`.
-- Initialized React + TypeScript + Vite frontend skeleton.
-- Added MySQL core layered schema baseline.
