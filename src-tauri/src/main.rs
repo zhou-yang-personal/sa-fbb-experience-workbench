@@ -85,96 +85,41 @@ fn etl_get_recent_jobs(settings: MySqlSettings, import_batch_id: String) -> Resu
 fn row_consistency_card(imported_rows: u64, total_rows: u64, raw_rows: u64) -> MetricCard {
     let expected_rows = if total_rows > 0 { total_rows } else { imported_rows };
     let diff = raw_rows as i128 - expected_rows as i128;
-    let value = if expected_rows == 0 {
-        "unknown".to_string()
-    } else if diff == 0 {
-        "ok".to_string()
-    } else {
-        "mismatch".to_string()
-    };
-    MetricCard {
-        label: "CSV vs RAW rows".to_string(),
-        value,
-        hint: format!("raw_rows={raw_rows}, expected_rows={expected_rows}, diff={diff}, rule=total_rows_or_imported_rows"),
-    }
+    let value = if expected_rows == 0 { "unknown".to_string() } else if diff == 0 { "ok".to_string() } else { "mismatch".to_string() };
+    MetricCard { label: "CSV vs RAW rows".to_string(), value, hint: format!("raw_rows={raw_rows}, expected_rows={expected_rows}, diff={diff}, rule=total_rows_or_imported_rows") }
 }
 
 fn typed_raw_distribution_card(tcp_rows: u64, game_rows: u64) -> MetricCard {
     let loaded_types = [tcp_rows > 0, game_rows > 0].into_iter().filter(|loaded| *loaded).count();
-    let value = match loaded_types {
-        0 => "empty".to_string(),
-        1 => "single_type".to_string(),
-        _ => "mixed_type".to_string(),
-    };
-    MetricCard {
-        label: "RAW type distribution".to_string(),
-        value,
-        hint: format!("tcp_rows={tcp_rows}, game_rows={game_rows}; mixed_type is expected only when one batch intentionally loads multiple source types"),
-    }
+    let value = match loaded_types { 0 => "empty".to_string(), 1 => "single_type".to_string(), _ => "mixed_type".to_string() };
+    MetricCard { label: "RAW type distribution".to_string(), value, hint: format!("tcp_rows={tcp_rows}, game_rows={game_rows}; mixed_type is expected only when one batch intentionally loads multiple source types") }
 }
 
 fn source_data_presence_card(data_type: &str, tcp_rows: u64, game_rows: u64) -> MetricCard {
-    let expected_rows = match data_type {
-        "tcp" | "video" | "video_tcp" => tcp_rows,
-        "game" | "gaming" => game_rows,
-        _ => tcp_rows + game_rows,
-    };
+    let expected_rows = match data_type { "tcp" | "video" | "video_tcp" => tcp_rows, "game" | "gaming" => game_rows, _ => tcp_rows + game_rows };
     let value = if expected_rows == 0 { "missing_expected_raw" } else { "present" };
-    MetricCard {
-        label: "Expected RAW presence".to_string(),
-        value: value.to_string(),
-        hint: format!("data_type={data_type}, tcp_rows={tcp_rows}, game_rows={game_rows}; expected rows should be >0 before clean/aggregate jobs"),
-    }
+    MetricCard { label: "Expected RAW presence".to_string(), value: value.to_string(), hint: format!("data_type={data_type}, tcp_rows={tcp_rows}, game_rows={game_rows}; expected rows should be >0 before clean/aggregate jobs") }
 }
 
 fn clean_conversion_card(raw_rows: u64, clean_rows: u64) -> MetricCard {
     let ratio = if raw_rows > 0 { clean_rows as f64 / raw_rows as f64 * 100.0 } else { 0.0 };
-    let value = if raw_rows == 0 {
-        "unknown".to_string()
-    } else if clean_rows == 0 {
-        "not_cleaned".to_string()
-    } else if clean_rows > raw_rows {
-        "over_cleaned".to_string()
-    } else if ratio < 90.0 {
-        "low_yield".to_string()
-    } else {
-        "ok".to_string()
-    };
-    MetricCard {
-        label: "CLEAN conversion".to_string(),
-        value,
-        hint: format!("raw_rows={raw_rows}, clean_rows={clean_rows}, clean_to_raw_ratio={ratio:.2}%"),
-    }
+    let value = if raw_rows == 0 { "unknown".to_string() } else if clean_rows == 0 { "not_cleaned".to_string() } else if clean_rows > raw_rows { "over_cleaned".to_string() } else if ratio < 90.0 { "low_yield".to_string() } else { "ok".to_string() };
+    MetricCard { label: "CLEAN conversion".to_string(), value, hint: format!("raw_rows={raw_rows}, clean_rows={clean_rows}, clean_to_raw_ratio={ratio:.2}%") }
 }
 
 fn dws_readiness_card(clean_rows: u64, dws_users: u64) -> MetricCard {
-    let value = if clean_rows == 0 {
-        "waiting_for_clean".to_string()
-    } else if dws_users == 0 {
-        "not_aggregated".to_string()
-    } else {
-        "ready".to_string()
-    };
-    MetricCard {
-        label: "DWS readiness".to_string(),
-        value,
-        hint: format!("clean_rows={clean_rows}, dws_distinct_users={dws_users}; run aggregate job when clean_rows>0 and dws_distinct_users=0"),
-    }
+    let value = if clean_rows == 0 { "waiting_for_clean".to_string() } else if dws_users == 0 { "not_aggregated".to_string() } else { "ready".to_string() };
+    MetricCard { label: "DWS readiness".to_string(), value, hint: format!("clean_rows={clean_rows}, dws_distinct_users={dws_users}; run aggregate job when clean_rows>0 and dws_distinct_users=0") }
 }
 
 fn ads_readiness_card(dws_users: u64, ads_leads: u64) -> MetricCard {
-    let value = if dws_users == 0 {
-        "waiting_for_dws".to_string()
-    } else if ads_leads == 0 {
-        "no_leads".to_string()
-    } else {
-        "ready".to_string()
-    };
-    MetricCard {
-        label: "ADS readiness".to_string(),
-        value,
-        hint: format!("dws_distinct_users={dws_users}, ads_leads={ads_leads}; run lead fusion or check lead rules when dws_users>0 and ads_leads=0"),
-    }
+    let value = if dws_users == 0 { "waiting_for_dws".to_string() } else if ads_leads == 0 { "no_leads".to_string() } else { "ready".to_string() };
+    MetricCard { label: "ADS readiness".to_string(), value, hint: format!("dws_distinct_users={dws_users}, ads_leads={ads_leads}; run lead fusion or check lead rules when dws_users>0 and ads_leads=0") }
+}
+
+fn etl_job_health_card(failed_jobs: u64, running_jobs: u64, latest_status: &str) -> MetricCard {
+    let value = if failed_jobs > 0 { "has_failed_jobs" } else if running_jobs > 0 { "running" } else if latest_status.is_empty() { "no_jobs" } else { "ok" };
+    MetricCard { label: "ETL job health".to_string(), value: value.to_string(), hint: format!("failed_jobs={failed_jobs}, running_jobs={running_jobs}, latest_status={latest_status}; inspect recent jobs before rerunning downstream phases") }
 }
 
 #[tauri::command]
@@ -186,6 +131,10 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
     let clean_game_rows: Option<u64> = conn.exec_first("SELECT COUNT(*) FROM dwd_game_detail_clean WHERE import_batch_id=?", (&import_batch_id,)).map_err(|err| err.to_string())?;
     let dws_users: Option<u64> = conn.exec_first("SELECT COUNT(DISTINCT user_key) FROM dws_user_daily_profile WHERE import_batch_id=?", (&import_batch_id,)).map_err(|err| err.to_string())?;
     let ads_leads: Option<u64> = conn.exec_first("SELECT COUNT(*) FROM ads_migration_lead_user WHERE analysis_run_id IN (SELECT analysis_run_id FROM meta_analysis_run WHERE import_batch_id=?)", (&import_batch_id,)).map_err(|err| err.to_string())?;
+    let job_health: Option<(u64, u64, String)> = conn.exec_first(
+        "SELECT SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END), SUM(CASE WHEN status IN ('running','pending') THEN 1 ELSE 0 END), COALESCE(MAX(status),'') FROM meta_etl_job WHERE import_batch_id=?",
+        (&import_batch_id,),
+    ).map_err(|err| err.to_string())?;
     let import_meta: Option<(u64, u64, String)> = conn.exec_first(
         "SELECT COALESCE(imported_rows,0), COALESCE(total_rows,0), COALESCE(data_type,'') FROM meta_import_batch WHERE import_batch_id=?",
         (&import_batch_id,),
@@ -198,6 +147,7 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
     let ads_leads = ads_leads.unwrap_or(0);
     let raw_rows = tcp_rows + game_rows;
     let clean_rows = clean_video_rows + clean_game_rows;
+    let (failed_jobs, running_jobs, latest_status) = job_health.unwrap_or((0, 0, String::new()));
     let (imported_rows, total_rows, data_type) = import_meta.unwrap_or((0, 0, "unknown".to_string()));
     Ok(vec![
         MetricCard { label: "RAW TCP rows".to_string(), value: tcp_rows.to_string(), hint: "raw_tcp_detail_import".to_string() },
@@ -210,6 +160,7 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
         clean_conversion_card(raw_rows, clean_rows),
         dws_readiness_card(clean_rows, dws_users),
         ads_readiness_card(dws_users, ads_leads),
+        etl_job_health_card(failed_jobs, running_jobs, &latest_status),
     ])
 }
 
