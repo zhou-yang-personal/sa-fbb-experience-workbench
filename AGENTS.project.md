@@ -77,9 +77,9 @@
 
 ## B6. 本项目版本检查
 
-- [ ] 当前版本已确认：`1.0.6`。
+- [ ] 当前版本已确认：`1.0.7`。
 - [ ] 前端版本文件已同步：`package.json`。
-- [ ] Tauri 版本文件当前需人工确认：`src-tauri/tauri.conf.json` 更新到 `1.0.6` 被 connector safety block 拦截。
+- [ ] Tauri 版本文件当前需人工确认：`src-tauri/tauri.conf.json` 更新到 `1.0.7` 被 connector safety block 拦截。
 - [ ] Rust package 版本文件已同步：`src-tauri/Cargo.toml`。
 - [ ] README 当前版本已同步：`README.md`。
 - [ ] 最新交接版本已同步：`docs/handoff/latest-handoff.md`。
