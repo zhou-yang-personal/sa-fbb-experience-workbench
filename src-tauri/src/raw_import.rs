@@ -67,14 +67,14 @@ fn load_data(req: RawLoadRequest) -> Result<String, String> {
     let columns = spec.columns.join(", ");
     let load_keyword = "LOAD";
 
-    conn.exec_drop("UPDATE meta_import_batch SET status='running', started_at=NOW(), message='raw load_data started' WHERE import_batch_id=?", (&req.import_batch_id,)).map_err(|err| format!("failed to mark batch running: {err}"))?;
+    conn.exec_drop("UPDATE meta_import_batch SET status='running', started_at=NOW(), total_rows=NULL, imported_rows=0, message='raw load_data started' WHERE import_batch_id=?", (&req.import_batch_id,)).map_err(|err| format!("failed to mark batch running: {err}"))?;
 
     let sql = format!("{load_keyword} DATA LOCAL INFILE '{path}' INTO TABLE {} CHARACTER SET utf8mb4 FIELDS TERMINATED BY ',' ENCLOSED BY '\"' LINES TERMINATED BY '\n' IGNORE 1 LINES ({columns}) SET import_batch_id='{batch_id}', source_file_name='{source_name}', source_line_no=NULL", spec.table);
 
     match conn.query_drop(sql) {
         Ok(_) => {
             let rows = conn.affected_rows();
-            finalize_batch(&mut conn, &req.import_batch_id, rows, "raw load_data finished")?;
+            finalize_batch(&mut conn, &req.import_batch_id, rows, rows, "raw load_data finished")?;
             Ok(format!("raw load_data finished: table={}, rows={rows}", spec.table))
         }
         Err(err) => {
@@ -89,7 +89,7 @@ fn streaming_insert(req: RawLoadRequest) -> Result<String, String> {
     let spec = raw_spec(&req.data_type)?;
     let mut conn = db::conn(&req.settings)?;
     let file_name = source_file_name(&req.file_path);
-    conn.exec_drop("UPDATE meta_import_batch SET status='running', started_at=NOW(), message='streaming insert started' WHERE import_batch_id=?", (&req.import_batch_id,)).map_err(|err| format!("failed to mark batch running: {err}"))?;
+    conn.exec_drop("UPDATE meta_import_batch SET status='running', started_at=NOW(), total_rows=NULL, imported_rows=0, message='streaming insert started' WHERE import_batch_id=?", (&req.import_batch_id,)).map_err(|err| format!("failed to mark batch running: {err}"))?;
 
     let mut reader = csv::ReaderBuilder::new().flexible(true).from_path(&req.file_path).map_err(|err| format!("failed to open CSV for streaming insert: {err}"))?;
     let headers = reader.headers().map_err(|err| format!("failed to read CSV headers: {err}"))?.clone();
@@ -105,15 +105,17 @@ fn streaming_insert(req: RawLoadRequest) -> Result<String, String> {
         if rows.len() >= 500 {
             flush_rows(&mut conn, spec, &rows)?;
             total_rows += rows.len() as u64;
+            update_progress(&mut conn, &req.import_batch_id, total_rows, "streaming insert running")?;
             rows.clear();
         }
     }
     if !rows.is_empty() {
         flush_rows(&mut conn, spec, &rows)?;
         total_rows += rows.len() as u64;
+        update_progress(&mut conn, &req.import_batch_id, total_rows, "streaming insert running")?;
     }
 
-    finalize_batch(&mut conn, &req.import_batch_id, total_rows, "streaming insert finished")?;
+    finalize_batch(&mut conn, &req.import_batch_id, total_rows, total_rows, "streaming insert finished")?;
     Ok(format!("streaming insert finished: table={}, rows={total_rows}", spec.table))
 }
 
@@ -143,8 +145,12 @@ fn flush_rows(conn: &mut mysql::PooledConn, spec: RawSpec, rows: &[Vec<String>])
     conn.query_drop(sql).map_err(|err| format!("failed to insert streaming RAW rows: {err}"))
 }
 
-fn finalize_batch(conn: &mut mysql::PooledConn, batch_id: &str, rows: u64, message: &str) -> Result<(), String> {
-    conn.exec_drop("UPDATE meta_import_batch SET status='success', imported_rows=?, finished_at=NOW(), message=? WHERE import_batch_id=?", (rows, message, batch_id)).map_err(|err| format!("failed to finalize import batch: {err}"))
+fn update_progress(conn: &mut mysql::PooledConn, batch_id: &str, rows: u64, message: &str) -> Result<(), String> {
+    conn.exec_drop("UPDATE meta_import_batch SET imported_rows=?, message=? WHERE import_batch_id=?", (rows, message, batch_id)).map_err(|err| format!("failed to update import progress: {err}"))
+}
+
+fn finalize_batch(conn: &mut mysql::PooledConn, batch_id: &str, total_rows: u64, imported_rows: u64, message: &str) -> Result<(), String> {
+    conn.exec_drop("UPDATE meta_import_batch SET status='success', total_rows=?, imported_rows=?, finished_at=NOW(), message=? WHERE import_batch_id=?", (total_rows, imported_rows, message, batch_id)).map_err(|err| format!("failed to finalize import batch: {err}"))
 }
 
 fn mark_failed(conn: &mut mysql::PooledConn, batch_id: &str, message: &str) {
