@@ -9,6 +9,7 @@
 ```text
 AGENTS.common.md
 AGENTS.project.md
+docs/requirements/manual-feedback-p0.md
 ```
 
 如果本次涉及 GitHub connector 操作，还必须读取：
@@ -20,15 +21,16 @@ docs/development/chatgpt-github-connector-guide.md
 ## 2. 文件职责
 
 ```text
-AGENTS.common.md   # 跨项目通用规则，可由公共治理仓同步
-AGENTS.project.md  # 本项目定制规则，不得被公共同步任务覆盖
-AGENTS.md          # 固定入口，只负责引导读取和声明优先级
+AGENTS.common.md                          # 跨项目通用规则，可由公共治理仓同步
+AGENTS.project.md                         # 本项目定制规则，不得被公共同步任务覆盖
+AGENTS.md                                 # 固定入口，只负责引导读取和声明优先级
+docs/requirements/manual-feedback-p0.md   # 人工反馈问题 / 需求清单；自动 Review P0 优先入口
 ```
 
 ## 3. 冲突优先级
 
 ```text
-用户明确指令 > AGENTS.project.md > AGENTS.common.md > 公共治理仓模板 > 一般经验
+用户明确指令 > docs/requirements/manual-feedback-p0.md 未完成项 > AGENTS.project.md > AGENTS.common.md > 公共治理仓模板 > 一般经验
 ```
 
 ## 4. 自动同步边界
@@ -44,6 +46,7 @@ docs/development/chatgpt-github-connector-guide.md
 
 ```text
 AGENTS.project.md
+docs/requirements/manual-feedback-p0.md
 AGENTS.md
 .github/pull_request_template.md
 项目 handoff
@@ -60,6 +63,10 @@ AGENTS.md
 
 - 修改前必须读取对应文件。
 - 文件缺失时必须说明“未发现 / 未确认”。
+- 自动 Review 任务开始后，必须读取 `docs/requirements/manual-feedback-p0.md`；其中未勾选项作为 P0 最高优先级处理。
+- 自动 Review 任务必须一次性尽力处理完 `docs/requirements/manual-feedback-p0.md` 中所有未勾选项；不得用自动发现的 P0 覆盖手动反馈 P0。
+- 如果无法一次处理完，必须逐项说明阻塞原因、已完成部分和下一步，不得只输出笼统结论。
+- 自动 Review 任务结束前必须更新 `docs/requirements/manual-feedback-p0.md`：已修复项打勾 `[x]`，并简要记录修复方案、涉及文件、验证状态、commit / PR；未修复项保留 `[ ]` 并更新进展。
 - 涉及版本号时必须按 `AGENTS.project.md` 的项目版本规则同步。
 - 不改依赖时不得修改 lock 文件。
 - 不得虚构 build / test / CI 通过。
