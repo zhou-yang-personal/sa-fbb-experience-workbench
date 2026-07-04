@@ -1,6 +1,7 @@
 import type { DashboardOverview, FinalLeadUserRow, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
 import { DashboardActions } from './DashboardActions';
 import { EtlActions } from './EtlActions';
+import { JobStepActions } from './JobStepActions';
 import { LeadActions } from './LeadActions';
 import { QualityActions } from './QualityActions';
 import { RunFields } from './RunFields';
@@ -27,6 +28,7 @@ export function OpsPanel(props: Props) {
       <RunFields {...props} />
       <div className="action-row">
         <QualityActions {...props} />
+        <JobStepActions {...props} />
         <EtlActions {...props} />
         <DashboardActions {...props} />
         <LeadActions {...props} />
