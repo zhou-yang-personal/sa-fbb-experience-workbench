@@ -60,9 +60,9 @@ fn profile_spec(data_type: &str) -> Result<ProfileSpec, String> {
     }
 }
 
-fn count_metric(conn: &mut mysql::PooledConn, table: &str, batch_id: &str, expr: &str) -> Result<u64, String> {
-    let sql = format!("SELECT COALESCE({expr},0) FROM {table} WHERE import_batch_id=?");
-    let value: Option<u64> = conn.exec_first(sql, (batch_id,)).map_err(|err| format!("failed to calculate dataset profile metric: {err}"))?;
+fn count_metric(conn: &mut mysql::PooledConn, table: &str, batch_id: &str, expr: &str) -> Result<i64, String> {
+    let sql = format!("SELECT CAST(COALESCE({expr},0) AS SIGNED) FROM {table} WHERE import_batch_id=?");
+    let value: Option<i64> = conn.exec_first(sql, (batch_id,)).map_err(|err| format!("failed to calculate dataset profile metric: {err}"))?;
     Ok(value.unwrap_or(0))
 }
 
@@ -72,7 +72,7 @@ fn text_metric(conn: &mut mysql::PooledConn, table: &str, batch_id: &str, expr: 
     Ok(value.unwrap_or_default())
 }
 
-fn write_profile(conn: &mut mysql::PooledConn, batch_id: &str, data_type: &str, key: &str, value: String, number: Option<u64>) -> Result<(), String> {
+fn write_profile(conn: &mut mysql::PooledConn, batch_id: &str, data_type: &str, key: &str, value: String, number: Option<i64>) -> Result<(), String> {
     conn.exec_drop(
         "INSERT INTO meta_dataset_profile (import_batch_id, data_type, profile_key, profile_value, profile_number) VALUES (?, ?, ?, ?, ?)",
         (batch_id, data_type, key, value, number),
