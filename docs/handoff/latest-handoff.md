@@ -40,6 +40,9 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Configurable import mapping schema: `cfg_import_field_mapping`.
 - Configurable final join rule schema: `cfg_final_join_rule`.
 - Default mapping and join rule seed: `database/seeds/002_default_mapping_seed.sql`.
+- Command handlers are split into import, ETL, dashboard, lead, config and phase modules.
+- `main.rs` now registers split command modules and config commands.
+- Final Lead fusion command now uses the configurable fusion builder.
 - Dashboard commands for Overview, App Category, Experience Quality and Cable vs FTTH.
 - Lead query, final lead query, final lead summary, SA Lead CSV export and Final Lead CSV export commands.
 
@@ -59,11 +62,12 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Tauri package build was not run.
 - Real MySQL and CSV end-to-end flow was not executed.
 - `src-tauri/tauri.conf.json` remains at the previous version because connector JSON update was blocked by platform safety checks.
-- `src-tauri/src/raw_import.rs` alias-mapping integration and `src-tauri/src/main.rs` command registration updates were blocked by platform safety checks and must be completed locally or by Codex.
+- `src/App.tsx` configuration UI update was blocked by platform safety checks.
+- `src-tauri/src/raw_import.rs` alias-mapping integration was blocked by platform safety checks.
 
 ## Next recommended work
 
-1. Complete blocked wiring locally/Codex: Tauri version, raw import mapping integration, and command registration.
+1. Complete remaining blocked wiring locally/Codex: Tauri version, raw import mapping integration and configuration UI.
 2. Run local dependency installation and build checks.
 3. Fix compile errors if any.
 4. Validate all five import data types on small samples.
