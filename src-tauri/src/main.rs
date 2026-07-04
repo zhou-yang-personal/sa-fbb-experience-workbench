@@ -40,6 +40,7 @@ fn main() {
             etl_commands::etl_get_recent_jobs,
             job_inspection_commands::etl_get_recent_steps,
             job_inspection_commands::etl_get_failed_steps,
+            job_inspection_commands::etl_get_job_steps,
             quality_result_commands::quality_get_gate_results,
             quality_result_commands::quality_get_failed_results,
             dashboard_commands::quality_get_batch_report,
