@@ -1,10 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { WorkbenchApp } from './features/workbench/WorkbenchApp';
+import { WorkbenchAppV2 } from './features/workbench/WorkbenchAppV2';
 import './styles.css';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
-    <WorkbenchApp />
+    <WorkbenchAppV2 />
   </React.StrictMode>,
 );
