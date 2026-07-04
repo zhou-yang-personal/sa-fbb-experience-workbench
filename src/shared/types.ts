@@ -1,6 +1,7 @@
 export type ImportDataType = 'tcp' | 'game' | 'crm' | 'coverage' | 'reachability';
 export type JobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
 export type DashboardChartKind = 'bar' | 'radar';
+export type ExecutionLogStatus = 'success' | 'failure';
 
 export interface MySqlSettings {
   host: string;
@@ -47,6 +48,17 @@ export interface DashboardChartGroup {
   title: string;
   kind: DashboardChartKind;
   metrics: MetricCard[];
+}
+
+export interface ExecutionLogEntry {
+  id: string;
+  command: string;
+  status: ExecutionLogStatus;
+  started_at: string;
+  finished_at: string;
+  duration_ms: number;
+  message: string;
+  result_preview?: string;
 }
 
 export interface EtlJobStepRow {
