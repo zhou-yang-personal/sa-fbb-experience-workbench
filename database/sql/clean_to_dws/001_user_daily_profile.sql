@@ -34,7 +34,7 @@ WITH params AS (
     AVG(network_down_loss) AS avg_network_down_loss,
     SUM(CASE WHEN hour_of_day BETWEEN 18 AND 22 THEN 1 ELSE 0 END) / COUNT(*) * 100 AS peak_row_pct
   FROM dwd_tcp_detail_clean
-  WHERE import_batch_id = (SELECT import_batch_id FROM params)
+  WHERE dwd_tcp_detail_clean.import_batch_id = (SELECT import_batch_id FROM params)
     AND user_key IS NOT NULL
     AND TRIM(user_key) <> ''
     AND user_key <> 'UNKNOWN'
@@ -50,7 +50,7 @@ WITH params AS (
     SUM(COALESCE(game_hours, 0)) AS total_game_hours,
     AVG(mos) AS avg_mos
   FROM dwd_game_detail_clean
-  WHERE import_batch_id = (SELECT import_batch_id FROM params)
+  WHERE dwd_game_detail_clean.import_batch_id = (SELECT import_batch_id FROM params)
     AND user_key IS NOT NULL
     AND TRIM(user_key) <> ''
     AND user_key <> 'UNKNOWN'

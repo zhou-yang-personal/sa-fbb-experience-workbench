@@ -12,7 +12,7 @@ type Props = {
   exportFinalActions: string[];
   setExportFinalActions: (value: string[]) => void;
   runAction: (label: string, action: () => Promise<unknown>) => Promise<unknown>;
-  loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<void>;
+  loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<MetricCard[]>;
   setLeads: (value: LeadUserRow[]) => void;
   setFinalLeads: (value: FinalLeadUserRow[]) => void;
 };

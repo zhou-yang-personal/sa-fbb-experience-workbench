@@ -1,6 +1,6 @@
-import type { DashboardMetric, ImportBatchSummary, MigrationLeadSummary } from './types';
+import type { ImportBatchSummary, MigrationLeadSummary, MetricCard } from './types';
 
-export const dashboardMetrics: DashboardMetric[] = [
+export const dashboardMetrics: MetricCard[] = [
   { label: 'RAW batches', value: '0', hint: 'CSV 原样导入批次' },
   { label: 'Clean users', value: '0', hint: '完成清洗的用户数' },
   { label: 'A1 leads', value: '0', hint: '高需求且可优先营销' },

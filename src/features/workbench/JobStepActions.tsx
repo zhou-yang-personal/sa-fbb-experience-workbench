@@ -5,7 +5,7 @@ import { jobApi } from './jobApi';
 type Props = {
   settings: MySqlSettings;
   importBatchId: string;
-  loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<void>;
+  loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<MetricCard[]>;
   runAction: (label: string, action: () => Promise<unknown>) => Promise<unknown>;
   setEtlSteps: (value: EtlJobStepRow[]) => void;
 };

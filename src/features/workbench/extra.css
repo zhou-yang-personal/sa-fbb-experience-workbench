@@ -1,6 +1,7 @@
 .chart-shell { height: 320px; min-width: 280px; }
 .empty-panel { color: #94a3b8; }
 .muted-row { color: #94a3b8; }
+.status-failure-text { color: #fca5a5; }
 .table-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; }
 .table-toolbar input { min-width: 220px; flex: 1; }
 .table-toolbar select { min-width: 140px; width: auto; }
@@ -44,6 +45,7 @@
 .etl-step-row small { color: #94a3b8; font-size: 11px; }
 .etl-step-row span:last-child { word-break: break-word; }
 .table-head { color: #93c5fd; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(15, 23, 42, 0.9); }
+.quality-row { grid-template-columns: 0.75fr 1.15fr 1fr 1fr 0.7fr 1.6fr; }
 .summary-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .summary-pills .status-pill { border: 1px solid rgba(148, 163, 184, 0.22); cursor: pointer; }
 .status-pill:disabled, button:disabled { opacity: 0.45; cursor: not-allowed; }

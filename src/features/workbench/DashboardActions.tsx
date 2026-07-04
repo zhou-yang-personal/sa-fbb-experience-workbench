@@ -6,7 +6,7 @@ type Props = {
   importBatchId: string;
   analysisRunId: string;
   runAction: (label: string, action: () => Promise<unknown>) => Promise<unknown>;
-  loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<void>;
+  loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<MetricCard[]>;
   setOverview: (value: DashboardOverview) => void;
   setDashboardCharts: (value: DashboardChartGroup[]) => void;
 };

@@ -10,7 +10,7 @@ type Props = {
   etlSteps: EtlJobStepRow[];
   setEtlSteps: (value: EtlJobStepRow[]) => void;
   runAction: (label: string, action: () => Promise<unknown>) => Promise<unknown>;
-  loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<void>;
+  loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<MetricCard[]>;
 };
 
 const etlFlow = [
