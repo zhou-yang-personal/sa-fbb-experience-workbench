@@ -83,6 +83,7 @@ function App() {
               <button onClick={() => runAction('import_probe_csv', () => api.importProbeCsv(filePath))}>Probe</button>
               <button onClick={async () => { const result = await runAction('import_create_batch', () => api.importCreateBatch(effectiveSettings, dataType, filePath)); if (result && typeof result === 'object' && 'import_batch_id' in result) { const next = result as ImportBatchResult; setBatch(next); setImportBatchId(next.import_batch_id); } }}>创建批次</button>
               <button onClick={() => runAction('import_start_raw_load', () => api.importStartRawLoad(effectiveSettings, importBatchId, dataType, filePath, importMode))}>RAW 入库</button>
+              <button onClick={() => loadCards('import_get_batch_status', () => api.importGetBatchStatus(settings, importBatchId))}>刷新导入状态</button>
             </div>
             <small>{batch ? `current batch: ${batch.import_batch_id}` : 'no batch created'}</small>
           </article>
@@ -95,6 +96,7 @@ function App() {
           <div className="action-row">
             <button onClick={() => loadCards('quality_get_batch_report', () => api.qualityGetBatchReport(settings, importBatchId))}>基础质量</button>
             <button onClick={() => runAction('quality_run_gate', () => phaseApi.qualityRunGate(settings, importBatchId))}>完整质量门禁</button>
+            <button onClick={() => loadCards('etl_get_recent_jobs', () => api.etlGetRecentJobs(settings, importBatchId))}>刷新ETL状态</button>
             <button onClick={() => runAction('etl_start_clean_job', () => api.etlStartCleanJob(settings, importBatchId))}>RAW → CLEAN</button>
             <button onClick={() => runAction('etl_start_aggregate_job', () => api.etlStartAggregateJob(settings, importBatchId, analysisRunId))}>基础 DWS / ADS</button>
             <button onClick={() => runAction('etl_run_complete_aggregates', () => phaseApi.etlRunCompleteAggregates(settings, importBatchId))}>完整 DWS</button>
