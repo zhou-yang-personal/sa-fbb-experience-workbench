@@ -42,11 +42,22 @@ REQUIRED_CARD_LABELS = [
 ]
 
 
+def find_duplicate_required_card_labels(content: str) -> list[str]:
+    """Return required card labels that appear suspiciously more than once.
+
+    Hourly runs keep appending small quality-report cards. A duplicated label is
+    usually a merge/retry artifact and makes the report harder to read, so this
+    static check surfaces it before local UI validation.
+    """
+    return [label for label in REQUIRED_CARD_LABELS if content.count(label) > 1]
+
+
 def main() -> int:
     content = MAIN_RS.read_text(encoding="utf-8")
     missing_sql = [marker for marker in REQUIRED_SQL_MARKERS if marker not in content]
     missing_cards = [label for label in REQUIRED_CARD_LABELS if label not in content]
-    if missing_sql or missing_cards:
+    duplicate_cards = find_duplicate_required_card_labels(content)
+    if missing_sql or missing_cards or duplicate_cards:
         if missing_sql:
             print("missing SQL markers:")
             for marker in missing_sql:
@@ -54,6 +65,10 @@ def main() -> int:
         if missing_cards:
             print("missing quality card labels:")
             for label in missing_cards:
+                print(f"- {label}")
+        if duplicate_cards:
+            print("duplicate quality card labels:")
+            for label in duplicate_cards:
                 print(f"- {label}")
         return 1
     print("quality report SQL/card markers: ok")
