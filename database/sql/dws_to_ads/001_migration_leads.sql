@@ -43,6 +43,7 @@ WITH params AS (
   WHERE import_batch_id = (SELECT import_batch_id FROM params)
     AND user_key IS NOT NULL
     AND TRIM(user_key) <> ''
+    AND user_key <> 'UNKNOWN'
   GROUP BY import_batch_id, user_key
 ), scored AS (
   SELECT
