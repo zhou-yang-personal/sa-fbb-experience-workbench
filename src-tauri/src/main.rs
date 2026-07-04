@@ -113,6 +113,20 @@ fn typed_raw_distribution_card(tcp_rows: u64, game_rows: u64) -> MetricCard {
     }
 }
 
+fn source_data_presence_card(data_type: &str, tcp_rows: u64, game_rows: u64) -> MetricCard {
+    let expected_rows = match data_type {
+        "tcp" | "video" | "video_tcp" => tcp_rows,
+        "game" | "gaming" => game_rows,
+        _ => tcp_rows + game_rows,
+    };
+    let value = if expected_rows == 0 { "missing_expected_raw" } else { "present" };
+    MetricCard {
+        label: "Expected RAW presence".to_string(),
+        value: value.to_string(),
+        hint: format!("data_type={data_type}, tcp_rows={tcp_rows}, game_rows={game_rows}; expected rows should be >0 before clean/aggregate jobs"),
+    }
+}
+
 fn clean_conversion_card(raw_rows: u64, clean_rows: u64) -> MetricCard {
     let ratio = if raw_rows > 0 { clean_rows as f64 / raw_rows as f64 * 100.0 } else { 0.0 };
     let value = if raw_rows == 0 {
@@ -172,8 +186,8 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
     let clean_game_rows: Option<u64> = conn.exec_first("SELECT COUNT(*) FROM dwd_game_detail_clean WHERE import_batch_id=?", (&import_batch_id,)).map_err(|err| err.to_string())?;
     let dws_users: Option<u64> = conn.exec_first("SELECT COUNT(DISTINCT user_key) FROM dws_user_daily_profile WHERE import_batch_id=?", (&import_batch_id,)).map_err(|err| err.to_string())?;
     let ads_leads: Option<u64> = conn.exec_first("SELECT COUNT(*) FROM ads_migration_lead_user WHERE analysis_run_id IN (SELECT analysis_run_id FROM meta_analysis_run WHERE import_batch_id=?)", (&import_batch_id,)).map_err(|err| err.to_string())?;
-    let import_meta: Option<(u64, u64)> = conn.exec_first(
-        "SELECT COALESCE(imported_rows,0), COALESCE(total_rows,0) FROM meta_import_batch WHERE import_batch_id=?",
+    let import_meta: Option<(u64, u64, String)> = conn.exec_first(
+        "SELECT COALESCE(imported_rows,0), COALESCE(total_rows,0), COALESCE(data_type,'') FROM meta_import_batch WHERE import_batch_id=?",
         (&import_batch_id,),
     ).map_err(|err| err.to_string())?;
     let tcp_rows = tcp_rows.unwrap_or(0);
@@ -184,7 +198,7 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
     let ads_leads = ads_leads.unwrap_or(0);
     let raw_rows = tcp_rows + game_rows;
     let clean_rows = clean_video_rows + clean_game_rows;
-    let (imported_rows, total_rows) = import_meta.unwrap_or((0, 0));
+    let (imported_rows, total_rows, data_type) = import_meta.unwrap_or((0, 0, "unknown".to_string()));
     Ok(vec![
         MetricCard { label: "RAW TCP rows".to_string(), value: tcp_rows.to_string(), hint: "raw_tcp_detail_import".to_string() },
         MetricCard { label: "RAW Game rows".to_string(), value: game_rows.to_string(), hint: "raw_game_detail_import".to_string() },
@@ -192,6 +206,7 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
         MetricCard { label: "Clean Game rows".to_string(), value: clean_game_rows.to_string(), hint: "dwd_game_detail_clean".to_string() },
         row_consistency_card(imported_rows, total_rows, raw_rows),
         typed_raw_distribution_card(tcp_rows, game_rows),
+        source_data_presence_card(&data_type, tcp_rows, game_rows),
         clean_conversion_card(raw_rows, clean_rows),
         dws_readiness_card(clean_rows, dws_users),
         ads_readiness_card(dws_users, ads_leads),
