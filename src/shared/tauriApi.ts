@@ -9,6 +9,10 @@ export const api = {
     invoke<ImportBatchResult>('import_create_batch', { req: { settings, data_type: dataType, file_path: filePath } }),
   importStartRawLoad: (settings: MySqlSettings, importBatchId: string, dataType: string, filePath: string, mode?: string) =>
     invoke<CommandAck>('import_start_raw_load', { req: { settings, import_batch_id: importBatchId, data_type: dataType, file_path: filePath, mode } }),
+  importGetBatchStatus: (settings: MySqlSettings, importBatchId: string) =>
+    invoke<MetricCard[]>('import_get_batch_status', { settings, importBatchId }),
+  etlGetRecentJobs: (settings: MySqlSettings, importBatchId: string) =>
+    invoke<MetricCard[]>('etl_get_recent_jobs', { settings, importBatchId }),
   qualityGetBatchReport: (settings: MySqlSettings, importBatchId: string) =>
     invoke<MetricCard[]>('quality_get_batch_report', { settings, importBatchId }),
   etlStartCleanJob: (settings: MySqlSettings, importBatchId: string) =>
