@@ -1,5 +1,6 @@
 export type ImportDataType = 'tcp' | 'game' | 'crm' | 'coverage' | 'reachability';
 export type JobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
+export type DashboardChartKind = 'bar' | 'radar';
 
 export interface MySqlSettings {
   host: string;
@@ -39,6 +40,12 @@ export interface MetricCard {
 }
 
 export interface DashboardOverview {
+  metrics: MetricCard[];
+}
+
+export interface DashboardChartGroup {
+  title: string;
+  kind: DashboardChartKind;
   metrics: MetricCard[];
 }
 
