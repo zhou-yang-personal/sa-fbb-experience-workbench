@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.14
+1.0.15
 ```
 
 ## Source-of-truth branch
@@ -14,7 +14,7 @@ dev
 
 ## Current baseline
 
-The project now includes the Phase 1-7 complete application baseline plus deviation-fix rounds:
+The project now includes the Phase 1-7 complete application baseline plus guided interaction fixes:
 
 - Governance files and detailed architecture design.
 - React + TypeScript + Vite workflow UI.
@@ -56,8 +56,8 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Final Lead fusion command uses the configurable fusion builder.
 - Modular frontend shell exists in `src/features/workbench/WorkbenchAppV2.tsx` and is mounted from `src/main.tsx`.
 - `src/main.tsx` is the active React entry and mounts `WorkbenchAppV2` directly.
-- `src/App.tsx` is now a compatibility wrapper that forwards to `WorkbenchAppV2`.
-- `src/features/workbench/WorkbenchApp.tsx` is now a compatibility wrapper that forwards to `WorkbenchAppV2`.
+- `src/App.tsx` is a compatibility wrapper that forwards to `WorkbenchAppV2`.
+- `src/features/workbench/WorkbenchApp.tsx` is a compatibility wrapper that forwards to `WorkbenchAppV2`.
 - `OpsPanel` and `TaskCenter2` are legacy placeholders retained for stale imports only.
 - Import Center exposes mapping validation, mapping summary, mapping results, dataset profile refresh and dataset profile view.
 - Quality Center, ETL Job Center, Dashboard Center and Final Lead Center are separated frontend panels.
@@ -71,13 +71,14 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - SA Lead query applies server-side pagination plus optional lead_type and keyword filters.
 - Final Lead query applies server-side pagination plus optional final_action and keyword filters.
 - Final Lead CSV export supports `final_actions` filtering for action-specific delivery files.
-- Export presets now set both output filename and Final Action export scope.
-- Market Upsell preset exports `MARKET_FIBER_UPSELL` and `FTTH_SPEED_UPSELL`.
-- Reachability preset exports `REACHABILITY_FIX_FIRST` and `BUILD_OR_COVERAGE_CHECK`.
-- Reusable frontend components exist for connection, import, quality, ETL, dashboard, lead, metric grid, result tables, pagination, execution log and ECharts metric bar.
-- Dashboard commands for Overview, App Category, Experience Quality and Cable vs FTTH.
-- Lead query, final lead query, final lead summary, SA Lead CSV export and Final Lead CSV export commands.
-- Package, Cargo and Tauri app config are synchronized to `1.0.14`.
+- Export presets now use system save dialogs and set Final Action export scope.
+- Guided UI adds 5-step navigation: Start / Import / Validate / Analyze / Results.
+- Guided UI adds pipeline status bar, next-action hint, action feedback bar and Run Log drawer.
+- Guided UI adds `ActionButton` for running / success / failure / disabled button states.
+- Import uses a system CSV file picker in the main flow; manual path entry is kept only in advanced mode.
+- Import main action runs probe, create batch, mapping validation, RAW load, status refresh and dataset profile refresh.
+- Analyze main action runs RAW→CLEAN, aggregate and Final Fusion as one business action.
+- Package, Cargo, Tauri app config, README and handoff version markers are synchronized to `1.0.15`.
 
 ## Important rules
 
@@ -89,16 +90,16 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 
 ## Not verified
 
-- Dependency installation was not run.
-- Frontend build was not run.
-- Rust check was not run.
-- Tauri package build was not run.
-- Real MySQL and CSV end-to-end flow was not executed.
+- Dependency installation was not run in ChatGPT GitHub connector environment.
+- Frontend build was not run in ChatGPT GitHub connector environment.
+- Rust check was not run in ChatGPT GitHub connector environment.
+- Tauri package build was not run in ChatGPT GitHub connector environment.
+- Real MySQL and CSV end-to-end flow was not executed in this round.
+- `QualityCenter.tsx` was not replaced because connector safety checks blocked large-file rewrite; guided quality component exists but the main route still uses the existing Quality Center.
 
 ## Next recommended work
 
 1. Run local dependency installation and build checks.
-2. Fix compile errors if any.
-3. Validate Dashboard Charts, server-side Lead query filtering, final-action export filters and ETL Step Detail against real MySQL data.
-4. Validate all five import data types on small samples.
-5. After local compile confirms no stale imports, consider deleting legacy placeholders in a separate cleanup round.
+2. Run `npm run check`, `npm run build`, `cd src-tauri && cargo check`, and `npm run tauri:build`.
+3. If build passes, finish the remaining Validate-page route switch locally or through Codex.
+4. Run a real CSV smoke test: Start → Import → Validate → Analyze → Results & Export.
