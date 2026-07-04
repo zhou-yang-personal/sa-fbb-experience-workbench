@@ -1,5 +1,25 @@
 # CHANGELOG-dev
 
+## 1.0.12 - 2026-07-04
+
+### Added
+
+- Added `DashboardChartKind` and `DashboardChartGroup` frontend types.
+- Added reusable `DashboardCharts` component with ECharts bar and radar panels.
+- Added Dashboard Center chart rendering for App Category, Experience Quality, Cable vs FTTH and Final Action Mix.
+- Added DashboardActions single-chart load buttons and a combined multi-chart load action.
+- Added dashboard chart grid, chart card and chart footnote styles.
+- Kept chart data source on existing ADS / DWS dashboard commands and Final Lead summary command; no RAW scan path was introduced.
+- Synchronized Workbench header, package, Cargo, Tauri config, README, handoff and project rules to `1.0.12`.
+
+### Not verified
+
+- Dependency installation not run in ChatGPT GitHub connector environment.
+- Frontend build not run.
+- Rust check not run.
+- Tauri package build not run.
+- Real MySQL and CSV end-to-end flow not executed.
+
 ## 1.0.11 - 2026-07-04
 
 ### Added
