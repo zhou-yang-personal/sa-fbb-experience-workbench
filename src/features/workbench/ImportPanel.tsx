@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
-import type { ImportBatchResult, ImportDataType, MetricCard, MySqlSettings } from '../../shared/types';
+import type { ActionState, ImportBatchResult, ImportDataType, MetricCard, MySqlSettings } from '../../shared/types';
+import { ActionButton } from './ActionButton';
+import { selectCsvFile } from './fileDialogs';
 import { mappingApi } from './mappingApi';
 import { profileApi } from './profileApi';
 import { workbenchApi } from './workbenchApi';
@@ -14,10 +16,13 @@ type Props = {
   filePath: string;
   setFilePath: (value: string) => void;
   importBatchId: string;
+  setImportBatchId: (value: string) => void;
   batch: ImportBatchResult | null;
-  createBatch: () => Promise<void>;
+  setBatch: (value: ImportBatchResult | null) => void;
+  createBatch: () => Promise<ImportBatchResult | null>;
   runAction: (label: string, action: () => Promise<unknown>) => Promise<unknown>;
   loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<MetricCard[]>;
+  actionStates: Record<string, ActionState>;
 };
 
 function parseHint(hint: string) {
@@ -28,13 +33,18 @@ function parseHint(hint: string) {
   }, {});
 }
 
+function fileName(path: string) {
+  const normalized = path.replace(/\\/g, '/');
+  return normalized.split('/').pop() || path;
+}
+
 export function ImportPanel(props: Props) {
-  const { settings, effectiveSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, batch, createBatch, runAction, loadMetrics } = props;
+  const { settings, effectiveSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, batch, setBatch, createBatch, runAction, loadMetrics, actionStates } = props;
   const [mappingSummary, setMappingSummary] = useState<MetricCard[]>([]);
   const [mappingResults, setMappingResults] = useState<MetricCard[]>([]);
   const [profileMetrics, setProfileMetrics] = useState<MetricCard[]>([]);
   const [mappingCatalog, setMappingCatalog] = useState<MetricCard[]>([]);
-  const [statusMessage, setStatusMessage] = useState('未选择文件');
+  const [statusMessage, setStatusMessage] = useState('请选择 CSV 文件。');
 
   const mappingCounts = useMemo(() => {
     const counts = { required: 0, optional: 0, exact: 0, alias: 0, missingRequired: 0, missingOptional: 0 };
@@ -59,23 +69,35 @@ export function ImportPanel(props: Props) {
     ? mappingSummary.map((item) => `${item.label}: ${item.value}`).join(' · ')
     : '未跑映射汇总';
   const missingTotal = mappingCounts.missingRequired + mappingCounts.missingOptional;
+  const canImport = Boolean(filePath.trim());
 
-  async function refreshMappingSummary() {
-    const result = await loadMetrics('import_get_mapping_summary', () => mappingApi.summary(settings, importBatchId, dataType));
+  async function chooseFile() {
+    const selected = await selectCsvFile();
+    if (selected) {
+      setFilePath(selected);
+      setStatusMessage(`已选择文件：${fileName(selected)}`);
+    }
+  }
+
+  async function refreshMappingSummary(batchId = importBatchId) {
+    const result = await loadMetrics('import_get_mapping_summary', () => mappingApi.summary(settings, batchId, dataType));
     setMappingSummary(result);
     setStatusMessage(result.length ? '映射汇总已刷新' : '映射汇总为空');
+    return result;
   }
 
-  async function refreshMappingResults() {
-    const result = await loadMetrics('import_get_mapping_results', () => mappingApi.results(settings, importBatchId, dataType));
+  async function refreshMappingResults(batchId = importBatchId) {
+    const result = await loadMetrics('import_get_mapping_results', () => mappingApi.results(settings, batchId, dataType));
     setMappingResults(result);
     setStatusMessage(result.length ? '映射结果已刷新' : '映射结果为空');
+    return result;
   }
 
-  async function refreshProfile() {
-    const result = await loadMetrics('dataset_profile_get', () => profileApi.get(settings, importBatchId, dataType));
+  async function refreshProfile(batchId = importBatchId) {
+    const result = await loadMetrics('dataset_profile_get', () => profileApi.get(settings, batchId, dataType));
     setProfileMetrics(result);
     setStatusMessage(result.length ? '数据画像已刷新' : '当前无 profile');
+    return result;
   }
 
   async function refreshMappingCatalog() {
@@ -90,9 +112,10 @@ export function ImportPanel(props: Props) {
     await refreshMappingResults();
   }
 
-  async function refreshRawStatus() {
-    const result = await loadMetrics('import_get_batch_status', () => workbenchApi.importStatus(settings, importBatchId));
+  async function refreshRawStatus(batchId = importBatchId) {
+    const result = await loadMetrics('import_get_batch_status', () => workbenchApi.importStatus(settings, batchId));
     setStatusMessage(result.length ? '导入状态已刷新' : '当前没有导入状态');
+    return result;
   }
 
   async function refreshRawLoad() {
@@ -101,29 +124,82 @@ export function ImportPanel(props: Props) {
     await refreshProfile();
   }
 
+  async function importCurrentFile() {
+    await runAction('import_current_file', async () => {
+      if (!filePath.trim()) throw new Error('请先通过文件选择框选择 CSV 文件。');
+      await workbenchApi.probeCsv(filePath);
+      const nextBatch = await workbenchApi.createBatch(effectiveSettings, dataType, filePath);
+      setBatch(nextBatch);
+      setImportBatchId(nextBatch.import_batch_id);
+      await workbenchApi.validateMapping(settings, nextBatch.import_batch_id, dataType, filePath);
+      const summary = await mappingApi.summary(settings, nextBatch.import_batch_id, dataType);
+      const results = await mappingApi.results(settings, nextBatch.import_batch_id, dataType);
+      setMappingSummary(summary);
+      setMappingResults(results);
+      const missingRequired = results.filter((item) => item.value === 'missing_required').length;
+      if (missingRequired > 0) {
+        throw new Error(`字段映射存在 ${missingRequired} 个 required 缺失，已停止 RAW 入库。`);
+      }
+      await workbenchApi.loadRaw(effectiveSettings, nextBatch.import_batch_id, dataType, filePath, importMode);
+      const rawStatus = await workbenchApi.importStatus(settings, nextBatch.import_batch_id);
+      await profileApi.refresh(settings, nextBatch.import_batch_id, dataType);
+      const profile = await profileApi.get(settings, nextBatch.import_batch_id, dataType);
+      setProfileMetrics(profile);
+      setStatusMessage(`导入完成：${nextBatch.import_batch_id}`);
+      return { batch: nextBatch, mapping_summary: summary, mapping_results: results, raw_status: rawStatus, profile };
+    });
+  }
+
   return (
-    <article className="panel form-panel">
-      <h2>CSV 导入中心</h2>
-      <p className="hero-text">先看字段映射和画像，再决定是否进入 RAW 入库。</p>
-      <select value={dataType} onChange={(e) => setDataType(e.target.value as ImportDataType)}>
-        <option value="tcp">TCP</option><option value="game">Game</option><option value="crm">CRM Users</option><option value="coverage">FTTH Coverage</option><option value="reachability">Reachability</option>
-      </select>
-      <select value={importMode} onChange={(e) => setImportMode(e.target.value as 'load_data' | 'streaming_insert')}>
-        <option value="load_data">LOAD DATA LOCAL INFILE</option><option value="streaming_insert">Streaming INSERT fallback</option>
-      </select>
-      <input value={filePath} onChange={(e) => setFilePath(e.target.value)} placeholder="CSV absolute path" />
-      <div className="action-row">
-        <button onClick={() => runAction('import_probe_csv', () => workbenchApi.probeCsv(filePath))}>Probe</button>
-        <button onClick={createBatch}>创建批次</button>
-        <button onClick={validateMapping}>映射校验</button>
-        <button onClick={refreshMappingSummary}>映射汇总</button>
-        <button onClick={refreshMappingResults}>映射结果</button>
-        <button onClick={() => runAction('dataset_profile_refresh', () => profileApi.refresh(settings, importBatchId, dataType)).then(refreshProfile)}>刷新画像</button>
-        <button onClick={refreshProfile}>查看画像</button>
-        <button onClick={refreshRawLoad}>RAW 入库</button>
-        <button onClick={refreshRawStatus}>刷新导入状态</button>
-        <button onClick={refreshMappingCatalog}>字段映射</button>
+    <article className="panel form-panel step-card">
+      <div className="step-card-head">
+        <div>
+          <h2>Import：CSV 导入</h2>
+          <p className="hero-text">选择文件后点击一次“导入当前文件”，系统会自动完成预检查、批次、映射、RAW 入库和画像刷新。</p>
+        </div>
+        <span className="step-badge">2 / 5</span>
       </div>
+      <div className="form-grid import-form-grid">
+        <label>
+          数据类型
+          <select value={dataType} onChange={(e) => setDataType(e.target.value as ImportDataType)}>
+            <option value="tcp">TCP</option><option value="game">Game</option><option value="crm">CRM Users</option><option value="coverage">FTTH Coverage</option><option value="reachability">Reachability</option>
+          </select>
+        </label>
+        <label>
+          导入方式
+          <select value={importMode} onChange={(e) => setImportMode(e.target.value as 'load_data' | 'streaming_insert')}>
+            <option value="load_data">LOAD DATA LOCAL INFILE</option><option value="streaming_insert">Streaming INSERT fallback</option>
+          </select>
+        </label>
+      </div>
+      <section className="file-picker-card">
+        <div>
+          <span>CSV 文件</span>
+          <strong title={filePath}>{filePath ? fileName(filePath) : '未选择文件'}</strong>
+          <small>{filePath || '请使用系统弹框选择文件。'}</small>
+        </div>
+        <button type="button" onClick={chooseFile}>选择 CSV 文件</button>
+      </section>
+      <div className="primary-action-row">
+        <ActionButton actionKey="import_current_file" actionStates={actionStates} primary label="导入当前文件" disabled={!canImport} onClick={importCurrentFile} title={!canImport ? '请先选择 CSV 文件' : undefined} />
+      </div>
+      <details className="advanced-actions">
+        <summary>高级操作：逐步执行 / 排错</summary>
+        <input value={filePath} onChange={(e) => setFilePath(e.target.value)} placeholder="高级：CSV absolute path" />
+        <div className="action-row">
+          <ActionButton actionKey="import_probe_csv" actionStates={actionStates} label="Probe" disabled={!filePath} onClick={() => runAction('import_probe_csv', () => workbenchApi.probeCsv(filePath))} />
+          <ActionButton actionKey="import_create_batch" actionStates={actionStates} label="创建批次" disabled={!filePath} onClick={createBatch} />
+          <ActionButton actionKey="import_validate_mapping" actionStates={actionStates} label="映射校验" disabled={!importBatchId || !filePath} onClick={validateMapping} />
+          <ActionButton actionKey="import_get_mapping_summary" actionStates={actionStates} label="映射汇总" disabled={!importBatchId} onClick={() => refreshMappingSummary()} />
+          <ActionButton actionKey="import_get_mapping_results" actionStates={actionStates} label="映射结果" disabled={!importBatchId} onClick={() => refreshMappingResults()} />
+          <ActionButton actionKey="dataset_profile_refresh" actionStates={actionStates} label="刷新画像" disabled={!importBatchId} onClick={() => runAction('dataset_profile_refresh', () => profileApi.refresh(settings, importBatchId, dataType)).then(() => refreshProfile())} />
+          <ActionButton actionKey="dataset_profile_get" actionStates={actionStates} label="查看画像" disabled={!importBatchId} onClick={() => refreshProfile()} />
+          <ActionButton actionKey="import_start_raw_load" actionStates={actionStates} label="RAW 入库" disabled={!importBatchId || !filePath} onClick={refreshRawLoad} />
+          <ActionButton actionKey="import_get_batch_status" actionStates={actionStates} label="刷新导入状态" disabled={!importBatchId} onClick={() => refreshRawStatus()} />
+          <ActionButton actionKey="config_get_import_mappings" actionStates={actionStates} label="字段映射" onClick={refreshMappingCatalog} />
+        </div>
+      </details>
       <div className="summary-pills">
         <span className="status-pill">required {mappingCounts.required}</span>
         <span className="status-pill">optional {mappingCounts.optional}</span>
@@ -137,11 +213,7 @@ export function ImportPanel(props: Props) {
       <div className="table-like">
         <div className="table-row table-head"><span>Status</span><span>Count</span><span>Scope</span></div>
         {mappingSummary.map((item) => (
-          <div key={`${item.label}-${item.value}`} className="table-row">
-            <span>{item.label}</span>
-            <span>{item.value}</span>
-            <span>{item.hint}</span>
-          </div>
+          <div key={`${item.label}-${item.value}`} className="table-row"><span>{item.label}</span><span>{item.value}</span><span>{item.hint}</span></div>
         ))}
         {!mappingSummary.length && <div className="table-row muted-row">未跑映射汇总。</div>}
       </div>
@@ -151,41 +223,24 @@ export function ImportPanel(props: Props) {
           const parsed = parseHint(item.hint);
           const source = parsed.source ?? 'UNKNOWN';
           const required = parsed.required ?? '?';
-          const matchLabel = item.value === 'matched'
-            ? (source.trim().toLowerCase() === item.label.trim().toLowerCase() ? 'exact matched' : 'alias matched')
-            : item.value;
-          return (
-            <div key={`${item.label}-${item.value}-${item.hint}`} className="table-row">
-              <span>{item.label}</span>
-              <span>{matchLabel}</span>
-              <span>{`source=${source} / required=${required}`}</span>
-            </div>
-          );
+          const matchLabel = item.value === 'matched' ? (source.trim().toLowerCase() === item.label.trim().toLowerCase() ? 'exact matched' : 'alias matched') : item.value;
+          return <div key={`${item.label}-${item.value}-${item.hint}`} className="table-row"><span>{item.label}</span><span>{matchLabel}</span><span>{`source=${source} / required=${required}`}</span></div>;
         })}
         {!mappingResults.length && <div className="table-row muted-row">未跑映射结果。</div>}
       </div>
       <div className="table-like" style={{ marginTop: 12 }}>
         <div className="table-row table-head"><span>Profile</span><span>Value</span><span>Hint</span></div>
-        {profileMetrics.map((item) => (
-          <div key={`${item.label}-${item.value}`} className="table-row">
-            <span>{item.label}</span>
-            <span>{item.value}</span>
-            <span>{item.hint}</span>
-          </div>
-        ))}
+        {profileMetrics.map((item) => <div key={`${item.label}-${item.value}`} className="table-row"><span>{item.label}</span><span>{item.value}</span><span>{item.hint}</span></div>)}
         {!profileMetrics.length && <div className="table-row muted-row">未跑 dataset profile。</div>}
       </div>
-      <div className="table-like" style={{ marginTop: 12 }}>
-        <div className="table-row table-head"><span>Mapping Catalog</span><span>Value</span><span>Hint</span></div>
-        {mappingCatalog.map((item) => (
-          <div key={`${item.label}-${item.value}-${item.hint}`} className="table-row">
-            <span>{item.label}</span>
-            <span>{item.value}</span>
-            <span>{item.hint}</span>
-          </div>
-        ))}
-        {!mappingCatalog.length && <div className="table-row muted-row">未加载字段映射目录。</div>}
-      </div>
+      <details className="advanced-actions">
+        <summary>字段映射目录</summary>
+        <div className="table-like" style={{ marginTop: 12 }}>
+          <div className="table-row table-head"><span>Mapping Catalog</span><span>Value</span><span>Hint</span></div>
+          {mappingCatalog.map((item) => <div key={`${item.label}-${item.value}-${item.hint}`} className="table-row"><span>{item.label}</span><span>{item.value}</span><span>{item.hint}</span></div>)}
+          {!mappingCatalog.length && <div className="table-row muted-row">未加载字段映射目录。</div>}
+        </div>
+      </details>
       <small>{batch ? `current batch: ${batch.import_batch_id}` : 'no batch created'}</small>
     </article>
   );
