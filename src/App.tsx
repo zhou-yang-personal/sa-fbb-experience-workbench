@@ -55,7 +55,7 @@ function App() {
             <h1>SA 家宽应用体验本地分析工作台</h1>
             <p className="hero-text">Phase 1-7 的设计入口已落到 dev：导入、质量门禁、ETL、四类看板、Lead 模型、CRM/覆盖/触达融合、导出闭环。</p>
           </div>
-          <div className="version-card"><span>Version</span><strong>1.0.1</strong></div>
+          <div className="version-card"><span>Version</span><strong>1.0.2</strong></div>
         </header>
 
         <section className="panel form-panel">
