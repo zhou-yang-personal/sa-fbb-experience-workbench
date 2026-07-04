@@ -16,6 +16,7 @@ WITH params AS (SELECT :import_batch_id AS import_batch_id), video AS (
     AND stat_date IS NOT NULL
     AND user_key IS NOT NULL
     AND TRIM(user_key) <> ''
+    AND user_key <> 'UNKNOWN'
   GROUP BY import_batch_id, stat_date, COALESCE(user_type, 'UNKNOWN'), COALESCE(app_category, 'UNKNOWN')
 ), game AS (
   SELECT import_batch_id, stat_date, COALESCE(user_type, 'UNKNOWN') AS user_type, COALESCE(app_category, 'UNKNOWN') AS app_category,
@@ -30,6 +31,7 @@ WITH params AS (SELECT :import_batch_id AS import_batch_id), video AS (
     AND stat_date IS NOT NULL
     AND user_key IS NOT NULL
     AND TRIM(user_key) <> ''
+    AND user_key <> 'UNKNOWN'
   GROUP BY import_batch_id, stat_date, COALESCE(user_type, 'UNKNOWN'), COALESCE(app_category, 'UNKNOWN')
 )
 SELECT * FROM video
@@ -55,6 +57,7 @@ WITH params AS (SELECT :import_batch_id AS import_batch_id), video AS (
     AND hour_of_day IS NOT NULL
     AND user_key IS NOT NULL
     AND TRIM(user_key) <> ''
+    AND user_key <> 'UNKNOWN'
   GROUP BY import_batch_id, stat_date, hour_of_day, COALESCE(user_type, 'UNKNOWN')
 ), game AS (
   SELECT import_batch_id, stat_date, hour_of_day, COALESCE(user_type, 'UNKNOWN') AS user_type,
@@ -72,6 +75,7 @@ WITH params AS (SELECT :import_batch_id AS import_batch_id), video AS (
     AND hour_of_day IS NOT NULL
     AND user_key IS NOT NULL
     AND TRIM(user_key) <> ''
+    AND user_key <> 'UNKNOWN'
   GROUP BY import_batch_id, stat_date, hour_of_day, COALESCE(user_type, 'UNKNOWN')
 )
 SELECT * FROM video
@@ -96,4 +100,4 @@ SELECT import_batch_id, user_key,
        ) AS SIGNED) AS severity_score,
        CONCAT('network_rtt=', COALESCE(avg_network_rtt_ms,0), ', subscriber_rtt=', COALESCE(avg_subscriber_rtt_ms,0), ', peak_pct=', COALESCE(peak_row_pct,0)) AS evidence
 FROM profile
-WHERE user_key IS NOT NULL AND TRIM(user_key) <> '';
+WHERE user_key IS NOT NULL AND TRIM(user_key) <> '' AND user_key <> 'UNKNOWN';
