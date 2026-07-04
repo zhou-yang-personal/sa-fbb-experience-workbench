@@ -82,6 +82,23 @@ fn etl_get_recent_jobs(settings: MySqlSettings, import_batch_id: String) -> Resu
     ).map_err(|err| format!("failed to query ETL jobs: {err}"))
 }
 
+fn row_consistency_card(imported_rows: u64, total_rows: u64, raw_rows: u64) -> MetricCard {
+    let expected_rows = if total_rows > 0 { total_rows } else { imported_rows };
+    let diff = raw_rows as i128 - expected_rows as i128;
+    let value = if expected_rows == 0 {
+        "unknown".to_string()
+    } else if diff == 0 {
+        "ok".to_string()
+    } else {
+        "mismatch".to_string()
+    };
+    MetricCard {
+        label: "CSV vs RAW rows".to_string(),
+        value,
+        hint: format!("raw_rows={raw_rows}, expected_rows={expected_rows}, diff={diff}"),
+    }
+}
+
 #[tauri::command]
 fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) -> Result<Vec<MetricCard>, String> {
     let mut conn = db::conn(&settings)?;
@@ -89,11 +106,19 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
     let game_rows: Option<u64> = conn.exec_first("SELECT COUNT(*) FROM raw_game_detail_import WHERE import_batch_id=?", (&import_batch_id,)).map_err(|err| err.to_string())?;
     let clean_video_rows: Option<u64> = conn.exec_first("SELECT COUNT(*) FROM dwd_tcp_detail_clean WHERE import_batch_id=?", (&import_batch_id,)).map_err(|err| err.to_string())?;
     let clean_game_rows: Option<u64> = conn.exec_first("SELECT COUNT(*) FROM dwd_game_detail_clean WHERE import_batch_id=?", (&import_batch_id,)).map_err(|err| err.to_string())?;
+    let import_meta: Option<(u64, u64)> = conn.exec_first(
+        "SELECT COALESCE(imported_rows,0), COALESCE(total_rows,0) FROM meta_import_batch WHERE import_batch_id=?",
+        (&import_batch_id,),
+    ).map_err(|err| err.to_string())?;
+    let tcp_rows = tcp_rows.unwrap_or(0);
+    let game_rows = game_rows.unwrap_or(0);
+    let (imported_rows, total_rows) = import_meta.unwrap_or((0, 0));
     Ok(vec![
-        MetricCard { label: "RAW TCP rows".to_string(), value: tcp_rows.unwrap_or(0).to_string(), hint: "raw_tcp_detail_import".to_string() },
-        MetricCard { label: "RAW Game rows".to_string(), value: game_rows.unwrap_or(0).to_string(), hint: "raw_game_detail_import".to_string() },
+        MetricCard { label: "RAW TCP rows".to_string(), value: tcp_rows.to_string(), hint: "raw_tcp_detail_import".to_string() },
+        MetricCard { label: "RAW Game rows".to_string(), value: game_rows.to_string(), hint: "raw_game_detail_import".to_string() },
         MetricCard { label: "Clean TCP rows".to_string(), value: clean_video_rows.unwrap_or(0).to_string(), hint: "dwd_tcp_detail_clean".to_string() },
         MetricCard { label: "Clean Game rows".to_string(), value: clean_game_rows.unwrap_or(0).to_string(), hint: "dwd_game_detail_clean".to_string() },
+        row_consistency_card(imported_rows, total_rows, tcp_rows + game_rows),
     ])
 }
 
