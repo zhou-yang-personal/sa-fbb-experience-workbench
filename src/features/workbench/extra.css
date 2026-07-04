@@ -12,6 +12,20 @@
 .context-item span { display: block; color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
 .context-item strong { display: block; overflow: hidden; color: #e8eefc; font-size: 13px; white-space: nowrap; text-overflow: ellipsis; }
 .context-item small { display: block; margin-top: 4px; color: #93c5fd; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.execution-log-panel .muted-row { margin-bottom: 0; }
+.log-header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.log-summary { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.log-summary span, .status-pill { border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 999px; padding: 4px 8px; color: #bfdbfe; font-size: 11px; }
+.log-toolbar { align-items: stretch; }
+.structured-log-list { max-height: 520px; }
+.log-entry { border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 12px; padding: 10px; background: rgba(15, 23, 42, 0.48); }
+.log-entry-failure { border-color: rgba(248, 113, 113, 0.42); background: rgba(127, 29, 29, 0.18); }
+.log-entry-success { border-color: rgba(74, 222, 128, 0.2); }
+.log-entry-head { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; margin-bottom: 8px; }
+.log-entry-head strong { color: #e8eefc; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-entry-head button { padding: 4px 8px; border-radius: 8px; font-size: 12px; }
+.status-success { color: #bbf7d0; border-color: rgba(74, 222, 128, 0.32); }
+.status-failure { color: #fecaca; border-color: rgba(248, 113, 113, 0.52); }
 .dashboard-center-panel { grid-column: span 1; }
 .dashboard-actions { gap: 8px; }
 .dashboard-chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-top: 12px; }
