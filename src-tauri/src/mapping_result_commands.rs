@@ -17,8 +17,8 @@ pub fn import_get_mapping_results(settings: MySqlSettings, import_batch_id: Stri
 pub fn import_get_mapping_summary(settings: MySqlSettings, import_batch_id: String, data_type: String) -> Result<Vec<MetricCard>, String> {
     let mut conn = db::conn(&settings)?;
     conn.exec_map(
-        "SELECT match_status, COUNT(*), CONCAT('data_type=', data_type) FROM meta_mapping_validation_result WHERE import_batch_id=? AND data_type=? GROUP BY match_status, data_type ORDER BY match_status",
+        "SELECT match_status, CAST(COUNT(*) AS SIGNED), CONCAT('data_type=', data_type) FROM meta_mapping_validation_result WHERE import_batch_id=? AND data_type=? GROUP BY match_status, data_type ORDER BY match_status",
         (&import_batch_id, &data_type),
-        |(label, value, hint): (String, u64, String)| MetricCard { label, value: value.to_string(), hint },
+        |(label, value, hint): (String, i64, String)| MetricCard { label, value: value.to_string(), hint },
     ).map_err(|err| format!("failed to query mapping validation summary: {err}"))
 }
