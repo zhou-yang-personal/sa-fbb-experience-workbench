@@ -42,6 +42,24 @@ export interface DashboardOverview {
   metrics: MetricCard[];
 }
 
+export interface EtlJobStepRow {
+  job_id: string;
+  job_type: string;
+  step_name: string;
+  target_table?: string;
+  status: string;
+  affected_rows?: number;
+  started_at?: string;
+  finished_at?: string;
+  message?: string;
+}
+
+export interface EtlJobStepsQuery {
+  jobId?: string;
+  status?: string;
+  limit?: number;
+}
+
 export interface LeadQueryParams {
   page?: number;
   pageSize?: number;
