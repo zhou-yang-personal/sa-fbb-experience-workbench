@@ -8,6 +8,7 @@
 - Routed RAW import command through mapped import adapter.
 - Added CSV mapping validation command and mapping validation result table.
 - Added observability schema for import row errors, mapping validation and dataset profile.
+- Added dataset profile refresh and query commands, plus frontend profile API and Import Center profile actions.
 - Added ETL job step inspection commands and frontend job inspection API wrapper.
 - Added quality gate result inspection commands and frontend quality result API wrapper.
 - Added modular frontend WorkbenchAppV2 and split connection, import, operations, quality, ETL, dashboard, lead, metric and log components.
@@ -17,7 +18,6 @@
 ### Blocked / Not completed
 
 - `src-tauri/tauri.conf.json` version update to `1.0.6` was blocked by platform safety checks.
-- Extra style import in `src/main.tsx` was blocked by platform safety checks; base styles are still used.
 
 ### Not verified
 
