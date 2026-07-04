@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.3
+1.0.4
 ```
 
 ## Source-of-truth branch
@@ -21,7 +21,7 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Tauri 2 / Rust command implementation.
 - MySQL metadata / dim / raw / dwd / dws / ads schema baseline.
 - Extended schema for CRM, FTTH coverage, reachability, dashboard ADS and final marketing leads.
-- CRM, coverage and reachability RAW tables now include source trace fields.
+- CRM, coverage and reachability RAW tables include source trace fields.
 - Database initialization command with both core and extended schema.
 - CSV probe, import batch and RAW load command path.
 - RAW import supports TCP, Game, CRM, FTTH Coverage and Reachability data types.
@@ -36,8 +36,9 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Complete DWS aggregate SQL and command.
 - Complete ADS dashboard SQL and command.
 - Migration lead scoring and final CRM / coverage / reachability fusion SQL.
+- Final fusion now adds commercial action separation: identity mapping, blacklist, arrears, contract, reachability, coverage/build and market actions.
 - Dashboard commands for Overview, App Category, Experience Quality and Cable vs FTTH.
-- Lead query, final lead summary and full paginated CSV export command.
+- Lead query, final lead query, final lead summary, SA Lead CSV export and Final Lead CSV export commands.
 
 ## Important rules
 
@@ -61,5 +62,5 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 2. Fix compile errors if any.
 3. Validate all five import data types on small samples.
 4. Validate final CRM / coverage / reachability lead fusion with real mapping keys.
-5. Add final lead table query and export UI if required.
+5. Add join key configuration instead of fixed baseline matching rules.
 6. Replace remaining baseline SQL with measured production SQL after local test.
