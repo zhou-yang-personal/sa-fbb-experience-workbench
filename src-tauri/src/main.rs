@@ -192,6 +192,23 @@ fn next_action_card(raw_rows: u64, clean_rows: u64, dws_users: u64, ads_leads: u
     MetricCard { label: "Next action".to_string(), value: value.to_string(), hint: format!("failed_jobs={failed_jobs}, running_jobs={running_jobs}, raw_rows={raw_rows}, clean_rows={clean_rows}, dws_users={dws_users}, ads_leads={ads_leads}") }
 }
 
+fn quality_risk_card(import_status: &str, raw_rows: u64, clean_rows: u64, failed_jobs: u64, running_jobs: u64) -> MetricCard {
+    let value = if failed_jobs > 0 {
+        "high_failed_etl"
+    } else if import_status == "failed" {
+        "high_failed_import"
+    } else if running_jobs > 0 || import_status == "running" || import_status == "pending" {
+        "medium_in_progress"
+    } else if raw_rows == 0 {
+        "high_no_raw"
+    } else if clean_rows == 0 {
+        "medium_not_cleaned"
+    } else {
+        "low"
+    };
+    MetricCard { label: "Quality risk".to_string(), value: value.to_string(), hint: format!("import_status={import_status}, raw_rows={raw_rows}, clean_rows={clean_rows}, failed_jobs={failed_jobs}, running_jobs={running_jobs}; prioritize high_* before dashboard review") }
+}
+
 #[tauri::command]
 fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) -> Result<Vec<MetricCard>, String> {
     let mut conn = db::conn(&settings)?;
@@ -224,6 +241,7 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
         MetricCard { label: "RAW Game rows".to_string(), value: game_rows.to_string(), hint: "raw_game_detail_import".to_string() },
         MetricCard { label: "Clean TCP rows".to_string(), value: clean_video_rows.to_string(), hint: "dwd_tcp_detail_clean".to_string() },
         MetricCard { label: "Clean Game rows".to_string(), value: clean_game_rows.to_string(), hint: "dwd_game_detail_clean".to_string() },
+        quality_risk_card(&import_status, raw_rows, clean_rows, failed_jobs, running_jobs),
         import_completion_card(&import_status, imported_rows, total_rows, raw_rows),
         pipeline_stage_summary_card(raw_rows, clean_rows, dws_users, ads_leads),
         next_action_card(raw_rows, clean_rows, dws_users, ads_leads, failed_jobs, running_jobs),
