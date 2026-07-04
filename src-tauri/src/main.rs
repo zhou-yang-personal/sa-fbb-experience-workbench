@@ -101,6 +101,20 @@ fn source_data_presence_card(data_type: &str, tcp_rows: u64, game_rows: u64) -> 
     MetricCard { label: "Expected RAW presence".to_string(), value: value.to_string(), hint: format!("data_type={data_type}, tcp_rows={tcp_rows}, game_rows={game_rows}; expected rows should be >0 before clean/aggregate jobs") }
 }
 
+fn data_type_alignment_card(data_type: &str, tcp_rows: u64, game_rows: u64) -> MetricCard {
+    let normalized = data_type.trim().to_ascii_lowercase();
+    let value = match normalized.as_str() {
+        "tcp" | "video" | "video_tcp" if tcp_rows > 0 && game_rows == 0 => "aligned",
+        "game" | "gaming" if game_rows > 0 && tcp_rows == 0 => "aligned",
+        "tcp" | "video" | "video_tcp" if game_rows > 0 => "unexpected_game_rows",
+        "game" | "gaming" if tcp_rows > 0 => "unexpected_tcp_rows",
+        "" | "unknown" => "unknown_type",
+        _ if tcp_rows + game_rows == 0 => "no_raw_rows",
+        _ => "mixed_or_custom_type",
+    };
+    MetricCard { label: "Data type alignment".to_string(), value: value.to_string(), hint: format!("data_type={data_type}, tcp_rows={tcp_rows}, game_rows={game_rows}; single-type batches should load only their matching RAW table") }
+}
+
 fn import_completion_card(status: &str, imported_rows: u64, total_rows: u64, raw_rows: u64) -> MetricCard {
     let value = if status == "failed" {
         "failed"
@@ -216,6 +230,7 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
         row_consistency_card(imported_rows, total_rows, raw_rows),
         typed_raw_distribution_card(tcp_rows, game_rows),
         source_data_presence_card(&data_type, tcp_rows, game_rows),
+        data_type_alignment_card(&data_type, tcp_rows, game_rows),
         clean_conversion_card(raw_rows, clean_rows),
         dws_readiness_card(clean_rows, dws_users),
         ads_readiness_card(dws_users, ads_leads),
