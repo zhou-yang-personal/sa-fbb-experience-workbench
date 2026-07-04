@@ -58,7 +58,8 @@
 |---|---|---|
 | Markdown | `fetch_file` + `update_file` / `create_file` | 适合 connector 直接操作；长文改动优先小步提交 |
 | TypeScript / TSX | `fetch_file` + `update_file` | 修改后提示运行前端构建 |
-| Rust / TOML | `fetch_file` + `update_file` | 修改后提示运行 Rust 检查 |
+| Rust / TOML | `fetch_file` + `update_file` | 修改后提示运行 Rust 检查；版本类 TOML 整文件写入可能被 safety block，失败后停止说明 |
+| CSS | 优先小范围 feature CSS | 全局 CSS 整文件写入可能被 safety block，优先改已导入的小型局部 CSS 文件 |
 | Python | `fetch_file` + `update_file` | 修改后提示运行 py_compile / compileall |
 | JSON 配置 | 优先最小修改 | 整文件写入可能触发平台拦截；失败后停止说明，不盲试 |
 | PR 模板 | `create_file` / `update_file` | 只放确认清单，不复制 AGENTS 全文；不是每日治理同步默认写入对象 |
@@ -99,3 +100,5 @@
 - 2026-07-02：配置类 JSON 整文件更新可能触发平台安全拦截；后续优先最小修改，失败后停止说明。
 - 2026-07-02：README 长目录树整文件恢复可能触发拦截；如只是版本号修改，应避免重写整个 README。
 - 2026-07-04：较长 Rust 整文件重写也可能触发平台安全拦截；遇到 `src-tauri/src/main.rs`、`raw_import.rs` 这类大入口文件时，优先在本地或 Codex 分小补丁处理。
+- 2026-07-04：版本类文件如 `package.json`、`src-tauri/Cargo.toml` 的整文件版本同步可能触发平台 safety block；被拦截后停止说明，不继续盲试。
+- 2026-07-04：全局样式文件如 `src/styles.css` 整文件写入可能触发平台 safety block；优先把新增样式放入已导入的小型局部 CSS 文件。
