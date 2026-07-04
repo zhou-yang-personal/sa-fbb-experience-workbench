@@ -1,6 +1,8 @@
 -- DWS → ADS migration lead user baseline
 -- This baseline avoids SET @var. Runtime parameters are represented by CTE params.
 
+DELETE FROM ads_migration_lead_user WHERE analysis_run_id = :analysis_run_id;
+
 INSERT INTO ads_migration_lead_user (
   analysis_run_id,
   import_batch_id,
@@ -17,6 +19,31 @@ WITH params AS (
     :import_batch_id AS import_batch_id,
     60 AS demand_threshold,
     40 AS motive_threshold
+), profile AS (
+  SELECT
+    import_batch_id,
+    user_key,
+    CASE
+      WHEN SUM(CASE WHEN user_type = 'CABLE' THEN 1 ELSE 0 END) > 0 THEN 'CABLE'
+      WHEN SUM(CASE WHEN user_type = 'FTTH' THEN 1 ELSE 0 END) > 0 THEN 'FTTH'
+      ELSE COALESCE(MAX(user_type), 'UNKNOWN')
+    END AS user_type,
+    SUM(COALESCE(video_rows, 0)) AS video_rows,
+    SUM(COALESCE(game_rows, 0)) AS game_rows,
+    SUM(COALESCE(total_download_gb, 0)) AS total_download_gb,
+    SUM(COALESCE(total_game_hours, 0)) AS total_game_hours,
+    AVG(avg_vmos) AS avg_vmos,
+    AVG(avg_mos) AS avg_mos,
+    AVG(avg_subscriber_rtt_ms) AS avg_subscriber_rtt_ms,
+    AVG(avg_network_rtt_ms) AS avg_network_rtt_ms,
+    AVG(avg_user_down_loss) AS avg_user_down_loss,
+    AVG(avg_network_down_loss) AS avg_network_down_loss,
+    MAX(COALESCE(peak_row_pct, 0)) AS peak_row_pct
+  FROM dws_user_daily_profile
+  WHERE import_batch_id = (SELECT import_batch_id FROM params)
+    AND user_key IS NOT NULL
+    AND TRIM(user_key) <> ''
+  GROUP BY import_batch_id, user_key
 ), scored AS (
   SELECT
     p.analysis_run_id,
@@ -39,7 +66,7 @@ WITH params AS (
       )
       ELSE 0
     END AS migration_motive_score
-  FROM dws_user_daily_profile d
+  FROM profile d
   JOIN params p ON p.import_batch_id = d.import_batch_id
 ), typed AS (
   SELECT
