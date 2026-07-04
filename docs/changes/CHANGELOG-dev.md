@@ -1,5 +1,23 @@
 # CHANGELOG-dev
 
+## 1.0.4 - 2026-07-04
+
+### Fixed
+
+- Added Final Lead query command and frontend list entry.
+- Added full paginated Final Lead CSV export command.
+- Added final lead frontend type and Rust model.
+- Enhanced CRM / coverage / reachability fusion SQL with commercial action separation: identity mapping, blacklist exclusion, arrears check, contract check, reachability fix, coverage/build check and market upsell.
+- Synchronized package, Tauri and Cargo versions to `1.0.4`.
+
+### Not verified
+
+- Dependency installation not run in ChatGPT GitHub connector environment.
+- Frontend build not run.
+- Rust check not run.
+- Tauri package build not run.
+- Real MySQL and CSV end-to-end flow not executed.
+
 ## 1.0.3 - 2026-07-04
 
 ### Fixed
