@@ -51,9 +51,9 @@ pub fn dashboard_get_app_category(req: DashboardRequest) -> Result<Vec<MetricCar
     let run_id = req.analysis_run_id.unwrap_or_else(|| "RUN_DEFAULT".to_string());
     let mut conn = db::conn(&req.settings)?;
     conn.exec_map(
-        "SELECT app_category, SUM(active_users), ROUND(SUM(total_download_gb),2) FROM ads_app_category_detail WHERE analysis_run_id=? GROUP BY app_category ORDER BY SUM(active_users) DESC LIMIT 20",
+        "SELECT app_category, CAST(SUM(active_users) AS SIGNED), CAST(ROUND(SUM(total_download_gb),2) AS DOUBLE) FROM ads_app_category_detail WHERE analysis_run_id=? GROUP BY app_category ORDER BY SUM(active_users) DESC LIMIT 20",
         (&run_id,),
-        |(category, users, gb): (String, u64, f64)| MetricCard { label: category, value: users.to_string(), hint: format!("download_gb={gb}") }
+        |(category, users, gb): (String, i64, f64)| MetricCard { label: category, value: users.to_string(), hint: format!("download_gb={gb}") }
     ).map_err(|err| format!("failed to query app category detail: {err}"))
 }
 
@@ -62,7 +62,7 @@ pub fn dashboard_get_experience_quality(req: DashboardRequest) -> Result<Vec<Met
     let run_id = req.analysis_run_id.unwrap_or_else(|| "RUN_DEFAULT".to_string());
     let mut conn = db::conn(&req.settings)?;
     conn.exec_map(
-        "SELECT quality_dimension, COALESCE(user_type,'ALL'), ROUND(COALESCE(avg_value,0),2), severity FROM ads_experience_quality_summary WHERE analysis_run_id=? ORDER BY quality_dimension, user_type",
+        "SELECT quality_dimension, COALESCE(user_type,'ALL'), CAST(ROUND(COALESCE(avg_value,0),2) AS DOUBLE), severity FROM ads_experience_quality_summary WHERE analysis_run_id=? ORDER BY quality_dimension, user_type",
         (&run_id,),
         |(dimension, user_type, avg_value, severity): (String, String, f64, Option<String>)| MetricCard { label: format!("{dimension} {user_type}"), value: format!("{avg_value}"), hint: severity.unwrap_or_default() }
     ).map_err(|err| format!("failed to query experience quality: {err}"))
@@ -73,7 +73,7 @@ pub fn dashboard_get_cable_fiber_compare(req: DashboardRequest) -> Result<Vec<Me
     let run_id = req.analysis_run_id.unwrap_or_else(|| "RUN_DEFAULT".to_string());
     let mut conn = db::conn(&req.settings)?;
     conn.exec_map(
-        "SELECT metric_key, ROUND(AVG(cable_value),2), ROUND(AVG(ftth_value),2), ROUND(AVG(diff_value),2) FROM ads_cable_fiber_compare WHERE analysis_run_id=? GROUP BY metric_key ORDER BY metric_key",
+        "SELECT metric_key, CAST(ROUND(AVG(cable_value),2) AS DOUBLE), CAST(ROUND(AVG(ftth_value),2) AS DOUBLE), CAST(ROUND(AVG(diff_value),2) AS DOUBLE) FROM ads_cable_fiber_compare WHERE analysis_run_id=? GROUP BY metric_key ORDER BY metric_key",
         (&run_id,),
         |(metric, cable, ftth, diff): (String, Option<f64>, Option<f64>, Option<f64>)| MetricCard { label: metric, value: format!("diff={:.2}", diff.unwrap_or(0.0)), hint: format!("cable={:.2}, ftth={:.2}", cable.unwrap_or(0.0), ftth.unwrap_or(0.0)) }
     ).map_err(|err| format!("failed to query cable fiber compare: {err}"))
@@ -84,8 +84,8 @@ pub fn leads_get_final_summary(req: DashboardRequest) -> Result<Vec<MetricCard>,
     let run_id = req.analysis_run_id.unwrap_or_else(|| "RUN_DEFAULT".to_string());
     let mut conn = db::conn(&req.settings)?;
     conn.exec_map(
-        "SELECT final_action, COUNT(*) FROM ads_final_marketing_lead_user WHERE analysis_run_id=? GROUP BY final_action ORDER BY COUNT(*) DESC",
+        "SELECT final_action, CAST(COUNT(*) AS SIGNED) FROM ads_final_marketing_lead_user WHERE analysis_run_id=? GROUP BY final_action ORDER BY COUNT(*) DESC",
         (&run_id,),
-        |(action, count): (String, u64)| MetricCard { label: action, value: count.to_string(), hint: "final marketing lead action".to_string() }
+        |(action, count): (String, i64)| MetricCard { label: action, value: count.to_string(), hint: "final marketing lead action".to_string() }
     ).map_err(|err| format!("failed to query final lead summary: {err}"))
 }
