@@ -10,7 +10,7 @@ type Props = {
   analysisRunId: string;
   outputPath: string;
   exportFinalActions: string[];
-  actionStates: Record<string, ActionState>;
+  actionStates?: Record<string, ActionState>;
   runAction: (label: string, action: () => Promise<unknown>) => Promise<unknown>;
   setLeads: (value: LeadUserRow[]) => void;
   setFinalLeads: (value: FinalLeadUserRow[]) => void;
@@ -22,7 +22,7 @@ function numericValue(value: string, fallback: number, min: number, max: number)
   return Math.max(min, Math.min(max, parsed));
 }
 
-export function LeadActions({ settings, analysisRunId, outputPath, exportFinalActions, actionStates, runAction, setLeads, setFinalLeads }: Props) {
+export function LeadActions({ settings, analysisRunId, outputPath, exportFinalActions, actionStates = {}, runAction, setLeads, setFinalLeads }: Props) {
   const [keyword, setKeyword] = useState('');
   const [leadType, setLeadType] = useState('');
   const [finalAction, setFinalAction] = useState('ALL');
