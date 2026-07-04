@@ -7,6 +7,8 @@ mod etl_commands;
 mod final_fusion;
 mod import_commands;
 mod import_commands_mapped;
+mod job_inspection_commands;
+mod job_inspector;
 mod job_runner;
 mod lead_commands;
 mod mapping_validation_commands;
@@ -29,6 +31,8 @@ fn main() {
             import_commands::import_get_batch_status,
             mapping_validation_commands::import_validate_mapping,
             etl_commands::etl_get_recent_jobs,
+            job_inspection_commands::etl_get_recent_steps,
+            job_inspection_commands::etl_get_failed_steps,
             dashboard_commands::quality_get_batch_report,
             etl_commands::etl_start_clean_job,
             etl_commands::etl_start_aggregate_job,
