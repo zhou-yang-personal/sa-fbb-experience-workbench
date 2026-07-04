@@ -8,6 +8,7 @@ import { ImportPanel } from './ImportPanel';
 import { MetricGrid } from './MetricGrid';
 import { QualityCenter } from './QualityCenter';
 import { ResultTables } from './ResultTables';
+import { WorkbenchContextBar } from './WorkbenchContextBar';
 import { WorkbenchHeader } from './WorkbenchHeader';
 import { useWorkbenchController } from './useWorkbenchController';
 import './extra.css';
@@ -98,6 +99,16 @@ export function WorkbenchAppV2() {
       </aside>
       <section className="content">
         <WorkbenchHeader />
+        <WorkbenchContextBar
+          settings={c.settings}
+          dataType={c.dataType}
+          importMode={c.importMode}
+          filePath={c.filePath}
+          importBatchId={c.importBatchId}
+          analysisRunId={c.analysisRunId}
+          outputPath={c.outputPath}
+          batch={c.batch}
+        />
         <section className="section-shell">
           {renderSection()}
         </section>
