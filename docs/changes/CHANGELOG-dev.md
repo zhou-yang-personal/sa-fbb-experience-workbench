@@ -1,5 +1,28 @@
 # CHANGELOG-dev
 
+## 1.0.8 - 2026-07-04
+
+### Added
+
+- Added dedicated Quality Center panel for quality action grouping and check-scope explanation.
+- Added dedicated ETL Job Center panel for ETL jobs, recent steps, failed steps and execution chain.
+- Added dedicated Dashboard Center panel for Overview, App Category, Experience Quality, Cable/FTTH and Final Summary entry points.
+- Added dedicated Final Lead Center panel for SA Lead, Final Lead, Final Action Mix and CSV export entry points.
+- Rewired `WorkbenchAppV2` from a single operations block into separated Quality / ETL / Dashboard / Final Lead workbench centers.
+- Synchronized Workbench header, package, Cargo, README, handoff and project rules to `1.0.8`.
+
+### Blocked / Not completed
+
+- `src-tauri/tauri.conf.json` version update to `1.0.8` remains blocked by platform safety checks.
+
+### Not verified
+
+- Dependency installation not run in ChatGPT GitHub connector environment.
+- Frontend build not run.
+- Rust check not run.
+- Tauri package build not run.
+- Real MySQL and CSV end-to-end flow not executed.
+
 ## 1.0.7 - 2026-07-04
 
 ### Added
