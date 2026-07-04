@@ -1,5 +1,32 @@
 # CHANGELOG-dev
 
+## 1.0.6 - 2026-07-04
+
+### Added
+
+- Added mapped RAW import implementation: `src-tauri/src/raw_import_v2.rs`.
+- Routed RAW import command through mapped import adapter.
+- Added CSV mapping validation command and mapping validation result table.
+- Added observability schema for import row errors, mapping validation and dataset profile.
+- Added ETL job step inspection commands and frontend job inspection API wrapper.
+- Added quality gate result inspection commands and frontend quality result API wrapper.
+- Added modular frontend WorkbenchAppV2 and split connection, import, operations, quality, ETL, dashboard, lead, metric and log components.
+- Added ECharts metric bar component for dashboard visualization.
+- Synchronized package and Cargo versions to `1.0.6`.
+
+### Blocked / Not completed
+
+- `src-tauri/tauri.conf.json` version update to `1.0.6` was blocked by platform safety checks.
+- Extra style import in `src/main.tsx` was blocked by platform safety checks; base styles are still used.
+
+### Not verified
+
+- Dependency installation not run in ChatGPT GitHub connector environment.
+- Frontend build not run.
+- Rust check not run.
+- Tauri package build not run.
+- Real MySQL and CSV end-to-end flow not executed.
+
 ## 1.0.5 - 2026-07-04
 
 ### Added
