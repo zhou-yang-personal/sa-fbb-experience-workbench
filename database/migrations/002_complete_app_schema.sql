@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS meta_export_job (
 CREATE TABLE IF NOT EXISTS raw_crm_user_import (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   import_batch_id VARCHAR(64) NOT NULL,
+  source_file_name VARCHAR(512) NULL,
   source_line_no BIGINT NULL,
   crm_user_id VARCHAR(255) NULL,
   user_account VARCHAR(255) NULL,
@@ -46,6 +47,8 @@ CREATE TABLE IF NOT EXISTS raw_crm_user_import (
 CREATE TABLE IF NOT EXISTS raw_ftth_coverage_import (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   import_batch_id VARCHAR(64) NOT NULL,
+  source_file_name VARCHAR(512) NULL,
+  source_line_no BIGINT NULL,
   area_key VARCHAR(255) NULL,
   city VARCHAR(255) NULL,
   neighborhood VARCHAR(255) NULL,
@@ -60,6 +63,8 @@ CREATE TABLE IF NOT EXISTS raw_ftth_coverage_import (
 CREATE TABLE IF NOT EXISTS raw_reachability_import (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   import_batch_id VARCHAR(64) NOT NULL,
+  source_file_name VARCHAR(512) NULL,
+  source_line_no BIGINT NULL,
   crm_user_id VARCHAR(255) NULL,
   user_account VARCHAR(255) NULL,
   phone_available_flag VARCHAR(32) NULL,
