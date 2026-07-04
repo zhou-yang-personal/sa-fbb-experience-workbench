@@ -154,6 +154,25 @@ fn pipeline_stage_summary_card(raw_rows: u64, clean_rows: u64, dws_users: u64, a
     MetricCard { label: "Pipeline stage".to_string(), value: value.to_string(), hint: format!("raw_rows={raw_rows}, clean_rows={clean_rows}, dws_distinct_users={dws_users}, ads_leads={ads_leads}; use this as the next-action stage summary") }
 }
 
+fn next_action_card(raw_rows: u64, clean_rows: u64, dws_users: u64, ads_leads: u64, failed_jobs: u64, running_jobs: u64) -> MetricCard {
+    let value = if failed_jobs > 0 {
+        "inspect_failed_job"
+    } else if running_jobs > 0 {
+        "wait_or_refresh"
+    } else if raw_rows == 0 {
+        "load_raw"
+    } else if clean_rows == 0 {
+        "run_clean_job"
+    } else if dws_users == 0 {
+        "run_aggregate_job"
+    } else if ads_leads == 0 {
+        "check_lead_rules"
+    } else {
+        "ready_for_dashboard"
+    };
+    MetricCard { label: "Next action".to_string(), value: value.to_string(), hint: format!("failed_jobs={failed_jobs}, running_jobs={running_jobs}, raw_rows={raw_rows}, clean_rows={clean_rows}, dws_users={dws_users}, ads_leads={ads_leads}") }
+}
+
 #[tauri::command]
 fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) -> Result<Vec<MetricCard>, String> {
     let mut conn = db::conn(&settings)?;
@@ -188,6 +207,7 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
         MetricCard { label: "Clean Game rows".to_string(), value: clean_game_rows.to_string(), hint: "dwd_game_detail_clean".to_string() },
         import_completion_card(&import_status, imported_rows, total_rows, raw_rows),
         pipeline_stage_summary_card(raw_rows, clean_rows, dws_users, ads_leads),
+        next_action_card(raw_rows, clean_rows, dws_users, ads_leads, failed_jobs, running_jobs),
         row_consistency_card(imported_rows, total_rows, raw_rows),
         typed_raw_distribution_card(tcp_rows, game_rows),
         source_data_presence_card(&data_type, tcp_rows, game_rows),
