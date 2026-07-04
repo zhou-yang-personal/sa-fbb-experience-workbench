@@ -6,6 +6,7 @@ import { OpsPanel } from './OpsPanel';
 import { ResultTables } from './ResultTables';
 import { WorkbenchHeader } from './WorkbenchHeader';
 import { useWorkbenchController } from './useWorkbenchController';
+import './extra.css';
 
 const pipelineSteps = ['Import', 'Mapping', 'Quality', 'ETL', 'Dashboard', 'Final Leads', 'Export'];
 
