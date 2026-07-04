@@ -3,6 +3,8 @@ import { api } from './shared/tauriApi';
 import { phaseApi } from './shared/phaseApi';
 import type { DashboardOverview, ImportBatchResult, LeadUserRow, MetricCard, MySqlSettings } from './shared/types';
 
+type ImportDataType = 'tcp' | 'game' | 'crm' | 'coverage' | 'reachability';
+
 const defaultSettings: MySqlSettings = { host: '127.0.0.1', port: 3306, database: 'sa_vbp', user: 'root', secret: '', local_infile: true };
 
 const pipelineSteps = [
@@ -17,7 +19,7 @@ const pipelineSteps = [
 
 function App() {
   const [settings, setSettings] = useState<MySqlSettings>(defaultSettings);
-  const [dataType, setDataType] = useState<'tcp' | 'game'>('tcp');
+  const [dataType, setDataType] = useState<ImportDataType>('tcp');
   const [importMode, setImportMode] = useState<'load_data' | 'streaming_insert'>('load_data');
   const [filePath, setFilePath] = useState('');
   const [importBatchId, setImportBatchId] = useState('');
@@ -55,14 +57,14 @@ function App() {
             <h1>SA 家宽应用体验本地分析工作台</h1>
             <p className="hero-text">Phase 1-7 的设计入口已落到 dev：导入、质量门禁、ETL、四类看板、Lead 模型、CRM/覆盖/触达融合、导出闭环。</p>
           </div>
-          <div className="version-card"><span>Version</span><strong>1.0.2</strong></div>
+          <div className="version-card"><span>Version</span><strong>1.0.3</strong></div>
         </header>
 
         <section className="panel form-panel">
           <h2>MySQL 连接与初始化</h2>
           <div className="form-grid">
             <input value={settings.host} onChange={(e) => setSettings({ ...settings, host: e.target.value })} placeholder="host" />
-            <input value={settings.port} onChange={(e) => setSettings({ ...settings, port: Number(e.target.value) })} placeholder="port" />
+            <input value={settings.port} onChange={(e) => setSettings({ ...settings, port: Number(e.target.value })} placeholder="port" />
             <input value={settings.database} onChange={(e) => setSettings({ ...settings, database: e.target.value })} placeholder="database" />
             <input value={settings.user} onChange={(e) => setSettings({ ...settings, user: e.target.value })} placeholder="user" />
             <input type="password" value={settings.secret} onChange={(e) => setSettings({ ...settings, secret: e.target.value })} placeholder="password" />
@@ -76,7 +78,13 @@ function App() {
         <section className="two-column">
           <article className="panel form-panel">
             <h2>CSV 导入</h2>
-            <select value={dataType} onChange={(e) => setDataType(e.target.value as 'tcp' | 'game')}><option value="tcp">TCP</option><option value="game">Game</option></select>
+            <select value={dataType} onChange={(e) => setDataType(e.target.value as ImportDataType)}>
+              <option value="tcp">TCP</option>
+              <option value="game">Game</option>
+              <option value="crm">CRM Users</option>
+              <option value="coverage">FTTH Coverage</option>
+              <option value="reachability">Reachability</option>
+            </select>
             <select value={importMode} onChange={(e) => setImportMode(e.target.value as 'load_data' | 'streaming_insert')}><option value="load_data">LOAD DATA LOCAL INFILE</option><option value="streaming_insert">Streaming INSERT fallback</option></select>
             <input value={filePath} onChange={(e) => setFilePath(e.target.value)} placeholder="CSV absolute path" />
             <div className="action-row">
