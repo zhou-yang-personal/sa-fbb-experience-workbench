@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { CommandAck, CsvProbeResult, DashboardOverview, ImportBatchResult, LeadUserRow, MySqlSettings, MetricCard } from './types';
+import type { CommandAck, CsvProbeResult, DashboardOverview, FinalLeadUserRow, ImportBatchResult, LeadUserRow, MySqlSettings, MetricCard } from './types';
 
 export const api = {
   dbTestConnection: (settings: MySqlSettings) => invoke<CommandAck>('db_test_connection', { settings }),
@@ -23,6 +23,10 @@ export const api = {
     invoke<DashboardOverview>('dashboard_get_overview', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
   leadsQueryUsers: (settings: MySqlSettings, analysisRunId: string) =>
     invoke<LeadUserRow[]>('leads_query_users', { req: { settings, analysis_run_id: analysisRunId, page: 1, page_size: 100 } }),
+  finalLeadsQueryUsers: (settings: MySqlSettings, analysisRunId: string) =>
+    invoke<FinalLeadUserRow[]>('final_leads_query_users', { req: { settings, analysis_run_id: analysisRunId, page: 1, page_size: 100 } }),
   exportLeadsCsv: (settings: MySqlSettings, analysisRunId: string, outputPath: string) =>
     invoke<CommandAck>('export_leads_csv', { req: { settings, analysis_run_id: analysisRunId, output_path: outputPath } }),
+  exportFinalLeadsCsv: (settings: MySqlSettings, analysisRunId: string, outputPath: string) =>
+    invoke<CommandAck>('export_final_leads_csv', { req: { settings, analysis_run_id: analysisRunId, output_path: outputPath } }),
 };
