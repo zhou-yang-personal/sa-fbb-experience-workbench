@@ -51,6 +51,9 @@ MUTATING_SQL_RE = re.compile(r"(?is)\b(INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|
 UNBOUNDED_QUALITY_COUNT_RE = re.compile(
     r"(?is)SELECT\s+COUNT\s*\(\s*\*\s*\)\s+FROM\s+(raw_|dwd_|dws_|ads_)[a-z0-9_]+(?![^;]{0,180}\bWHERE\b)"
 )
+UNBOUNDED_AGGREGATE_RE = re.compile(
+    r"(?is)SELECT\s+[^;]*(?:SUM|AVG|MIN|MAX|COUNT)\s*\([^;]*\)\s+FROM\s+(raw_|dwd_|dws_|ads_)[a-z0-9_]+(?![^;]{0,220}\bWHERE\b)"
+)
 
 
 def extract_sql_string_literals(content: str) -> list[str]:
@@ -99,6 +102,16 @@ def find_unbounded_quality_counts(content: str) -> list[str]:
     return [match.group(0).replace("\n", " ")[:160] for match in UNBOUNDED_QUALITY_COUNT_RE.finditer(content)]
 
 
+def find_unbounded_quality_aggregates(content: str) -> list[str]:
+    """Return broad aggregate scans over pipeline tables without a WHERE guard.
+
+    Quality cards should summarize the current or latest batch. Any RAW/CLEAN/DWS/ADS
+    aggregate without a WHERE clause risks making the report slow or misleading as
+    local datasets grow.
+    """
+    return [match.group(0).replace("\n", " ")[:160] for match in UNBOUNDED_AGGREGATE_RE.finditer(content)]
+
+
 def main() -> int:
     content = MAIN_RS.read_text(encoding="utf-8")
     missing_sql = [marker for marker in REQUIRED_SQL_MARKERS if marker not in content]
@@ -107,7 +120,8 @@ def main() -> int:
     forbidden_sql = find_forbidden_sql_patterns(content)
     mutating_sql = find_mutating_quality_sql(content)
     unbounded_counts = find_unbounded_quality_counts(content)
-    if missing_sql or missing_cards or duplicate_cards or forbidden_sql or mutating_sql or unbounded_counts:
+    unbounded_aggregates = find_unbounded_quality_aggregates(content)
+    if missing_sql or missing_cards or duplicate_cards or forbidden_sql or mutating_sql or unbounded_counts or unbounded_aggregates:
         if missing_sql:
             print("missing SQL markers:")
             for marker in missing_sql:
@@ -131,6 +145,10 @@ def main() -> int:
         if unbounded_counts:
             print("unbounded quality COUNT(*) scans:")
             for query in unbounded_counts:
+                print(f"- {query}")
+        if unbounded_aggregates:
+            print("unbounded quality aggregate scans:")
+            for query in unbounded_aggregates:
                 print(f"- {query}")
         return 1
     print("quality report SQL/card markers: ok")
