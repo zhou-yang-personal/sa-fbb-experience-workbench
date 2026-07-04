@@ -148,6 +148,21 @@ fn dws_readiness_card(clean_rows: u64, dws_users: u64) -> MetricCard {
     }
 }
 
+fn ads_readiness_card(dws_users: u64, ads_leads: u64) -> MetricCard {
+    let value = if dws_users == 0 {
+        "waiting_for_dws".to_string()
+    } else if ads_leads == 0 {
+        "no_leads".to_string()
+    } else {
+        "ready".to_string()
+    };
+    MetricCard {
+        label: "ADS readiness".to_string(),
+        value,
+        hint: format!("dws_distinct_users={dws_users}, ads_leads={ads_leads}; run lead fusion or check lead rules when dws_users>0 and ads_leads=0"),
+    }
+}
+
 #[tauri::command]
 fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) -> Result<Vec<MetricCard>, String> {
     let mut conn = db::conn(&settings)?;
@@ -156,6 +171,7 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
     let clean_video_rows: Option<u64> = conn.exec_first("SELECT COUNT(*) FROM dwd_tcp_detail_clean WHERE import_batch_id=?", (&import_batch_id,)).map_err(|err| err.to_string())?;
     let clean_game_rows: Option<u64> = conn.exec_first("SELECT COUNT(*) FROM dwd_game_detail_clean WHERE import_batch_id=?", (&import_batch_id,)).map_err(|err| err.to_string())?;
     let dws_users: Option<u64> = conn.exec_first("SELECT COUNT(DISTINCT user_key) FROM dws_user_daily_profile WHERE import_batch_id=?", (&import_batch_id,)).map_err(|err| err.to_string())?;
+    let ads_leads: Option<u64> = conn.exec_first("SELECT COUNT(*) FROM ads_migration_lead_user WHERE analysis_run_id IN (SELECT analysis_run_id FROM meta_analysis_run WHERE import_batch_id=?)", (&import_batch_id,)).map_err(|err| err.to_string())?;
     let import_meta: Option<(u64, u64)> = conn.exec_first(
         "SELECT COALESCE(imported_rows,0), COALESCE(total_rows,0) FROM meta_import_batch WHERE import_batch_id=?",
         (&import_batch_id,),
@@ -165,6 +181,7 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
     let clean_video_rows = clean_video_rows.unwrap_or(0);
     let clean_game_rows = clean_game_rows.unwrap_or(0);
     let dws_users = dws_users.unwrap_or(0);
+    let ads_leads = ads_leads.unwrap_or(0);
     let raw_rows = tcp_rows + game_rows;
     let clean_rows = clean_video_rows + clean_game_rows;
     let (imported_rows, total_rows) = import_meta.unwrap_or((0, 0));
@@ -177,6 +194,7 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
         typed_raw_distribution_card(tcp_rows, game_rows),
         clean_conversion_card(raw_rows, clean_rows),
         dws_readiness_card(clean_rows, dws_users),
+        ads_readiness_card(dws_users, ads_leads),
     ])
 }
 
