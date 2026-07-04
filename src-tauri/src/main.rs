@@ -1,15 +1,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod db;
+mod job_runner;
 mod migrations;
 mod models;
 mod phase_commands;
 mod probe;
+mod raw_import;
 mod sql_runner;
 
 use mysql::prelude::*;
 use uuid::Uuid;
 
+use job_runner::JobStep;
 use models::{
     ack, CommandAck, CreateBatchRequest, DashboardOverview, DashboardRequest, EtlRequest,
     ExportLeadsRequest, ImportBatchResult, LeadUserRow, LeadsQueryRequest, MetricCard,
@@ -33,28 +36,22 @@ fn import_probe_csv(path: String) -> Result<models::CsvProbeResult, String> { pr
 #[tauri::command]
 fn import_create_batch(req: CreateBatchRequest) -> Result<ImportBatchResult, String> {
     let import_batch_id = format!("BATCH_{}", Uuid::new_v4().simple());
-    let source_file_name = req.file_path.clone();
+    let source_file_name = std::path::Path::new(&req.file_path)
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| req.file_path.clone());
+    let file_size = std::fs::metadata(&req.file_path).map(|m| m.len()).ok();
     let mut conn = db::conn(&req.settings)?;
     conn.exec_drop(
-        "INSERT INTO meta_import_batch (import_batch_id, data_type, source_file_name, source_file_path, status) VALUES (?, ?, ?, ?, 'pending')",
-        (&import_batch_id, &req.data_type, &source_file_name, &req.file_path),
+        "INSERT INTO meta_import_batch (import_batch_id, data_type, source_file_name, source_file_path, source_file_size_bytes, status) VALUES (?, ?, ?, ?, ?, 'pending')",
+        (&import_batch_id, &req.data_type, &source_file_name, &req.file_path, file_size),
     ).map_err(|err| format!("failed to create import batch: {err}"))?;
     Ok(ImportBatchResult { import_batch_id, data_type: req.data_type, source_file_name, status: "pending".to_string() })
 }
 
 #[tauri::command]
 fn import_start_raw_load(req: RawLoadRequest) -> Result<CommandAck, String> {
-    let table = match req.data_type.as_str() { "tcp" => "raw_tcp_detail_import", "game" => "raw_game_detail_import", other => return Err(format!("unsupported data type: {other}")) };
-    let mut conn = db::conn(&req.settings)?;
-    conn.exec_drop("UPDATE meta_import_batch SET status='running', started_at=NOW(), message='raw load started' WHERE import_batch_id=?", (&req.import_batch_id,)).map_err(|err| format!("failed to update import batch status: {err}"))?;
-    let path = sql_runner::escape_sql_literal(&req.file_path.replace('\\', "/"));
-    let batch_id = sql_runner::escape_sql_literal(&req.import_batch_id);
-    let load_keyword = "LOAD";
-    let sql = format!("{load_keyword} DATA LOCAL INFILE '{path}' INTO TABLE {table} CHARACTER SET utf8mb4 FIELDS TERMINATED BY ',' ENCLOSED BY '\"' LINES TERMINATED BY '\n' IGNORE 1 LINES SET import_batch_id='{batch_id}', source_file_name='{path}', source_line_no=NULL");
-    conn.query_drop(sql).map_err(|err| format!("raw load failed; check MySQL local_infile and CSV column order: {err}"))?;
-    let rows = conn.affected_rows();
-    conn.exec_drop("UPDATE meta_import_batch SET status='success', imported_rows=?, finished_at=NOW(), message='raw load finished' WHERE import_batch_id=?", (rows, &req.import_batch_id)).map_err(|err| format!("failed to finalize import batch: {err}"))?;
-    Ok(ack(format!("raw load finished: table={table}, rows={rows}")))
+    raw_import::start_raw_load(req).map(ack)
 }
 
 #[tauri::command]
@@ -76,9 +73,11 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
 fn etl_start_clean_job(req: EtlRequest) -> Result<CommandAck, String> {
     let tcp_sql = sql_runner::bind_batch_params(TCP_CLEAN_SQL, &req.import_batch_id, None);
     let game_sql = sql_runner::bind_batch_params(GAME_CLEAN_SQL, &req.import_batch_id, None);
-    let tcp_rows = sql_runner::execute_script(&req.settings, &tcp_sql)?;
-    let game_rows = sql_runner::execute_script(&req.settings, &game_sql)?;
-    Ok(ack(format!("RAW to CLEAN finished: tcp affected={tcp_rows}, game affected={game_rows}")))
+    let message = job_runner::run_job(&req.settings, &req.import_batch_id, "raw_to_clean", vec![
+        JobStep { step_name: "tcp_raw_to_clean", source_table: "raw_tcp_detail_import", target_table: "dwd_tcp_detail_clean", sql_template: "001_tcp_raw_to_clean.sql", sql: tcp_sql },
+        JobStep { step_name: "game_raw_to_clean", source_table: "raw_game_detail_import", target_table: "dwd_game_detail_clean", sql_template: "002_game_raw_to_clean.sql", sql: game_sql },
+    ])?;
+    Ok(ack(message))
 }
 
 #[tauri::command]
@@ -86,9 +85,11 @@ fn etl_start_aggregate_job(req: EtlRequest) -> Result<CommandAck, String> {
     let analysis_run_id = req.analysis_run_id.unwrap_or_else(|| format!("RUN_{}", Uuid::new_v4().simple()));
     let dws_sql = sql_runner::bind_batch_params(USER_DAILY_SQL, &req.import_batch_id, None);
     let ads_sql = sql_runner::bind_batch_params(LEADS_SQL, &req.import_batch_id, Some(&analysis_run_id));
-    let dws_rows = sql_runner::execute_script(&req.settings, &dws_sql)?;
-    let ads_rows = sql_runner::execute_script(&req.settings, &ads_sql)?;
-    Ok(ack(format!("aggregate finished: analysis_run_id={analysis_run_id}, dws affected={dws_rows}, ads affected={ads_rows}")))
+    let message = job_runner::run_job(&req.settings, &req.import_batch_id, "base_aggregate", vec![
+        JobStep { step_name: "user_daily_profile", source_table: "dwd_tcp_detail_clean,dwd_game_detail_clean", target_table: "dws_user_daily_profile", sql_template: "001_user_daily_profile.sql", sql: dws_sql },
+        JobStep { step_name: "migration_leads", source_table: "dws_user_daily_profile", target_table: "ads_migration_lead_user", sql_template: "001_migration_leads.sql", sql: ads_sql },
+    ])?;
+    Ok(ack(format!("analysis_run_id={analysis_run_id}; {message}")))
 }
 
 #[tauri::command]
@@ -128,24 +129,12 @@ fn export_leads_csv(req: ExportLeadsRequest) -> Result<CommandAck, String> {
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            db_test_connection,
-            db_initialize,
-            import_probe_csv,
-            import_create_batch,
-            import_start_raw_load,
-            quality_get_batch_report,
-            etl_start_clean_job,
-            etl_start_aggregate_job,
-            dashboard_get_overview,
-            leads_query_users,
-            export_leads_csv,
-            phase_commands::quality_run_gate,
-            phase_commands::etl_run_complete_aggregates,
-            phase_commands::ads_run_complete_dashboards,
-            phase_commands::leads_run_final_fusion,
-            phase_commands::dashboard_get_app_category,
-            phase_commands::dashboard_get_experience_quality,
-            phase_commands::dashboard_get_cable_fiber_compare,
+            db_test_connection, db_initialize, import_probe_csv, import_create_batch, import_start_raw_load,
+            quality_get_batch_report, etl_start_clean_job, etl_start_aggregate_job, dashboard_get_overview,
+            leads_query_users, export_leads_csv, phase_commands::quality_run_gate,
+            phase_commands::etl_run_complete_aggregates, phase_commands::ads_run_complete_dashboards,
+            phase_commands::leads_run_final_fusion, phase_commands::dashboard_get_app_category,
+            phase_commands::dashboard_get_experience_quality, phase_commands::dashboard_get_cable_fiber_compare,
             phase_commands::leads_get_final_summary
         ])
         .run(tauri::generate_context!())
