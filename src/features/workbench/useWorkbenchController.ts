@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { DashboardOverview, EtlJobStepRow, FinalLeadUserRow, ImportBatchResult, ImportDataType, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
+import type { DashboardChartGroup, DashboardOverview, EtlJobStepRow, FinalLeadUserRow, ImportBatchResult, ImportDataType, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
 import { workbenchApi } from './workbenchApi';
 
 const defaultSettings: MySqlSettings = { host: '127.0.0.1', port: 3306, database: 'sa_vbp', user: 'root', secret: '', local_infile: true };
@@ -17,6 +17,7 @@ export function useWorkbenchController() {
   const [batch, setBatch] = useState<ImportBatchResult | null>(null);
   const [metrics, setMetrics] = useState<MetricCard[]>([]);
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
+  const [dashboardCharts, setDashboardCharts] = useState<DashboardChartGroup[]>([]);
   const [etlSteps, setEtlSteps] = useState<EtlJobStepRow[]>([]);
   const [leads, setLeads] = useState<LeadUserRow[]>([]);
   const [finalLeads, setFinalLeads] = useState<FinalLeadUserRow[]>([]);
@@ -42,5 +43,5 @@ export function useWorkbenchController() {
     }
   }
 
-  return { settings, setSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, analysisRunId, setAnalysisRunId, outputPath, setOutputPath, exportFinalActions, setExportFinalActions, log, batch, allMetrics, etlSteps, setEtlSteps, leads, setLeads, finalLeads, setFinalLeads, effectiveSettings, runAction, loadMetrics, createBatch, setOverview };
+  return { settings, setSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, analysisRunId, setAnalysisRunId, outputPath, setOutputPath, exportFinalActions, setExportFinalActions, log, batch, allMetrics, dashboardCharts, setDashboardCharts, etlSteps, setEtlSteps, leads, setLeads, finalLeads, setFinalLeads, effectiveSettings, runAction, loadMetrics, createBatch, setOverview };
 }
