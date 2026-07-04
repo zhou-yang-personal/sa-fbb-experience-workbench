@@ -1,0 +1,34 @@
+import { ConnectionPanel } from './ConnectionPanel';
+import { ExecutionLog } from './ExecutionLog';
+import { ImportPanel } from './ImportPanel';
+import { MetricGrid } from './MetricGrid';
+import { ResultTables } from './ResultTables';
+import { TaskCenter2 } from './TaskCenter2';
+import { WorkbenchHeader } from './WorkbenchHeader';
+import { useWorkbenchController } from './useWorkbenchController';
+
+const pipelineSteps = ['Import', 'Mapping', 'Quality', 'ETL', 'Dashboard', 'Final Leads', 'Export'];
+
+export function WorkbenchAppV2() {
+  const c = useWorkbenchController();
+  return (
+    <main className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">SA FBB Experience Workbench</div>
+        <nav>{['Settings', 'Import', 'Mapping', 'Quality', 'ETL', 'Dashboard', 'Leads'].map((item) => <button key={item} type="button" className="nav-item">{item}</button>)}</nav>
+      </aside>
+      <section className="content">
+        <WorkbenchHeader />
+        <ConnectionPanel settings={c.settings} setSettings={c.setSettings} runAction={c.runAction} />
+        <section className="two-column">
+          <ImportPanel {...c} />
+          <article className="panel"><h2>Pipeline</h2><ol className="pipeline-list">{pipelineSteps.map((step) => <li key={step}>{step}</li>)}</ol></article>
+        </section>
+        <TaskCenter2 />
+        <MetricGrid metrics={c.allMetrics} />
+        <ResultTables leads={c.leads} finalLeads={c.finalLeads} />
+        <ExecutionLog log={c.log} />
+      </section>
+    </main>
+  );
+}
