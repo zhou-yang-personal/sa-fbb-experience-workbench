@@ -33,6 +33,7 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - RAW import writes `total_rows` and `imported_rows` for row reconciliation.
 - RAW quality gate checks row count, CSV vs RAW row diff, identity, access mix, time range, active hours, app count and topology UNKNOWN.
 - Mapping validation command writes `meta_mapping_validation_result`.
+- Dataset profile refresh and query commands write/read `meta_dataset_profile`.
 - Observability schema includes row errors, mapping validation and dataset profile tables.
 - RAW to CLEAN SQL runner.
 - ETL job commands write `meta_etl_job` and `meta_etl_job_step` for step status and failure diagnostics.
@@ -46,7 +47,7 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Configurable final join rule schema: `cfg_final_join_rule`.
 - Default mapping and join rule seed: `database/seeds/002_default_mapping_seed.sql`.
 - Command handlers are split into import, ETL, dashboard, lead, config and phase modules.
-- `main.rs` now registers split command modules, config commands, mapped import, mapping validation, ETL step inspection and quality result inspection.
+- `main.rs` now registers split command modules, config commands, mapped import, mapping validation, dataset profile, ETL step inspection and quality result inspection.
 - Final Lead fusion command now uses the configurable fusion builder.
 - Modular frontend shell exists in `src/features/workbench/WorkbenchAppV2.tsx` and is mounted from `src/main.tsx`.
 - Reusable frontend components exist for connection, import, operations, quality, ETL, dashboard, lead, metric grid, result tables, execution log and ECharts metric bar.
@@ -69,11 +70,10 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Tauri package build was not run.
 - Real MySQL and CSV end-to-end flow was not executed.
 - `src-tauri/tauri.conf.json` remains at the previous version because connector JSON update was blocked by platform safety checks.
-- Extra CSS import in `src/main.tsx` was blocked; base styles are still active.
 
 ## Next recommended work
 
-1. Complete remaining blocked wiring locally/Codex: Tauri version and optional extra styles.
+1. Complete remaining blocked wiring locally/Codex: Tauri version.
 2. Run local dependency installation and build checks.
 3. Fix compile errors if any.
 4. Validate all five import data types on small samples.
