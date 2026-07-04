@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.11
+1.0.12
 ```
 
 ## Source-of-truth branch
@@ -57,6 +57,9 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Modular frontend shell exists in `src/features/workbench/WorkbenchAppV2.tsx` and is mounted from `src/main.tsx`.
 - Import Center exposes mapping validation, mapping summary, mapping results, dataset profile refresh and dataset profile view.
 - Quality Center, ETL Job Center, Dashboard Center and Final Lead Center are separated frontend panels.
+- Dashboard Center supports multi-chart panels for App Category, Experience Quality, Cable vs FTTH and Final Action Mix.
+- `DashboardCharts` renders reusable ECharts bar / radar panels from ADS / DWS metric results.
+- DashboardActions can load individual chart groups or all dashboard chart groups in one action.
 - ResultTables supports SA Lead / Final Lead text filters, type/action filters, pagination and empty states.
 - Final Lead results support final_action summary pills with click-to-filter behavior.
 - Final Lead Center exposes export filename presets for SA Lead, Final Lead, Market Upsell and Reachability lists.
@@ -70,7 +73,7 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Reusable frontend components exist for connection, import, quality, ETL, dashboard, lead, metric grid, result tables, pagination, execution log and ECharts metric bar.
 - Dashboard commands for Overview, App Category, Experience Quality and Cable vs FTTH.
 - Lead query, final lead query, final lead summary, SA Lead CSV export and Final Lead CSV export commands.
-- Package, Cargo and Tauri app config are synchronized to `1.0.11`.
+- Package, Cargo and Tauri app config are synchronized to `1.0.12`.
 
 ## Important rules
 
@@ -92,6 +95,6 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 
 1. Run local dependency installation and build checks.
 2. Fix compile errors if any.
-3. Validate server-side Lead query filtering, final-action export filters and ETL Step Detail against real MySQL data.
+3. Validate Dashboard Charts, server-side Lead query filtering, final-action export filters and ETL Step Detail against real MySQL data.
 4. Validate all five import data types on small samples.
-5. Continue deeper UI refinement after local compile feedback: richer Dashboard Center charts and old-entry legacy cleanup.
+5. Continue old-entry legacy cleanup only after confirming current `WorkbenchAppV2` path compiles.
