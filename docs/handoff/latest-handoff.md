@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.0
+1.0.1
 ```
 
 ## Source-of-truth branch
@@ -14,7 +14,7 @@ dev
 
 ## Current baseline
 
-The project now includes the Phase 1-7 complete application baseline:
+The project now includes the Phase 1-7 complete application baseline plus the first deviation-fix round:
 
 - Governance files and detailed architecture design.
 - React + TypeScript + Vite workflow UI.
@@ -23,8 +23,12 @@ The project now includes the Phase 1-7 complete application baseline:
 - Extended schema for CRM, FTTH coverage, reachability, dashboard ADS and final marketing leads.
 - Database initialization command with both core and extended schema.
 - CSV probe, import batch and RAW load command path.
+- RAW import now uses explicit TCP / Game column lists for `LOAD DATA LOCAL INFILE`.
+- RAW import now has streaming INSERT fallback selected by `mode=streaming_insert` or `local_infile=false`.
 - RAW quality gate SQL and command.
+- RAW quality gate now covers row count, identity, access mix, time range, active hours, app count and topology UNKNOWN checks.
 - RAW to CLEAN SQL runner.
+- ETL job commands now write `meta_etl_job` and `meta_etl_job_step` for step status and failure diagnostics.
 - Complete DWS aggregate SQL and command.
 - Complete ADS dashboard SQL and command.
 - Migration lead scoring and final CRM / coverage / reachability fusion SQL.
@@ -46,13 +50,12 @@ The project now includes the Phase 1-7 complete application baseline:
 - Rust check was not run.
 - Tauri package build was not run.
 - Real MySQL and CSV end-to-end flow was not executed.
-- `src-tauri/Cargo.toml` version remains `0.2.1` because connector update was blocked by platform safety checks.
 
 ## Next recommended work
 
 1. Run local dependency installation and build checks.
 2. Fix compile errors if any.
-3. Manually synchronize `src-tauri/Cargo.toml` package version to `1.0.0` if needed.
-4. Validate MySQL bulk import settings and CSV column order.
+3. Validate MySQL bulk import settings and CSV column order on TCP and Game samples.
+4. Validate streaming INSERT fallback on small sample data.
 5. Validate Phase 1-7 SQL chain on sample data.
-6. Replace any remaining baseline SQL with measured production SQL after local test.
+6. Replace remaining baseline SQL with measured production SQL after local test.
