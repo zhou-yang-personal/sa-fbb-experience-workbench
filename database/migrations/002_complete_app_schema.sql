@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS raw_reachability_import (
 CREATE TABLE IF NOT EXISTS dws_app_category_daily (
   import_batch_id VARCHAR(64) NOT NULL,
   stat_date DATE NOT NULL,
-  user_type VARCHAR(32) NULL,
+  user_type VARCHAR(32) NOT NULL DEFAULT 'UNKNOWN',
   app_category VARCHAR(64) NOT NULL,
   active_users BIGINT NOT NULL DEFAULT 0,
   total_download_gb DECIMAL(24,6) NOT NULL DEFAULT 0,
@@ -126,7 +126,7 @@ CREATE TABLE IF NOT EXISTS ads_dashboard_overview (
 CREATE TABLE IF NOT EXISTS ads_app_category_detail (
   analysis_run_id VARCHAR(64) NOT NULL,
   app_category VARCHAR(64) NOT NULL,
-  user_type VARCHAR(32) NULL,
+  user_type VARCHAR(32) NOT NULL DEFAULT 'UNKNOWN',
   active_users BIGINT NOT NULL DEFAULT 0,
   total_download_gb DECIMAL(24,6) NOT NULL DEFAULT 0,
   total_game_hours DECIMAL(18,6) NOT NULL DEFAULT 0,
@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS ads_app_category_detail (
 CREATE TABLE IF NOT EXISTS ads_experience_quality_summary (
   analysis_run_id VARCHAR(64) NOT NULL,
   quality_dimension VARCHAR(64) NOT NULL,
-  user_type VARCHAR(32) NULL,
+  user_type VARCHAR(32) NOT NULL DEFAULT 'UNKNOWN',
   affected_users BIGINT NOT NULL DEFAULT 0,
   avg_value DECIMAL(18,6) NULL,
   p90_value DECIMAL(18,6) NULL,

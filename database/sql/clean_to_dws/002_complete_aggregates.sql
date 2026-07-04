@@ -12,7 +12,7 @@ WITH params AS (SELECT :import_batch_id AS import_batch_id), video AS (
          NULL AS avg_mos,
          AVG(effective_download_mbps) AS avg_effective_download_mbps
   FROM dwd_tcp_detail_clean
-  WHERE import_batch_id = (SELECT import_batch_id FROM params)
+  WHERE dwd_tcp_detail_clean.import_batch_id = (SELECT import_batch_id FROM params)
     AND stat_date IS NOT NULL
     AND user_key IS NOT NULL
     AND TRIM(user_key) <> ''
@@ -27,7 +27,7 @@ WITH params AS (SELECT :import_batch_id AS import_batch_id), video AS (
          AVG(mos) AS avg_mos,
          NULL AS avg_effective_download_mbps
   FROM dwd_game_detail_clean
-  WHERE import_batch_id = (SELECT import_batch_id FROM params)
+  WHERE dwd_game_detail_clean.import_batch_id = (SELECT import_batch_id FROM params)
     AND stat_date IS NOT NULL
     AND user_key IS NOT NULL
     AND TRIM(user_key) <> ''
@@ -52,7 +52,7 @@ WITH params AS (SELECT :import_batch_id AS import_batch_id), video AS (
          AVG(network_down_loss) AS avg_network_down_loss,
          AVG(effective_download_mbps) AS avg_download_mbps
   FROM dwd_tcp_detail_clean
-  WHERE import_batch_id = (SELECT import_batch_id FROM params)
+  WHERE dwd_tcp_detail_clean.import_batch_id = (SELECT import_batch_id FROM params)
     AND stat_date IS NOT NULL
     AND hour_of_day IS NOT NULL
     AND user_key IS NOT NULL
@@ -70,7 +70,7 @@ WITH params AS (SELECT :import_batch_id AS import_batch_id), video AS (
          NULL AS avg_network_down_loss,
          NULL AS avg_download_mbps
   FROM dwd_game_detail_clean
-  WHERE import_batch_id = (SELECT import_batch_id FROM params)
+  WHERE dwd_game_detail_clean.import_batch_id = (SELECT import_batch_id FROM params)
     AND stat_date IS NOT NULL
     AND hour_of_day IS NOT NULL
     AND user_key IS NOT NULL
@@ -84,7 +84,7 @@ SELECT * FROM game;
 
 REPLACE INTO dws_user_experience_bottleneck (import_batch_id, user_key, bottleneck_type, severity_score, evidence)
 WITH params AS (SELECT :import_batch_id AS import_batch_id), profile AS (
-  SELECT * FROM dws_user_daily_profile WHERE import_batch_id = (SELECT import_batch_id FROM params)
+  SELECT * FROM dws_user_daily_profile WHERE dws_user_daily_profile.import_batch_id = (SELECT import_batch_id FROM params)
 )
 SELECT import_batch_id, user_key,
        CASE

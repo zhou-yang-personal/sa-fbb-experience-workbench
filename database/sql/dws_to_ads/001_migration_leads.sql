@@ -40,7 +40,7 @@ WITH params AS (
     AVG(avg_network_down_loss) AS avg_network_down_loss,
     MAX(COALESCE(peak_row_pct, 0)) AS peak_row_pct
   FROM dws_user_daily_profile
-  WHERE import_batch_id = (SELECT import_batch_id FROM params)
+  WHERE dws_user_daily_profile.import_batch_id = (SELECT import_batch_id FROM params)
     AND user_key IS NOT NULL
     AND TRIM(user_key) <> ''
     AND user_key <> 'UNKNOWN'
