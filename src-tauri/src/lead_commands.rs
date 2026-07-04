@@ -32,9 +32,14 @@ fn normalized_actions(values: &Option<Vec<String>>) -> Vec<String> {
         .map(|items| {
             items
                 .iter()
-                .map(|item| item.trim())
-                .filter(|item| !item.is_empty() && !item.eq_ignore_ascii_case("ALL"))
-                .map(ToString::to_string)
+                .filter_map(|item| {
+                    let normalized = item.trim();
+                    if normalized.is_empty() || normalized.eq_ignore_ascii_case("ALL") {
+                        None
+                    } else {
+                        Some(normalized.to_string())
+                    }
+                })
                 .collect()
         })
         .unwrap_or_default()
