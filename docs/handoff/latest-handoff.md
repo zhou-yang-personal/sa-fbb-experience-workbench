@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.1
+1.0.2
 ```
 
 ## Source-of-truth branch
@@ -14,7 +14,7 @@ dev
 
 ## Current baseline
 
-The project now includes the Phase 1-7 complete application baseline plus the first deviation-fix round:
+The project now includes the Phase 1-7 complete application baseline plus deviation-fix rounds:
 
 - Governance files and detailed architecture design.
 - React + TypeScript + Vite workflow UI.
@@ -23,12 +23,14 @@ The project now includes the Phase 1-7 complete application baseline plus the fi
 - Extended schema for CRM, FTTH coverage, reachability, dashboard ADS and final marketing leads.
 - Database initialization command with both core and extended schema.
 - CSV probe, import batch and RAW load command path.
-- RAW import now uses explicit TCP / Game column lists for `LOAD DATA LOCAL INFILE`.
-- RAW import now has streaming INSERT fallback selected by `mode=streaming_insert` or `local_infile=false`.
-- RAW quality gate SQL and command.
-- RAW quality gate now covers row count, identity, access mix, time range, active hours, app count and topology UNKNOWN checks.
+- RAW import uses explicit TCP / Game column lists for `LOAD DATA LOCAL INFILE`.
+- RAW import has streaming INSERT fallback selected by `mode=streaming_insert` or `local_infile=false`.
+- Streaming fallback updates import progress while inserting chunks.
+- RAW import now writes `total_rows` and `imported_rows` for row reconciliation.
+- RAW quality gate checks row count, CSV vs RAW row diff, identity, access mix, time range, active hours, app count and topology UNKNOWN.
 - RAW to CLEAN SQL runner.
-- ETL job commands now write `meta_etl_job` and `meta_etl_job_step` for step status and failure diagnostics.
+- ETL job commands write `meta_etl_job` and `meta_etl_job_step` for step status and failure diagnostics.
+- Import status and recent ETL job status commands are available from the UI.
 - Complete DWS aggregate SQL and command.
 - Complete ADS dashboard SQL and command.
 - Migration lead scoring and final CRM / coverage / reachability fusion SQL.
@@ -55,7 +57,7 @@ The project now includes the Phase 1-7 complete application baseline plus the fi
 
 1. Run local dependency installation and build checks.
 2. Fix compile errors if any.
-3. Validate MySQL bulk import settings and CSV column order on TCP and Game samples.
-4. Validate streaming INSERT fallback on small sample data.
+3. Validate LOAD DATA and streaming fallback on TCP and Game samples.
+4. Validate quality gate row reconciliation against real CSV files.
 5. Validate Phase 1-7 SQL chain on sample data.
 6. Replace remaining baseline SQL with measured production SQL after local test.
