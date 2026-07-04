@@ -4,7 +4,11 @@
 DELETE FROM meta_quality_check_result WHERE import_batch_id = :import_batch_id;
 
 INSERT INTO meta_quality_check_result (import_batch_id, check_section, check_item, metric_name, metric_value, metric_text, severity, passed)
-WITH params AS (SELECT :import_batch_id AS import_batch_id), raw_counts AS (
+WITH params AS (SELECT :import_batch_id AS import_batch_id), batch AS (
+  SELECT import_batch_id, data_type, total_rows, imported_rows
+  FROM meta_import_batch
+  WHERE import_batch_id = (SELECT import_batch_id FROM params)
+), raw_counts AS (
   SELECT 'tcp' AS data_type,
          COUNT(*) AS row_cnt,
          COUNT(DISTINCT user_account) AS user_account_cnt,
@@ -43,6 +47,12 @@ SELECT import_batch_id, 'raw_quality', CONCAT(data_type, '_row_count'), 'row_cnt
        CASE WHEN row_cnt = 0 THEN 'error' ELSE 'info' END,
        CASE WHEN row_cnt = 0 THEN 0 ELSE 1 END
 FROM raw_counts, params
+UNION ALL
+SELECT p.import_batch_id, 'raw_quality', CONCAT(b.data_type, '_csv_vs_raw_rows'), 'row_diff', COALESCE(b.total_rows, 0) - COALESCE(b.imported_rows, 0),
+       CONCAT('total_rows=', COALESCE(b.total_rows, 0), ', imported_rows=', COALESCE(b.imported_rows, 0)),
+       CASE WHEN COALESCE(b.total_rows, 0) <> COALESCE(b.imported_rows, 0) THEN 'warning' ELSE 'info' END,
+       CASE WHEN COALESCE(b.total_rows, 0) <> COALESCE(b.imported_rows, 0) THEN 0 ELSE 1 END
+FROM batch b, params p
 UNION ALL
 SELECT import_batch_id, 'raw_quality', CONCAT(data_type, '_identity'), 'user_account_cnt', user_account_cnt, CONCAT('user_mac_cnt=', user_mac_cnt),
        CASE WHEN user_account_cnt = 0 AND user_mac_cnt = 0 THEN 'error' ELSE 'info' END,
