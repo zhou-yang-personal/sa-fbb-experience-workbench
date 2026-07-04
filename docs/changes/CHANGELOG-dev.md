@@ -1,5 +1,25 @@
 # CHANGELOG-dev
 
+## 1.0.1 - 2026-07-04
+
+### Fixed
+
+- Reworked RAW CSV import to use explicit TCP / Game field lists for `LOAD DATA LOCAL INFILE`.
+- Added streaming INSERT fallback for environments where local infile is disabled.
+- Added `raw_import.rs` to isolate RAW import logic from `main.rs`.
+- Added `job_runner.rs` to write `meta_etl_job` and `meta_etl_job_step` during ETL execution.
+- Routed RAW to CLEAN, base aggregate and Phase commands through job logging.
+- Expanded RAW quality gate to cover row count, identity, access mix, time range, active hours, app count and topology UNKNOWN checks.
+- Synchronized package, Tauri and Cargo versions to `1.0.1`.
+
+### Not verified
+
+- Dependency installation not run in ChatGPT GitHub connector environment.
+- Frontend build not run.
+- Rust check not run.
+- Tauri package build not run.
+- Real MySQL and CSV end-to-end flow not executed.
+
 ## 1.0.0 - 2026-07-03
 
 ### Added
@@ -22,7 +42,6 @@
 - Rust check not run.
 - Tauri package build not run.
 - Real MySQL and CSV end-to-end flow not executed.
-- `src-tauri/Cargo.toml` version update was blocked by platform safety checks and remains to be manually synchronized.
 
 ## 0.2.1 - 2026-07-03
 
