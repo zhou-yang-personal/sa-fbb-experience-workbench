@@ -59,6 +59,15 @@ pub struct EtlRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct EtlJobStepsRequest {
+    pub settings: MySqlSettings,
+    pub import_batch_id: String,
+    pub job_id: Option<String>,
+    pub status: Option<String>,
+    pub limit: Option<u64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct DashboardRequest {
     pub settings: MySqlSettings,
     pub import_batch_id: String,
@@ -94,6 +103,19 @@ pub struct MetricCard {
 #[derive(Debug, Clone, Serialize)]
 pub struct DashboardOverview {
     pub metrics: Vec<MetricCard>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EtlJobStepRow {
+    pub job_id: String,
+    pub job_type: String,
+    pub step_name: String,
+    pub target_table: Option<String>,
+    pub status: String,
+    pub affected_rows: Option<u64>,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+    pub message: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
