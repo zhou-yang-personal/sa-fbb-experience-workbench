@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { api } from './shared/tauriApi';
 import { phaseApi } from './shared/phaseApi';
-import type { DashboardOverview, ImportBatchResult, LeadUserRow, MetricCard, MySqlSettings } from './shared/types';
+import type { DashboardOverview, FinalLeadUserRow, ImportBatchResult, LeadUserRow, MetricCard, MySqlSettings } from './shared/types';
 
 type ImportDataType = 'tcp' | 'game' | 'crm' | 'coverage' | 'reachability';
 
@@ -30,6 +30,7 @@ function App() {
   const [qualityMetrics, setQualityMetrics] = useState<MetricCard[]>([]);
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [leads, setLeads] = useState<LeadUserRow[]>([]);
+  const [finalLeads, setFinalLeads] = useState<FinalLeadUserRow[]>([]);
 
   const allMetrics = useMemo(() => overview?.metrics ?? qualityMetrics, [overview, qualityMetrics]);
   const effectiveSettings = { ...settings, local_infile: importMode === 'load_data' };
@@ -48,7 +49,7 @@ function App() {
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">SA FBB Experience Workbench</div>
-        <nav>{['Settings', 'Import', 'Quality', 'ETL', 'Dashboard', 'Leads', 'Export', 'Phase 1-7'].map((item) => <button key={item} type="button" className="nav-item">{item}</button>)}</nav>
+        <nav>{['Settings', 'Import', 'Quality', 'ETL', 'Dashboard', 'Leads', 'Final Leads'].map((item) => <button key={item} type="button" className="nav-item">{item}</button>)}</nav>
       </aside>
       <section className="content">
         <header className="hero-card">
@@ -57,7 +58,7 @@ function App() {
             <h1>SA 家宽应用体验本地分析工作台</h1>
             <p className="hero-text">Phase 1-7 的设计入口已落到 dev：导入、质量门禁、ETL、四类看板、Lead 模型、CRM/覆盖/触达融合、导出闭环。</p>
           </div>
-          <div className="version-card"><span>Version</span><strong>1.0.3</strong></div>
+          <div className="version-card"><span>Version</span><strong>1.0.4</strong></div>
         </header>
 
         <section className="panel form-panel">
@@ -114,14 +115,17 @@ function App() {
             <button onClick={() => loadCards('app_category', () => phaseApi.dashboardGetAppCategory(settings, importBatchId, analysisRunId))}>应用看板</button>
             <button onClick={() => loadCards('experience_quality', () => phaseApi.dashboardGetExperienceQuality(settings, importBatchId, analysisRunId))}>体验看板</button>
             <button onClick={() => loadCards('cable_fiber_compare', () => phaseApi.dashboardGetCableFiberCompare(settings, importBatchId, analysisRunId))}>Cable/FTTH</button>
-            <button onClick={() => loadCards('final_lead_summary', () => phaseApi.leadsGetFinalSummary(settings, importBatchId, analysisRunId))}>Final Lead</button>
-            <button onClick={async () => { const result = await runAction('leads_query_users', () => api.leadsQueryUsers(settings, analysisRunId)); if (Array.isArray(result)) setLeads(result as LeadUserRow[]); }}>查询 Lead</button>
-            <button onClick={() => runAction('export_leads_csv', () => api.exportLeadsCsv(settings, analysisRunId, outputPath))}>导出</button>
+            <button onClick={() => loadCards('final_lead_summary', () => phaseApi.leadsGetFinalSummary(settings, importBatchId, analysisRunId))}>Final Lead 汇总</button>
+            <button onClick={async () => { const result = await runAction('leads_query_users', () => api.leadsQueryUsers(settings, analysisRunId)); if (Array.isArray(result)) setLeads(result as LeadUserRow[]); }}>查询 SA Lead</button>
+            <button onClick={async () => { const result = await runAction('final_leads_query_users', () => api.finalLeadsQueryUsers(settings, analysisRunId)); if (Array.isArray(result)) setFinalLeads(result as FinalLeadUserRow[]); }}>查询 Final Lead</button>
+            <button onClick={() => runAction('export_leads_csv', () => api.exportLeadsCsv(settings, analysisRunId, outputPath))}>导出 SA Lead</button>
+            <button onClick={() => runAction('export_final_leads_csv', () => api.exportFinalLeadsCsv(settings, analysisRunId, outputPath))}>导出 Final Lead</button>
           </div>
         </section>
 
         <section className="metric-grid">{allMetrics.map((metric) => <article key={metric.label} className="metric-card"><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.hint}</small></article>)}</section>
-        <section className="two-column"><article className="panel"><h2>Lead 用户</h2><div className="table-like">{leads.map((lead) => <div key={lead.user_key} className="table-row lead-row"><span>{lead.demand_score}/{lead.migration_motive_score}</span><span>{lead.user_key}</span><span>{lead.lead_type}</span></div>)}</div></article><article className="panel"><h2>执行日志</h2><div className="log-list">{log.map((line) => <pre key={line}>{line}</pre>)}</div></article></section>
+        <section className="two-column"><article className="panel"><h2>SA Lead 用户</h2><div className="table-like">{leads.map((lead) => <div key={lead.user_key} className="table-row lead-row"><span>{lead.demand_score}/{lead.migration_motive_score}</span><span>{lead.user_key}</span><span>{lead.lead_type}</span></div>)}</div></article><article className="panel"><h2>Final Lead 用户</h2><div className="table-like">{finalLeads.map((lead) => <div key={lead.user_key} className="table-row lead-row"><span>{lead.final_action}</span><span>{lead.user_key}</span><span>{lead.crm_user_id ?? '-'}</span><span>{lead.ftth_available_flag ?? 'UNKNOWN'}/{lead.reachable_flag ?? 'N'}</span></div>)}</div></article></section>
+        <section className="panel"><h2>执行日志</h2><div className="log-list">{log.map((line) => <pre key={line}>{line}</pre>)}</div></section>
       </section>
     </main>
   );
