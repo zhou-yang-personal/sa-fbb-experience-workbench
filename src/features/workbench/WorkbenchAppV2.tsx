@@ -2,8 +2,8 @@ import { ConnectionPanel } from './ConnectionPanel';
 import { ExecutionLog } from './ExecutionLog';
 import { ImportPanel } from './ImportPanel';
 import { MetricGrid } from './MetricGrid';
+import { OpsPanel } from './OpsPanel';
 import { ResultTables } from './ResultTables';
-import { TaskCenter2 } from './TaskCenter2';
 import { WorkbenchHeader } from './WorkbenchHeader';
 import { useWorkbenchController } from './useWorkbenchController';
 
@@ -24,7 +24,7 @@ export function WorkbenchAppV2() {
           <ImportPanel {...c} />
           <article className="panel"><h2>Pipeline</h2><ol className="pipeline-list">{pipelineSteps.map((step) => <li key={step}>{step}</li>)}</ol></article>
         </section>
-        <TaskCenter2 />
+        <OpsPanel {...c} />
         <MetricGrid metrics={c.allMetrics} />
         <ResultTables leads={c.leads} finalLeads={c.finalLeads} />
         <ExecutionLog log={c.log} />
