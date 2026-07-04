@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.4
+1.0.5
 ```
 
 ## Source-of-truth branch
@@ -22,7 +22,7 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - MySQL metadata / dim / raw / dwd / dws / ads schema baseline.
 - Extended schema for CRM, FTTH coverage, reachability, dashboard ADS and final marketing leads.
 - CRM, coverage and reachability RAW tables include source trace fields.
-- Database initialization command with both core and extended schema.
+- Database initialization command with core, extended and mapping schema.
 - CSV probe, import batch and RAW load command path.
 - RAW import supports TCP, Game, CRM, FTTH Coverage and Reachability data types.
 - RAW import uses explicit column lists for all supported data types.
@@ -36,7 +36,10 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Complete DWS aggregate SQL and command.
 - Complete ADS dashboard SQL and command.
 - Migration lead scoring and final CRM / coverage / reachability fusion SQL.
-- Final fusion now adds commercial action separation: identity mapping, blacklist, arrears, contract, reachability, coverage/build and market actions.
+- Final fusion adds commercial action separation: identity mapping, blacklist, arrears, contract, reachability, coverage/build and market actions.
+- Configurable import mapping schema: `cfg_import_field_mapping`.
+- Configurable final join rule schema: `cfg_final_join_rule`.
+- Default mapping and join rule seed: `database/seeds/002_default_mapping_seed.sql`.
 - Dashboard commands for Overview, App Category, Experience Quality and Cable vs FTTH.
 - Lead query, final lead query, final lead summary, SA Lead CSV export and Final Lead CSV export commands.
 
@@ -55,12 +58,14 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Rust check was not run.
 - Tauri package build was not run.
 - Real MySQL and CSV end-to-end flow was not executed.
+- `src-tauri/tauri.conf.json` remains at the previous version because connector JSON update was blocked by platform safety checks.
+- `src-tauri/src/raw_import.rs` alias-mapping integration and `src-tauri/src/main.rs` command registration updates were blocked by platform safety checks and must be completed locally or by Codex.
 
 ## Next recommended work
 
-1. Run local dependency installation and build checks.
-2. Fix compile errors if any.
-3. Validate all five import data types on small samples.
-4. Validate final CRM / coverage / reachability lead fusion with real mapping keys.
-5. Add join key configuration instead of fixed baseline matching rules.
+1. Complete blocked wiring locally/Codex: Tauri version, raw import mapping integration, and command registration.
+2. Run local dependency installation and build checks.
+3. Fix compile errors if any.
+4. Validate all five import data types on small samples.
+5. Validate final CRM / coverage / reachability lead fusion with real mapping keys.
 6. Replace remaining baseline SQL with measured production SQL after local test.
