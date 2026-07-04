@@ -139,6 +139,11 @@ fn etl_job_health_card(failed_jobs: u64, running_jobs: u64, latest_status: &str)
     MetricCard { label: "ETL job health".to_string(), value: value.to_string(), hint: format!("failed_jobs={failed_jobs}, running_jobs={running_jobs}, latest_status={latest_status}; inspect recent jobs before rerunning downstream phases") }
 }
 
+fn etl_duration_card(max_job_minutes: u64, running_jobs: u64) -> MetricCard {
+    let value = if max_job_minutes == 0 { "unknown" } else if running_jobs > 0 { "running" } else if max_job_minutes >= 60 { "long_job" } else { "normal" };
+    MetricCard { label: "ETL duration".to_string(), value: value.to_string(), hint: format!("max_job_minutes={max_job_minutes}, running_jobs={running_jobs}; long jobs may indicate slow SQL, lock wait, or oversized batch") }
+}
+
 fn pipeline_stage_summary_card(raw_rows: u64, clean_rows: u64, dws_users: u64, ads_leads: u64) -> MetricCard {
     let value = if raw_rows == 0 {
         "raw_missing"
@@ -182,8 +187,8 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
     let clean_game_rows: Option<u64> = conn.exec_first("SELECT COUNT(*) FROM dwd_game_detail_clean WHERE import_batch_id=?", (&import_batch_id,)).map_err(|err| err.to_string())?;
     let dws_users: Option<u64> = conn.exec_first("SELECT COUNT(DISTINCT user_key) FROM dws_user_daily_profile WHERE import_batch_id=?", (&import_batch_id,)).map_err(|err| err.to_string())?;
     let ads_leads: Option<u64> = conn.exec_first("SELECT COUNT(*) FROM ads_migration_lead_user WHERE analysis_run_id IN (SELECT analysis_run_id FROM meta_analysis_run WHERE import_batch_id=?)", (&import_batch_id,)).map_err(|err| err.to_string())?;
-    let job_health: Option<(u64, u64, String)> = conn.exec_first(
-        "SELECT COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN status IN ('running','pending') THEN 1 ELSE 0 END),0), COALESCE((SELECT status FROM meta_etl_job WHERE import_batch_id=? ORDER BY COALESCE(finished_at, started_at) DESC LIMIT 1),'') FROM meta_etl_job WHERE import_batch_id=?",
+    let job_health: Option<(u64, u64, String, u64)> = conn.exec_first(
+        "SELECT COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN status IN ('running','pending') THEN 1 ELSE 0 END),0), COALESCE((SELECT status FROM meta_etl_job WHERE import_batch_id=? ORDER BY COALESCE(finished_at, started_at) DESC LIMIT 1),''), COALESCE(MAX(TIMESTAMPDIFF(MINUTE, started_at, COALESCE(finished_at, NOW()))),0) FROM meta_etl_job WHERE import_batch_id=?",
         (&import_batch_id, &import_batch_id),
     ).map_err(|err| err.to_string())?;
     let import_meta: Option<(String, u64, u64, String)> = conn.exec_first(
@@ -198,7 +203,7 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
     let ads_leads = ads_leads.unwrap_or(0);
     let raw_rows = tcp_rows + game_rows;
     let clean_rows = clean_video_rows + clean_game_rows;
-    let (failed_jobs, running_jobs, latest_status) = job_health.unwrap_or((0, 0, String::new()));
+    let (failed_jobs, running_jobs, latest_status, max_job_minutes) = job_health.unwrap_or((0, 0, String::new(), 0));
     let (import_status, imported_rows, total_rows, data_type) = import_meta.unwrap_or(("unknown".to_string(), 0, 0, "unknown".to_string()));
     Ok(vec![
         MetricCard { label: "RAW TCP rows".to_string(), value: tcp_rows.to_string(), hint: "raw_tcp_detail_import".to_string() },
@@ -215,6 +220,7 @@ fn quality_get_batch_report(settings: MySqlSettings, import_batch_id: String) ->
         dws_readiness_card(clean_rows, dws_users),
         ads_readiness_card(dws_users, ads_leads),
         etl_job_health_card(failed_jobs, running_jobs, &latest_status),
+        etl_duration_card(max_job_minutes, running_jobs),
     ])
 }
 
