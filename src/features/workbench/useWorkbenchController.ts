@@ -1,8 +1,17 @@
 import { useMemo, useState } from 'react';
-import type { DashboardChartGroup, DashboardOverview, EtlJobStepRow, FinalLeadUserRow, ImportBatchResult, ImportDataType, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
+import type { DashboardChartGroup, DashboardOverview, EtlJobStepRow, ExecutionLogEntry, FinalLeadUserRow, ImportBatchResult, ImportDataType, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
 import { workbenchApi } from './workbenchApi';
 
 const defaultSettings: MySqlSettings = { host: '127.0.0.1', port: 3306, database: 'sa_vbp', user: 'root', secret: '', local_infile: true };
+
+function stringifyPreview(value: unknown) {
+  try {
+    const text = JSON.stringify(value);
+    return text.length > 1200 ? `${text.slice(0, 1200)}…` : text;
+  } catch {
+    return String(value);
+  }
+}
 
 export function useWorkbenchController() {
   const [settings, setSettings] = useState<MySqlSettings>(defaultSettings);
@@ -13,7 +22,7 @@ export function useWorkbenchController() {
   const [analysisRunId, setAnalysisRunId] = useState('RUN_MANUAL_001');
   const [outputPath, setOutputPath] = useState('leads_export.csv');
   const [exportFinalActions, setExportFinalActions] = useState<string[]>([]);
-  const [log, setLog] = useState<string[]>([]);
+  const [log, setLog] = useState<ExecutionLogEntry[]>([]);
   const [batch, setBatch] = useState<ImportBatchResult | null>(null);
   const [metrics, setMetrics] = useState<MetricCard[]>([]);
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
@@ -24,10 +33,37 @@ export function useWorkbenchController() {
   const effectiveSettings = useMemo(() => ({ ...settings, local_infile: importMode === 'load_data' }), [settings, importMode]);
   const allMetrics = useMemo(() => overview?.metrics ?? metrics, [overview, metrics]);
 
-  function appendLog(message: string) { setLog((items) => [`${new Date().toLocaleTimeString()} ${message}`, ...items].slice(0, 80)); }
+  function appendLog(entry: ExecutionLogEntry) { setLog((items) => [entry, ...items].slice(0, 120)); }
   async function runAction(label: string, action: () => Promise<unknown>) {
-    try { const result = await action(); appendLog(`${label}: ${JSON.stringify(result)}`); return result; }
-    catch (error) { appendLog(`${label} failed: ${error instanceof Error ? error.message : String(error)}`); return null; }
+    const startedAt = new Date();
+    const startedMs = Date.now();
+    try {
+      const result = await action();
+      const finishedAt = new Date();
+      appendLog({
+        id: `${startedMs}-${label}`,
+        command: label,
+        status: 'success',
+        started_at: startedAt.toISOString(),
+        finished_at: finishedAt.toISOString(),
+        duration_ms: finishedAt.getTime() - startedMs,
+        message: 'Command completed successfully.',
+        result_preview: stringifyPreview(result),
+      });
+      return result;
+    } catch (error) {
+      const finishedAt = new Date();
+      appendLog({
+        id: `${startedMs}-${label}`,
+        command: label,
+        status: 'failure',
+        started_at: startedAt.toISOString(),
+        finished_at: finishedAt.toISOString(),
+        duration_ms: finishedAt.getTime() - startedMs,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
   async function loadMetrics(label: string, action: () => Promise<MetricCard[]>) {
     const result = await runAction(label, action);
