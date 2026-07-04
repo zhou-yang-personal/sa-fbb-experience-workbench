@@ -112,7 +112,7 @@ pub struct EtlJobStepRow {
     pub step_name: String,
     pub target_table: Option<String>,
     pub status: String,
-    pub affected_rows: Option<u64>,
+    pub affected_rows: Option<i64>,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
     pub message: Option<String>,
