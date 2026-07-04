@@ -1,5 +1,25 @@
 # CHANGELOG-dev
 
+## 1.0.10 - 2026-07-04
+
+### Added
+
+- Added optional server-side filters to `LeadsQueryRequest`: `lead_type`, `final_action` and `keyword`.
+- Updated `leads_query_users` to apply server-side page / page_size / lead_type / keyword filtering.
+- Updated `final_leads_query_users` to apply server-side page / page_size / final_action / keyword filtering.
+- Added `final_actions` support to `ExportLeadsRequest` and `export_final_leads_csv` for action-scoped Final Lead CSV export.
+- Added frontend Lead Center controls for backend keyword, SA lead_type, Final final_action, page and page size.
+- Updated Final Lead export presets so Market Upsell and Reachability presets set both filename and final-action export scope.
+- Synchronized Workbench header, package, Cargo, Tauri config, README, handoff and project rules to `1.0.10`.
+
+### Not verified
+
+- Dependency installation not run in ChatGPT GitHub connector environment.
+- Frontend build not run.
+- Rust check not run.
+- Tauri package build not run.
+- Real MySQL and CSV end-to-end flow not executed.
+
 ## 1.0.9 - 2026-07-04
 
 ### Added
