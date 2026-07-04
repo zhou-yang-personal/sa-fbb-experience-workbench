@@ -59,6 +59,7 @@ export type WorkbenchController = {
 function stringifyPreview(value: unknown) {
   try {
     const text = JSON.stringify(value);
+    if (typeof text !== 'string') return String(value);
     return text.length > 1200 ? `${text.slice(0, 1200)}…` : text;
   } catch {
     return String(value);
