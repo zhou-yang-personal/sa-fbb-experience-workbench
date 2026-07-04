@@ -29,4 +29,8 @@ export const api = {
     invoke<CommandAck>('export_leads_csv', { req: { settings, analysis_run_id: analysisRunId, output_path: outputPath } }),
   exportFinalLeadsCsv: (settings: MySqlSettings, analysisRunId: string, outputPath: string) =>
     invoke<CommandAck>('export_final_leads_csv', { req: { settings, analysis_run_id: analysisRunId, output_path: outputPath } }),
+  configSeedDefaults: (settings: MySqlSettings) => invoke<CommandAck>('config_seed_defaults', { settings }),
+  configGetImportMappings: (settings: MySqlSettings, dataType: string) =>
+    invoke<MetricCard[]>('config_get_import_mappings', { settings, dataType }),
+  configGetJoinRules: (settings: MySqlSettings) => invoke<MetricCard[]>('config_get_join_rules', { settings }),
 };
