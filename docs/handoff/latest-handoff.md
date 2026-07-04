@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.12
+1.0.13
 ```
 
 ## Source-of-truth branch
@@ -55,6 +55,10 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - `main.rs` registers split command modules, config commands, mapped import, mapping validation, mapping result, dataset profile, ETL step inspection, structured ETL step detail and quality result inspection.
 - Final Lead fusion command uses the configurable fusion builder.
 - Modular frontend shell exists in `src/features/workbench/WorkbenchAppV2.tsx` and is mounted from `src/main.tsx`.
+- `src/main.tsx` is the active React entry and mounts `WorkbenchAppV2` directly.
+- `src/App.tsx` is now a compatibility wrapper that forwards to `WorkbenchAppV2`.
+- `src/features/workbench/WorkbenchApp.tsx` is now a compatibility wrapper that forwards to `WorkbenchAppV2`.
+- `OpsPanel` and `TaskCenter2` are legacy placeholders retained for stale imports only.
 - Import Center exposes mapping validation, mapping summary, mapping results, dataset profile refresh and dataset profile view.
 - Quality Center, ETL Job Center, Dashboard Center and Final Lead Center are separated frontend panels.
 - Dashboard Center supports multi-chart panels for App Category, Experience Quality, Cable vs FTTH and Final Action Mix.
@@ -73,7 +77,7 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 - Reusable frontend components exist for connection, import, quality, ETL, dashboard, lead, metric grid, result tables, pagination, execution log and ECharts metric bar.
 - Dashboard commands for Overview, App Category, Experience Quality and Cable vs FTTH.
 - Lead query, final lead query, final lead summary, SA Lead CSV export and Final Lead CSV export commands.
-- Package, Cargo and Tauri app config are synchronized to `1.0.12`.
+- Package, Cargo and Tauri app config are synchronized to `1.0.13`.
 
 ## Important rules
 
@@ -97,4 +101,4 @@ The project now includes the Phase 1-7 complete application baseline plus deviat
 2. Fix compile errors if any.
 3. Validate Dashboard Charts, server-side Lead query filtering, final-action export filters and ETL Step Detail against real MySQL data.
 4. Validate all five import data types on small samples.
-5. Continue old-entry legacy cleanup only after confirming current `WorkbenchAppV2` path compiles.
+5. After local compile confirms no stale imports, consider deleting legacy placeholders in a separate cleanup round.
