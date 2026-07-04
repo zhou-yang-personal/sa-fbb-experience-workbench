@@ -1,5 +1,25 @@
 # CHANGELOG-dev
 
+## 1.0.13 - 2026-07-04
+
+### Changed
+
+- Confirmed `src/main.tsx` remains the active React entry and mounts `WorkbenchAppV2` directly.
+- Reduced legacy entry drift by turning `src/App.tsx` into a compatibility wrapper that forwards to `WorkbenchAppV2`.
+- Reduced legacy shell drift by turning `src/features/workbench/WorkbenchApp.tsx` into a compatibility wrapper that forwards to `WorkbenchAppV2`.
+- Converted `OpsPanel` into a legacy placeholder instead of a stale duplicate operations composer.
+- Marked `TaskCenter2` as a legacy placeholder.
+- Kept legacy files in place instead of deleting them, pending local compile confirmation for stale imports.
+- Synchronized Workbench header, package, Cargo, Tauri config, README, handoff and project rules to `1.0.13`.
+
+### Not verified
+
+- Dependency installation not run in ChatGPT GitHub connector environment.
+- Frontend build not run.
+- Rust check not run.
+- Tauri package build not run.
+- Real MySQL and CSV end-to-end flow not executed.
+
 ## 1.0.12 - 2026-07-04
 
 ### Added
