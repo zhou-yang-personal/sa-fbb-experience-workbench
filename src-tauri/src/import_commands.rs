@@ -27,7 +27,6 @@ pub fn import_create_batch(req: CreateBatchRequest) -> Result<ImportBatchResult,
     Ok(ImportBatchResult { import_batch_id, data_type: req.data_type, source_file_name, status: "pending".to_string() })
 }
 
-#[tauri::command]
 pub fn import_start_raw_load(req: RawLoadRequest) -> Result<CommandAck, String> {
     raw_import::start_raw_load(req).map(ack)
 }
