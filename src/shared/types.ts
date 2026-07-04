@@ -51,6 +51,20 @@ export interface LeadUserRow {
   recommended_offer?: string;
 }
 
+export interface FinalLeadUserRow {
+  user_key: string;
+  crm_user_id?: string;
+  lead_type: string;
+  demand_score: number;
+  migration_motive_score: number;
+  current_plan_name?: string;
+  current_arpu?: number;
+  ftth_available_flag?: string;
+  reachable_flag?: string;
+  final_action?: string;
+  recommended_offer?: string;
+}
+
 export interface ImportBatchSummary {
   importBatchId: string;
   dataType: ImportDataType;
