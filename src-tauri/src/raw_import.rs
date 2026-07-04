@@ -35,10 +35,26 @@ const GAME_COLUMNS: &[&str] = &[
     "upstream_rtt_jitter_ms", "downstream_rtt_jitter_ms", "game_duration_s", "single_flow_rate_kbps", "wifi_delay_ms",
 ];
 
+const CRM_COLUMNS: &[&str] = &[
+    "crm_user_id", "user_account", "user_mac", "current_plan_name", "current_plan_speed_mbps", "current_arpu",
+    "contract_status", "arrears_flag", "blacklist_flag",
+];
+
+const COVERAGE_COLUMNS: &[&str] = &[
+    "area_key", "city", "neighborhood", "hp", "hc", "ftth_available_flag", "build_priority",
+];
+
+const REACHABILITY_COLUMNS: &[&str] = &[
+    "crm_user_id", "user_account", "phone_available_flag", "sms_available_flag", "app_push_available_flag", "last_contact_result",
+];
+
 fn raw_spec(data_type: &str) -> Result<RawSpec, String> {
     match data_type.to_lowercase().as_str() {
         "tcp" => Ok(RawSpec { table: "raw_tcp_detail_import", columns: TCP_COLUMNS }),
         "game" => Ok(RawSpec { table: "raw_game_detail_import", columns: GAME_COLUMNS }),
+        "crm" => Ok(RawSpec { table: "raw_crm_user_import", columns: CRM_COLUMNS }),
+        "coverage" => Ok(RawSpec { table: "raw_ftth_coverage_import", columns: COVERAGE_COLUMNS }),
+        "reachability" => Ok(RawSpec { table: "raw_reachability_import", columns: REACHABILITY_COLUMNS }),
         other => Err(format!("unsupported raw data type: {other}")),
     }
 }
