@@ -93,7 +93,7 @@ pub fn final_leads_query_users(req: LeadsQueryRequest) -> Result<Vec<FinalLeadUs
     params.push(Value::UInt(page_size));
     params.push(Value::UInt(offset));
     let sql = format!(
-        "SELECT user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, current_arpu, ftth_available_flag, reachable_flag, final_action, recommended_offer FROM ads_final_marketing_lead_user WHERE {} ORDER BY final_action, demand_score DESC, migration_motive_score DESC LIMIT ? OFFSET ?",
+        "SELECT user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, CAST(current_arpu AS DOUBLE), ftth_available_flag, reachable_flag, final_action, recommended_offer FROM ads_final_marketing_lead_user WHERE {} ORDER BY final_action, demand_score DESC, migration_motive_score DESC LIMIT ? OFFSET ?",
         where_sql.join(" AND ")
     );
     conn.exec_map(
@@ -141,7 +141,7 @@ pub fn export_final_leads_csv(req: ExportLeadsRequest) -> Result<CommandAck, Str
         }
     }
     let sql = format!(
-        "SELECT user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, current_arpu, ftth_available_flag, reachable_flag, final_action, recommended_offer FROM ads_final_marketing_lead_user WHERE {} ORDER BY final_action, demand_score DESC, migration_motive_score DESC LIMIT ? OFFSET ?",
+        "SELECT user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, CAST(current_arpu AS DOUBLE), ftth_available_flag, reachable_flag, final_action, recommended_offer FROM ads_final_marketing_lead_user WHERE {} ORDER BY final_action, demand_score DESC, migration_motive_score DESC LIMIT ? OFFSET ?",
         where_sql.join(" AND ")
     );
     let mut writer = csv::Writer::from_path(&req.output_path).map_err(|err| format!("failed to create final lead export file: {err}"))?;
