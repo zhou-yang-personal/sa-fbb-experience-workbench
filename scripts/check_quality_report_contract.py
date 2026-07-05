@@ -66,6 +66,8 @@ FORBIDDEN_OPERATIONAL_TERMS = {
     "runtime drop view": "DROP VIEW",
     "runtime create schema": "CREATE SCHEMA",
     "runtime drop schema": "DROP SCHEMA",
+    "runtime create sequence": "CREATE SEQUENCE",
+    "runtime drop sequence": "DROP SEQUENCE",
     "runtime grant mutation": "GRANT ",
     "runtime revoke mutation": "REVOKE ",
     "bulk raw export in quality report": "SELECT * FROM raw_",
