@@ -33,6 +33,7 @@ REQUIRED_CONCEPTS = {
     "row-count bounded read": "COUNT(*)",
     "bounded latest batch CTE": "WITH latest_batch AS",
     "explicit batch id projection": "import_batch_id",
+    "quality report command boundary": "quality_report",
 }
 
 FORBIDDEN_OPERATIONAL_TERMS = {
@@ -49,7 +50,10 @@ FORBIDDEN_OPERATIONAL_TERMS = {
     "runtime insert": "INSERT INTO",
     "runtime replace": "REPLACE INTO",
     "runtime update": "UPDATE ",
+    "runtime merge": "MERGE INTO",
     "runtime upsert conflict": "ON CONFLICT",
+    "runtime attach database": "ATTACH DATABASE",
+    "runtime detach database": "DETACH DATABASE",
     "bulk raw export in quality report": "SELECT * FROM raw_",
     "bulk clean export in quality report": "SELECT * FROM dwd_",
     "bulk ads export in quality report": "SELECT * FROM ads_",
