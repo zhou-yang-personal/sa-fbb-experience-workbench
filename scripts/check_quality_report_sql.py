@@ -55,6 +55,7 @@ UNBOUNDED_AGGREGATE_RE = re.compile(
     r"(?is)SELECT\s+[^;]*(?:SUM|AVG|MIN|MAX|COUNT)\s*\([^;]*\)\s+FROM\s+(raw_|dwd_|dws_|ads_)[a-z0-9_]+(?![^;]{0,220}\bWHERE\b)"
 )
 LATEST_BATCH_SCOPE_RE = re.compile(r"(?is)batch_id\s*=\s*\(\s*SELECT\s+MAX\s*\(\s*batch_id\s*\)")
+LATEST_IMPORT_BATCH_SCOPE_RE = re.compile(r"(?is)batch_id\s*=\s*\(\s*SELECT\s+MAX\s*\(\s*batch_id\s*\)\s+FROM\s+meta_import_batch")
 QUALITY_TABLE_RE = re.compile(r"(?is)\bFROM\s+(raw_|dwd_|dws_|ads_)[a-z0-9_]+")
 ORDERED_WITHOUT_LIMIT_RE = re.compile(r"(?is)\bORDER\s+BY\b(?![^;]{0,160}\bLIMIT\b)")
 
@@ -132,6 +133,22 @@ def find_unscoped_quality_table_sql(content: str) -> list[str]:
     return findings
 
 
+def find_unscoped_latest_batch_subqueries(content: str) -> list[str]:
+    """Return max(batch_id) quality SQL that is not anchored to meta_import_batch.
+
+    The quality report compares multiple pipeline layers. Anchoring latest-batch
+    lookups through ``meta_import_batch`` keeps cards aligned to the import ledger
+    instead of whichever downstream table happens to have the largest batch id.
+    """
+    findings: list[str] = []
+    for literal in extract_sql_string_literals(content):
+        if not QUALITY_TABLE_RE.search(literal):
+            continue
+        if LATEST_BATCH_SCOPE_RE.search(literal) and not LATEST_IMPORT_BATCH_SCOPE_RE.search(literal):
+            findings.append(literal.replace("\n", " ")[:160])
+    return findings
+
+
 def find_ordered_quality_sql_without_limit(content: str) -> list[str]:
     """Return ordered quality SQL snippets without a LIMIT clause.
 
@@ -157,8 +174,9 @@ def main() -> int:
     unbounded_counts = find_unbounded_quality_counts(content)
     unbounded_aggregates = find_unbounded_quality_aggregates(content)
     unscoped_quality_sql = find_unscoped_quality_table_sql(content)
+    unscoped_latest_batch = find_unscoped_latest_batch_subqueries(content)
     ordered_without_limit = find_ordered_quality_sql_without_limit(content)
-    if missing_sql or missing_cards or duplicate_cards or forbidden_sql or mutating_sql or unbounded_counts or unbounded_aggregates or unscoped_quality_sql or ordered_without_limit:
+    if missing_sql or missing_cards or duplicate_cards or forbidden_sql or mutating_sql or unbounded_counts or unbounded_aggregates or unscoped_quality_sql or unscoped_latest_batch or ordered_without_limit:
         if missing_sql:
             print("missing SQL markers:")
             for marker in missing_sql:
@@ -190,6 +208,10 @@ def main() -> int:
         if unscoped_quality_sql:
             print("unscoped quality pipeline SQL strings:")
             for query in unscoped_quality_sql:
+                print(f"- {query}")
+        if unscoped_latest_batch:
+            print("unscoped latest-batch quality SQL strings:")
+            for query in unscoped_latest_batch:
                 print(f"- {query}")
         if ordered_without_limit:
             print("ordered quality SQL without LIMIT:")
