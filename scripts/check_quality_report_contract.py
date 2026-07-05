@@ -1,0 +1,51 @@
+# -*- coding: utf-8 -*-
+"""Contract guard for the data quality report implementation.
+
+The quality report is opened from the local workbench UI, so it must remain a
+read-only, bounded, explainable summary. This guard complements the SQL/card
+marker check by ensuring the Rust entry still exposes a small set of expected
+quality concepts without drifting into broad operational actions.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+MAIN_RS = ROOT / "src-tauri" / "src" / "main.rs"
+
+REQUIRED_CONCEPTS = {
+    "import ledger anchor": "meta_import_batch",
+    "etl job health": "meta_etl_job",
+    "quality risk card": "Quality risk",
+    "next action card": "Next action",
+    "csv/raw reconciliation": "CSV vs RAW rows",
+    "clean conversion readiness": "CLEAN conversion",
+    "ads lead readiness": "ADS readiness",
+}
+
+FORBIDDEN_OPERATIONAL_TERMS = {
+    "destructive raw delete": "DELETE FROM raw_",
+    "destructive clean delete": "DELETE FROM dwd_",
+    "destructive ads delete": "DELETE FROM ads_",
+    "runtime table creation": "CREATE TABLE",
+    "runtime truncate": "TRUNCATE TABLE",
+}
+
+
+def main() -> int:
+    source = MAIN_RS.read_text(encoding="utf-8")
+    missing = [label for label, snippet in REQUIRED_CONCEPTS.items() if snippet not in source]
+    forbidden = [label for label, snippet in FORBIDDEN_OPERATIONAL_TERMS.items() if snippet in source]
+    if missing or forbidden:
+        print("quality report contract guard failed:")
+        for label in missing:
+            print(f"- missing {label}")
+        for label in forbidden:
+            print(f"- forbidden {label}")
+        return 1
+    print("quality report contract guard passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
