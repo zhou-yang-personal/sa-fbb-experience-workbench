@@ -21,6 +21,8 @@ REQUIRED_CONCEPTS = {
     "csv/raw reconciliation": "CSV vs RAW rows",
     "clean conversion readiness": "CLEAN conversion",
     "ads lead readiness": "ADS readiness",
+    "bounded latest batch duration": "ETL duration",
+    "import completion summary": "Import completion",
 }
 
 FORBIDDEN_OPERATIONAL_TERMS = {
@@ -29,6 +31,8 @@ FORBIDDEN_OPERATIONAL_TERMS = {
     "destructive ads delete": "DELETE FROM ads_",
     "runtime table creation": "CREATE TABLE",
     "runtime truncate": "TRUNCATE TABLE",
+    "bulk raw export in quality report": "SELECT * FROM raw_",
+    "bulk clean export in quality report": "SELECT * FROM dwd_",
 }
 
 
