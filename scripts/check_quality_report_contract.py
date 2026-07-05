@@ -46,6 +46,10 @@ FORBIDDEN_OPERATIONAL_TERMS = {
     "runtime temp table creation": "CREATE TEMP",
     "runtime drop table": "DROP TABLE",
     "runtime alter table": "ALTER TABLE",
+    "runtime rename table": "RENAME TABLE",
+    "runtime rename column": "RENAME COLUMN",
+    "runtime add column": "ADD COLUMN",
+    "runtime drop column": "DROP COLUMN",
     "runtime vacuum": "VACUUM",
     "runtime analyze": "ANALYZE ",
     "runtime pragma mutation": "PRAGMA writable_schema",
@@ -98,6 +102,10 @@ FORBIDDEN_SQL_PATTERNS = {
     "unbounded latest batch order": re.compile(r"ORDER\s+BY\s+imported_at\s+DESC\s*;", re.IGNORECASE),
     "wildcard latest batch projection": re.compile(r"SELECT\s+\*\s+FROM\s+[\"`']?latest_batch", re.IGNORECASE),
     "wildcard metadata projection": re.compile(r"SELECT\s+\*\s+FROM\s+[\"`']?meta_import_batch", re.IGNORECASE),
+    "runtime quoted create table": re.compile(r"\bCREATE\s+(?:TEMP(?:ORARY)?\s+)?TABLE\s+[\"`']?", re.IGNORECASE),
+    "runtime quoted alter table": re.compile(r"\bALTER\s+TABLE\s+[\"`']?", re.IGNORECASE),
+    "runtime quoted drop table": re.compile(r"\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?[\"`']?", re.IGNORECASE),
+    "runtime quoted index mutation": re.compile(r"\b(?:CREATE|DROP)\s+(?:UNIQUE\s+)?INDEX\s+", re.IGNORECASE),
 }
 
 
