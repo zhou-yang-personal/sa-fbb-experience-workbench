@@ -24,6 +24,8 @@ REQUIRED_CONCEPTS = {
     "bounded latest batch duration": "ETL duration",
     "import completion summary": "Import completion",
     "latest-batch scope": "latest_batch",
+    "latest-batch timestamp ordering": "ORDER BY imported_at DESC",
+    "latest-batch single-row bound": "LIMIT 1",
     "type alignment summary": "Data type alignment",
 }
 
