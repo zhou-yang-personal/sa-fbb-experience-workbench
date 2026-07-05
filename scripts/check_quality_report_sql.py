@@ -54,6 +54,8 @@ UNBOUNDED_QUALITY_COUNT_RE = re.compile(
 UNBOUNDED_AGGREGATE_RE = re.compile(
     r"(?is)SELECT\s+[^;]*(?:SUM|AVG|MIN|MAX|COUNT)\s*\([^;]*\)\s+FROM\s+(raw_|dwd_|dws_|ads_)[a-z0-9_]+(?![^;]{0,220}\bWHERE\b)"
 )
+LATEST_BATCH_SCOPE_RE = re.compile(r"(?is)batch_id\s*=\s*\(\s*SELECT\s+MAX\s*\(\s*batch_id\s*\)")
+QUALITY_TABLE_RE = re.compile(r"(?is)\bFROM\s+(raw_|dwd_|dws_|ads_)[a-z0-9_]+")
 
 
 def extract_sql_string_literals(content: str) -> list[str]:
@@ -112,6 +114,23 @@ def find_unbounded_quality_aggregates(content: str) -> list[str]:
     return [match.group(0).replace("\n", " ")[:160] for match in UNBOUNDED_AGGREGATE_RE.finditer(content)]
 
 
+def find_unscoped_quality_table_sql(content: str) -> list[str]:
+    """Return quality SQL snippets that touch pipeline tables without latest-batch scoping.
+
+    This is deliberately softer than parsing SQL: if a report card reads RAW/CLEAN/DWS/ADS
+    tables, it must contain either an explicit WHERE clause or the current batch_id=max(batch_id)
+    idiom somewhere in the snippet. This catches accidental all-history cards.
+    """
+    findings: list[str] = []
+    for literal in extract_sql_string_literals(content):
+        if not QUALITY_TABLE_RE.search(literal):
+            continue
+        if re.search(r"(?is)\bWHERE\b", literal) or LATEST_BATCH_SCOPE_RE.search(literal):
+            continue
+        findings.append(literal.replace("\n", " ")[:160])
+    return findings
+
+
 def main() -> int:
     content = MAIN_RS.read_text(encoding="utf-8")
     missing_sql = [marker for marker in REQUIRED_SQL_MARKERS if marker not in content]
@@ -121,7 +140,8 @@ def main() -> int:
     mutating_sql = find_mutating_quality_sql(content)
     unbounded_counts = find_unbounded_quality_counts(content)
     unbounded_aggregates = find_unbounded_quality_aggregates(content)
-    if missing_sql or missing_cards or duplicate_cards or forbidden_sql or mutating_sql or unbounded_counts or unbounded_aggregates:
+    unscoped_quality_sql = find_unscoped_quality_table_sql(content)
+    if missing_sql or missing_cards or duplicate_cards or forbidden_sql or mutating_sql or unbounded_counts or unbounded_aggregates or unscoped_quality_sql:
         if missing_sql:
             print("missing SQL markers:")
             for marker in missing_sql:
@@ -149,6 +169,10 @@ def main() -> int:
         if unbounded_aggregates:
             print("unbounded quality aggregate scans:")
             for query in unbounded_aggregates:
+                print(f"- {query}")
+        if unscoped_quality_sql:
+            print("unscoped quality pipeline SQL strings:")
+            for query in unscoped_quality_sql:
                 print(f"- {query}")
         return 1
     print("quality report SQL/card markers: ok")
