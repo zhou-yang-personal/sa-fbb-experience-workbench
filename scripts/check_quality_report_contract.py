@@ -31,6 +31,8 @@ REQUIRED_CONCEPTS = {
     "query row bounded read": "query_row",
     "left join bounded summary": "LEFT JOIN",
     "row-count bounded read": "COUNT(*)",
+    "bounded latest batch CTE": "WITH latest_batch AS",
+    "explicit batch id projection": "import_batch_id",
 }
 
 FORBIDDEN_OPERATIONAL_TERMS = {
@@ -46,6 +48,9 @@ FORBIDDEN_OPERATIONAL_TERMS = {
     "wildcard latest-batch join": "SELECT * FROM latest_batch",
     "wildcard metadata join": "SELECT * FROM meta_import_batch",
     "unbounded latest batch rows": "ORDER BY imported_at DESC;",
+    "unbounded raw count without batch scope": "COUNT(*) FROM raw_",
+    "unbounded clean count without batch scope": "COUNT(*) FROM dwd_",
+    "unbounded ads count without batch scope": "COUNT(*) FROM ads_",
     "cross join quality scan": "CROSS JOIN",
     "natural join quality scan": "NATURAL JOIN",
     "unbounded import metadata join": "FROM meta_import_batch m JOIN",
