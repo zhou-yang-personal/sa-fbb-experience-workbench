@@ -27,6 +27,8 @@ REQUIRED_CONCEPTS = {
     "latest-batch timestamp ordering": "ORDER BY imported_at DESC",
     "latest-batch single-row bound": "LIMIT 1",
     "type alignment summary": "Data type alignment",
+    "parameterized batch binding": "?1",
+    "query row bounded read": "query_row",
 }
 
 FORBIDDEN_OPERATIONAL_TERMS = {
@@ -39,6 +41,7 @@ FORBIDDEN_OPERATIONAL_TERMS = {
     "runtime update": "UPDATE ",
     "bulk raw export in quality report": "SELECT * FROM raw_",
     "bulk clean export in quality report": "SELECT * FROM dwd_",
+    "unbounded latest batch rows": "ORDER BY imported_at DESC;",
 }
 
 
