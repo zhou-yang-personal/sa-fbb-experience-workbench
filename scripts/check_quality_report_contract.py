@@ -8,6 +8,7 @@ quality concepts without drifting into broad operational actions.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -92,11 +93,20 @@ FORBIDDEN_OPERATIONAL_TERMS = {
     "unbounded import metadata join": "FROM meta_import_batch m JOIN",
 }
 
+FORBIDDEN_SQL_PATTERNS = {
+    "delete with quoted table": re.compile(r"\bDELETE\s+FROM\s+[\"`']?(?:raw_|dwd_|ads_|meta_)", re.IGNORECASE),
+    "unbounded latest batch order": re.compile(r"ORDER\s+BY\s+imported_at\s+DESC\s*;", re.IGNORECASE),
+    "wildcard latest batch projection": re.compile(r"SELECT\s+\*\s+FROM\s+[\"`']?latest_batch", re.IGNORECASE),
+    "wildcard metadata projection": re.compile(r"SELECT\s+\*\s+FROM\s+[\"`']?meta_import_batch", re.IGNORECASE),
+}
+
 
 def find_forbidden_terms(source: str) -> list[str]:
     """Detect operational SQL drift regardless of SQL keyword casing."""
     normalized = source.upper()
-    return [label for label, snippet in FORBIDDEN_OPERATIONAL_TERMS.items() if snippet.upper() in normalized]
+    findings = [label for label, snippet in FORBIDDEN_OPERATIONAL_TERMS.items() if snippet.upper() in normalized]
+    findings.extend(label for label, pattern in FORBIDDEN_SQL_PATTERNS.items() if pattern.search(source))
+    return sorted(set(findings))
 
 
 def main() -> int:
