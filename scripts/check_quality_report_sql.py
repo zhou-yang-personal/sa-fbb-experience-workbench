@@ -58,6 +58,7 @@ LATEST_BATCH_SCOPE_RE = re.compile(r"(?is)batch_id\s*=\s*\(\s*SELECT\s+MAX\s*\(\
 LATEST_IMPORT_BATCH_SCOPE_RE = re.compile(r"(?is)batch_id\s*=\s*\(\s*SELECT\s+MAX\s*\(\s*batch_id\s*\)\s+FROM\s+meta_import_batch")
 QUALITY_TABLE_RE = re.compile(r"(?is)\bFROM\s+(raw_|dwd_|dws_|ads_)[a-z0-9_]+")
 ORDERED_WITHOUT_LIMIT_RE = re.compile(r"(?is)\bORDER\s+BY\b(?![^;]{0,160}\bLIMIT\b)")
+LATEST_BATCH_JOIN_RE = re.compile(r"(?is)\bJOIN\s+(raw_|dwd_|dws_|ads_)[a-z0-9_]+\b")
 
 
 def extract_sql_string_literals(content: str) -> list[str]:
@@ -164,6 +165,22 @@ def find_ordered_quality_sql_without_limit(content: str) -> list[str]:
     return findings
 
 
+def find_latest_batch_joins_without_meta_anchor(content: str) -> list[str]:
+    """Return quality SQL joins over pipeline tables that lack import-ledger anchoring.
+
+    Multi-layer cards are easy to skew when joining RAW/CLEAN/DWS/ADS directly.
+    Requiring ``meta_import_batch`` in those snippets keeps the join scoped to the
+    same latest import ledger used by the rest of the report.
+    """
+    findings: list[str] = []
+    for literal in extract_sql_string_literals(content):
+        if not LATEST_BATCH_JOIN_RE.search(literal):
+            continue
+        if "meta_import_batch" not in literal:
+            findings.append(literal.replace("\n", " ")[:160])
+    return findings
+
+
 def main() -> int:
     content = MAIN_RS.read_text(encoding="utf-8")
     missing_sql = [marker for marker in REQUIRED_SQL_MARKERS if marker not in content]
@@ -176,7 +193,8 @@ def main() -> int:
     unscoped_quality_sql = find_unscoped_quality_table_sql(content)
     unscoped_latest_batch = find_unscoped_latest_batch_subqueries(content)
     ordered_without_limit = find_ordered_quality_sql_without_limit(content)
-    if missing_sql or missing_cards or duplicate_cards or forbidden_sql or mutating_sql or unbounded_counts or unbounded_aggregates or unscoped_quality_sql or unscoped_latest_batch or ordered_without_limit:
+    unanchored_latest_joins = find_latest_batch_joins_without_meta_anchor(content)
+    if missing_sql or missing_cards or duplicate_cards or forbidden_sql or mutating_sql or unbounded_counts or unbounded_aggregates or unscoped_quality_sql or unscoped_latest_batch or ordered_without_limit or unanchored_latest_joins:
         if missing_sql:
             print("missing SQL markers:")
             for marker in missing_sql:
@@ -216,6 +234,10 @@ def main() -> int:
         if ordered_without_limit:
             print("ordered quality SQL without LIMIT:")
             for query in ordered_without_limit:
+                print(f"- {query}")
+        if unanchored_latest_joins:
+            print("latest-batch joins without meta_import_batch anchor:")
+            for query in unanchored_latest_joins:
                 print(f"- {query}")
         return 1
     print("quality report SQL/card markers: ok")
