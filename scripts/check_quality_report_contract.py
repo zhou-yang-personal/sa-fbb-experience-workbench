@@ -30,6 +30,8 @@ REQUIRED_CONCEPTS = {
     "parameterized batch binding": "?1",
     "query row bounded read": "query_row",
     "left join bounded summary": "LEFT JOIN",
+    "row-count bounded read": "COUNT(*)",
+    "quality report card mapping": "quality_report_cards",
 }
 
 FORBIDDEN_OPERATIONAL_TERMS = {
@@ -45,6 +47,9 @@ FORBIDDEN_OPERATIONAL_TERMS = {
     "wildcard latest-batch join": "SELECT * FROM latest_batch",
     "wildcard metadata join": "SELECT * FROM meta_import_batch",
     "unbounded latest batch rows": "ORDER BY imported_at DESC;",
+    "cross join quality scan": "CROSS JOIN",
+    "natural join quality scan": "NATURAL JOIN",
+    "unbounded import metadata join": "FROM meta_import_batch m JOIN",
 }
 
 
