@@ -29,6 +29,7 @@ REQUIRED_CONCEPTS = {
     "type alignment summary": "Data type alignment",
     "parameterized batch binding": "?1",
     "query row bounded read": "query_row",
+    "left join bounded summary": "LEFT JOIN",
 }
 
 FORBIDDEN_OPERATIONAL_TERMS = {
@@ -41,6 +42,8 @@ FORBIDDEN_OPERATIONAL_TERMS = {
     "runtime update": "UPDATE ",
     "bulk raw export in quality report": "SELECT * FROM raw_",
     "bulk clean export in quality report": "SELECT * FROM dwd_",
+    "wildcard latest-batch join": "SELECT * FROM latest_batch",
+    "wildcard metadata join": "SELECT * FROM meta_import_batch",
     "unbounded latest batch rows": "ORDER BY imported_at DESC;",
 }
 
