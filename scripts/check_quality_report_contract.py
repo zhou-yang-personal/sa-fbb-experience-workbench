@@ -85,10 +85,16 @@ FORBIDDEN_OPERATIONAL_TERMS = {
 }
 
 
+def find_forbidden_terms(source: str) -> list[str]:
+    """Detect operational SQL drift regardless of SQL keyword casing."""
+    normalized = source.upper()
+    return [label for label, snippet in FORBIDDEN_OPERATIONAL_TERMS.items() if snippet.upper() in normalized]
+
+
 def main() -> int:
     source = MAIN_RS.read_text(encoding="utf-8")
     missing = [label for label, snippet in REQUIRED_CONCEPTS.items() if snippet not in source]
-    forbidden = [label for label, snippet in FORBIDDEN_OPERATIONAL_TERMS.items() if snippet in source]
+    forbidden = find_forbidden_terms(source)
     if missing or forbidden:
         print("quality report contract guard failed:")
         for label in missing:
