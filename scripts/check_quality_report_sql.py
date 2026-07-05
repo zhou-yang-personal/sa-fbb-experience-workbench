@@ -56,6 +56,7 @@ UNBOUNDED_AGGREGATE_RE = re.compile(
 )
 LATEST_BATCH_SCOPE_RE = re.compile(r"(?is)batch_id\s*=\s*\(\s*SELECT\s+MAX\s*\(\s*batch_id\s*\)")
 QUALITY_TABLE_RE = re.compile(r"(?is)\bFROM\s+(raw_|dwd_|dws_|ads_)[a-z0-9_]+")
+ORDERED_WITHOUT_LIMIT_RE = re.compile(r"(?is)\bORDER\s+BY\b(?![^;]{0,160}\bLIMIT\b)")
 
 
 def extract_sql_string_literals(content: str) -> list[str]:
@@ -131,6 +132,21 @@ def find_unscoped_quality_table_sql(content: str) -> list[str]:
     return findings
 
 
+def find_ordered_quality_sql_without_limit(content: str) -> list[str]:
+    """Return ordered quality SQL snippets without a LIMIT clause.
+
+    Ordered report-card lookups are usually latest/error exemplars. Without LIMIT,
+    they can force unnecessary sorting over growing local RAW/CLEAN/DWS/ADS tables.
+    """
+    findings: list[str] = []
+    for literal in extract_sql_string_literals(content):
+        if not QUALITY_TABLE_RE.search(literal):
+            continue
+        if ORDERED_WITHOUT_LIMIT_RE.search(literal):
+            findings.append(literal.replace("\n", " ")[:160])
+    return findings
+
+
 def main() -> int:
     content = MAIN_RS.read_text(encoding="utf-8")
     missing_sql = [marker for marker in REQUIRED_SQL_MARKERS if marker not in content]
@@ -141,7 +157,8 @@ def main() -> int:
     unbounded_counts = find_unbounded_quality_counts(content)
     unbounded_aggregates = find_unbounded_quality_aggregates(content)
     unscoped_quality_sql = find_unscoped_quality_table_sql(content)
-    if missing_sql or missing_cards or duplicate_cards or forbidden_sql or mutating_sql or unbounded_counts or unbounded_aggregates or unscoped_quality_sql:
+    ordered_without_limit = find_ordered_quality_sql_without_limit(content)
+    if missing_sql or missing_cards or duplicate_cards or forbidden_sql or mutating_sql or unbounded_counts or unbounded_aggregates or unscoped_quality_sql or ordered_without_limit:
         if missing_sql:
             print("missing SQL markers:")
             for marker in missing_sql:
@@ -173,6 +190,10 @@ def main() -> int:
         if unscoped_quality_sql:
             print("unscoped quality pipeline SQL strings:")
             for query in unscoped_quality_sql:
+                print(f"- {query}")
+        if ordered_without_limit:
+            print("ordered quality SQL without LIMIT:")
+            for query in ordered_without_limit:
                 print(f"- {query}")
         return 1
     print("quality report SQL/card markers: ok")
