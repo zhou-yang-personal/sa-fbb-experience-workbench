@@ -23,6 +23,8 @@ REQUIRED_CONCEPTS = {
     "ads lead readiness": "ADS readiness",
     "bounded latest batch duration": "ETL duration",
     "import completion summary": "Import completion",
+    "latest-batch scope": "latest_batch",
+    "type alignment summary": "Data type alignment",
 }
 
 FORBIDDEN_OPERATIONAL_TERMS = {
@@ -31,6 +33,8 @@ FORBIDDEN_OPERATIONAL_TERMS = {
     "destructive ads delete": "DELETE FROM ads_",
     "runtime table creation": "CREATE TABLE",
     "runtime truncate": "TRUNCATE TABLE",
+    "runtime insert": "INSERT INTO",
+    "runtime update": "UPDATE ",
     "bulk raw export in quality report": "SELECT * FROM raw_",
     "bulk clean export in quality report": "SELECT * FROM dwd_",
 }
