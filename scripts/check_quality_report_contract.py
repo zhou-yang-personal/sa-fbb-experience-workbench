@@ -31,7 +31,6 @@ REQUIRED_CONCEPTS = {
     "query row bounded read": "query_row",
     "left join bounded summary": "LEFT JOIN",
     "row-count bounded read": "COUNT(*)",
-    "quality report card mapping": "quality_report_cards",
 }
 
 FORBIDDEN_OPERATIONAL_TERMS = {
