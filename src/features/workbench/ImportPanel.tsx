@@ -51,12 +51,20 @@ function defaultBatchName(dataType: ImportDataType, path: string) {
 }
 
 function missingRequiredMessage(items: MetricCard[]) {
+  const friendlyNames: Record<string, string> = {
+    user_account: 'Subscriber Account',
+    universal_video_applications: 'Universal Video Applications',
+    statistics_duration: 'Statistics Duration',
+    downloaded_data_volume_kb: 'Downloaded Data Volume (KB)',
+    effective_download_duration_s: 'Effective Download Duration (s)',
+  };
   const detail = items.map((item, index) => {
     const parsed = parseHint(item.hint);
     const source = parsed.source || '未匹配到任何 CSV header';
-    return `${index + 1}. target=${item.label}, ${source}, required=${parsed.required ?? '?'}`;
+    const display = friendlyNames[item.label] || item.label;
+    return `${index + 1}. ${item.label}: no alias matched. Suggested source: ${display} (${source}), required=${parsed.required ?? '?'}`;
   }).join('；');
-  return `字段映射存在 ${items.length} 个 required 缺失：${detail}。已停止 RAW 入库。请在“映射结果 / 字段映射目录”中检查目标字段、CSV header 和 alias 配置。`;
+  return `字段映射存在 ${items.length} 个 required 缺失，已停止 RAW 入库：${detail}。当前 CSV header 已按 Universal Video detail format 识别，请补充 Universal Video alias mapping。`;
 }
 
 export function ImportPanel(props: Props) {

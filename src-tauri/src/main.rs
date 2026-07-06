@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod analysis_commands;
+mod batch_tables;
 mod config_commands;
 mod dashboard_commands;
 mod dataset_profile_commands;
@@ -28,6 +30,12 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             dashboard_commands::db_test_connection,
             dashboard_commands::db_initialize,
+            analysis_commands::import_list_batches,
+            analysis_commands::analysis_prepare_batch_tables,
+            analysis_commands::batch_get_table_registry,
+            analysis_commands::analysis_get_module_status,
+            analysis_commands::analysis_export_module_csv,
+            analysis_commands::analysis_get_module_metrics,
             import_commands::import_probe_csv,
             import_commands::import_create_batch,
             import_commands_mapped::import_start_raw_load,

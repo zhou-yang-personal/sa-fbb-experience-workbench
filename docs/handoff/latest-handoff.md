@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.16
+1.0.17
 ```
 
 ## Source-of-truth branch
@@ -72,14 +72,14 @@ The project now includes the Phase 1-7 complete application baseline plus produc
 - Final Lead query applies server-side pagination plus optional final_action and keyword filters.
 - Final Lead CSV export supports `final_actions` filtering for action-specific delivery files.
 - Export presets use system save dialogs and set Final Action export scope.
-- 1.0.16 replaces the 5-step guided navigation with the product function tree: Data Analysis / Data Import / System Management.
+- 1.0.17 replaces the 5-step guided navigation with the product function tree: Data Analysis / Data Import / System Management.
 - Data Analysis is the default entry and requires an import batch before dashboard use.
 - `AnalysisWorkspace` declares module required fields, applicable data types and required aggregate tables, then disables unavailable modules.
 - `ImportPanel` requires a readable batch name before creating an import batch.
 - `meta_import_batch.batch_display_name` is added to schema and auto-added for existing local databases when creating or checking a batch.
 - Mapping required-field failure messages now list missing target fields instead of only a count.
 - `ExecutionLog` is promoted to diagnostic log and can copy all logs or failure logs.
-- Package, Cargo, Tauri app config, README and handoff version markers are synchronized to `1.0.16`.
+- Package, Cargo, Tauri app config, README and handoff version markers are synchronized to `1.0.17`.
 
 ## Important rules
 
@@ -88,7 +88,7 @@ The project now includes the Phase 1-7 complete application baseline plus produc
 3. Do not perform full in-memory cleaning of large CSV files.
 4. Dashboard pages must query DWS / ADS tables instead of RAW tables.
 5. Do not submit customer CSV files, database exports, local logs, build outputs or installers.
-6. Current 1.0.16 still uses shared physical RAW / CLEAN / DWS / ADS tables with `import_batch_id` isolation. Per-batch physical table generation is documented as the next database-mainline refactor, not fully switched in this round.
+6. Current 1.0.17 moves analysis navigation and module status toward batch-first selection, while the deeper per-batch physical table routing still needs end-to-end smoke confirmation.
 
 ## Not verified
 
@@ -97,7 +97,7 @@ The project now includes the Phase 1-7 complete application baseline plus produc
 - Rust check was not run in ChatGPT GitHub connector environment.
 - Tauri package build was not run in ChatGPT GitHub connector environment.
 - Real MySQL and CSV end-to-end flow was not executed in this round.
-- Per-batch physical table generation is not fully implemented in 1.0.16; current implementation saves a readable batch name and uses `import_batch_id` isolation.
+- Per-batch physical table generation is still being expanded in 1.0.17; current implementation now exposes batch selection and batch registry status to the frontend.
 
 ## Next recommended work
 

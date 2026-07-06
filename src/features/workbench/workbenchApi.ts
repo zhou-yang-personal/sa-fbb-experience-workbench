@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { CommandAck, DashboardOverview, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, LeadQueryParams, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
+import type { BatchListItem, BatchTableRegistryRow, CommandAck, DashboardOverview, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
 
 function normalizeFilter(value?: string) {
   const normalized = value?.trim();
@@ -21,6 +21,13 @@ function leadQueryRequest(settings: MySqlSettings, analysisRunId: string, params
 export const workbenchApi = {
   testDb: (settings: MySqlSettings) => invoke<CommandAck>('db_test_connection', { settings }),
   initDb: (settings: MySqlSettings) => invoke<CommandAck>('db_initialize', { settings }),
+  listBatches: (settings: MySqlSettings, dataType?: string) => invoke<BatchListItem[]>('import_list_batches', { settings, dataType }),
+  prepareBatchTables: (settings: MySqlSettings, importBatchId: string) => invoke<MetricCard[]>('analysis_prepare_batch_tables', { settings, importBatchId }),
+  batchTableRegistry: (settings: MySqlSettings, importBatchId: string) => invoke<BatchTableRegistryRow[]>('batch_get_table_registry', { settings, importBatchId }),
+  moduleStatus: (settings: MySqlSettings, importBatchId: string, analysisRunId?: string) => invoke<ModuleStatusRow[]>('analysis_get_module_status', { settings, importBatchId, analysisRunId }),
+  moduleMetrics: (settings: MySqlSettings, importBatchId: string, analysisRunId?: string) => invoke<MetricCard[]>('analysis_get_module_metrics', { settings, importBatchId, analysisRunId }),
+  exportModule: (settings: MySqlSettings, importBatchId: string, analysisRunId: string | undefined, moduleId: string, outputPath: string) =>
+    invoke<CommandAck>('analysis_export_module_csv', { settings, importBatchId, analysisRunId, moduleId, outputPath }),
   seedConfig: (settings: MySqlSettings) => invoke<CommandAck>('config_seed_defaults', { settings }),
   probeCsv: (path: string) => invoke('import_probe_csv', { path }),
   createBatch: (settings: MySqlSettings, dataType: string, filePath: string, batchDisplayName?: string) =>

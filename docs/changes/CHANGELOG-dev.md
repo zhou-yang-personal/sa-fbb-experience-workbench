@@ -1,5 +1,24 @@
 # CHANGELOG-dev
 
+## 1.0.17 - 2026-07-06
+
+### Added
+
+- Added batch list selection, batch table registry and module status commands for analysis workspace routing.
+- Added batch-first analysis workspace shell with real batch selection and backend module readiness checks.
+- Added per-module dashboard shell components and system diagnostics registry/status views.
+
+### Changed
+
+- Updated mapping validation to aggregate alias rows into target-level required checks.
+- Extended default mapping aliases for Universal Video CSV headers and required import fields.
+- Routed dashboard, lead and final fusion queries through batch physical table resolution where available.
+- Synchronized package, Cargo, Tauri config, README, handoff and header version markers to `1.0.17`.
+
+### Not fully implemented
+
+- End-to-end compile, MySQL smoke and tauri build still need to be run locally after the route changes.
+
 ## 1.0.16 - 2026-07-05
 
 ### Added

@@ -33,7 +33,7 @@ export function WorkbenchAppV2() {
 
   function hint() {
     if (activeSection === 'analysis') {
-      if (!hasBatch) return { title: '先选择导入批次', detail: '数据分析以 import_batch_id 为边界。可以先去“数据导入”创建批次，也可以直接粘贴已有批次 ID。', tone: 'warning' as const };
+      if (!hasBatch) return { title: '先选择导入批次', detail: '数据分析以 import_batch_id 为边界。可以先去“数据导入”创建批次，或在分析页下拉选择已有批次。', tone: 'warning' as const };
       return { title: '查看当前批次看板', detail: '模块会根据批次类型、必填字段和所需聚合表判断是否可用；不可用模块会置灰。', tone: 'normal' as const };
     }
     if (activeSection === 'import') {

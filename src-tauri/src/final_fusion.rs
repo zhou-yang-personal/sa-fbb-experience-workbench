@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use mysql::prelude::*;
 
+use crate::batch_tables;
 use crate::db;
 use crate::job_runner::JobStep;
 use crate::models::MySqlSettings;
@@ -19,14 +20,19 @@ pub fn build_final_fusion_step(settings: &MySqlSettings, import_batch_id: &str, 
     let crm_on = join_condition(settings, "crm", "c.user_account = b.user_key OR c.user_mac = b.user_key OR c.crm_user_id = b.user_key")?;
     let reach_on = join_condition(settings, "reach", "r.crm_user_id = c.crm_user_id OR r.user_account = c.user_account OR r.user_account = b.user_key")?;
     let coverage_on = join_condition(settings, "coverage", "cv.area_key = c.crm_user_id OR cv.area_key = c.user_account OR cv.area_key = b.user_key")?;
+    let ads_lead = batch_tables::resolve_table(settings, import_batch_id, "ads_migration_lead_user")?;
+    let final_lead = batch_tables::resolve_table(settings, import_batch_id, "ads_final_marketing_lead_user")?;
+    let raw_crm = batch_tables::resolve_table(settings, import_batch_id, "raw_crm_user_import")?;
+    let raw_reach = batch_tables::resolve_table(settings, import_batch_id, "raw_reachability_import")?;
+    let raw_coverage = batch_tables::resolve_table(settings, import_batch_id, "raw_ftth_coverage_import")?;
     let sql_template = format!(
-        "DELETE FROM ads_final_marketing_lead_user WHERE analysis_run_id = :analysis_run_id;\n\n\
-INSERT INTO ads_final_marketing_lead_user (analysis_run_id, user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, current_arpu, ftth_available_flag, reachable_flag, final_action, recommended_offer)\n\
+        "DELETE FROM {final_lead} WHERE analysis_run_id = :analysis_run_id;\n\n\
+INSERT INTO {final_lead} (analysis_run_id, user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, current_arpu, ftth_available_flag, reachable_flag, final_action, recommended_offer)\n\
 WITH params AS (SELECT :analysis_run_id AS analysis_run_id, :import_batch_id AS import_batch_id),\n\
-base AS (SELECT * FROM ads_migration_lead_user WHERE analysis_run_id = (SELECT analysis_run_id FROM params) AND user_key IS NOT NULL AND TRIM(user_key) <> '' AND user_key <> 'UNKNOWN'),\n\
-crm AS (SELECT * FROM raw_crm_user_import WHERE import_batch_id = (SELECT import_batch_id FROM params)),\n\
-reach AS (SELECT * FROM raw_reachability_import WHERE import_batch_id = (SELECT import_batch_id FROM params)),\n\
-coverage AS (SELECT * FROM raw_ftth_coverage_import WHERE import_batch_id = (SELECT import_batch_id FROM params))\n\
+base AS (SELECT * FROM {ads_lead} WHERE analysis_run_id = (SELECT analysis_run_id FROM params) AND user_key IS NOT NULL AND TRIM(user_key) <> '' AND user_key <> 'UNKNOWN'),\n\
+crm AS (SELECT * FROM {raw_crm} WHERE import_batch_id = (SELECT import_batch_id FROM params)),\n\
+reach AS (SELECT * FROM {raw_reach} WHERE import_batch_id = (SELECT import_batch_id FROM params)),\n\
+coverage AS (SELECT * FROM {raw_coverage} WHERE import_batch_id = (SELECT import_batch_id FROM params))\n\
 SELECT p.analysis_run_id, b.user_key, MAX(c.crm_user_id), b.lead_type, b.demand_score, b.migration_motive_score, MAX(c.current_plan_name), MAX(c.current_arpu),\n\
 COALESCE(MAX(cv.ftth_available_flag), 'UNKNOWN') AS ftth_available_flag,\n\
 CASE WHEN MAX(r.phone_available_flag) = 'Y' OR MAX(r.sms_available_flag) = 'Y' OR MAX(r.app_push_available_flag) = 'Y' THEN 'Y' ELSE 'N' END AS reachable_flag,\n\
@@ -53,8 +59,8 @@ GROUP BY p.analysis_run_id, b.user_key, b.lead_type, b.demand_score, b.migration
     let sql = sql_runner::bind_batch_params(&sql_template, import_batch_id, Some(analysis_run_id));
     Ok(JobStep {
         step_name: "final_marketing_lead_fusion_configured",
-        source_table: "ads_migration_lead_user,raw_crm_user_import,raw_ftth_coverage_import,raw_reachability_import,cfg_final_join_rule",
-        target_table: "ads_final_marketing_lead_user",
+        source_table: Box::leak(format!("{ads_lead},{raw_crm},{raw_coverage},{raw_reach}").into_boxed_str()),
+        target_table: Box::leak(final_lead.into_boxed_str()),
         sql_template: "configured_final_fusion",
         sql,
     })
