@@ -106,6 +106,8 @@ FORBIDDEN_OPERATIONAL_TERMS = {
     "runtime checksum command": "CHECKSUM TABLE",
     "runtime flush command": "FLUSH ",
     "runtime purge command": "PURGE ",
+    "runtime checkpoint command": "CHECKPOINT",
+    "runtime reindex command": "REINDEX",
     "bulk raw export in quality report": "SELECT * FROM raw_",
     "bulk clean export in quality report": "SELECT * FROM dwd_",
     "bulk ads export in quality report": "SELECT * FROM ads_",
@@ -138,6 +140,8 @@ FORBIDDEN_SQL_PATTERNS = {
     "runtime quoted role mutation": re.compile(r"\b(?:CREATE|ALTER|DROP)\s+(?:OR\s+REPLACE\s+)?ROLE\s+", re.IGNORECASE),
     "runtime quoted maintenance command": re.compile(r"\b(?:REPAIR|OPTIMIZE|CHECK|CHECKSUM)\s+TABLE\s+[\"`']?", re.IGNORECASE),
     "runtime flush or purge command": re.compile(r"\b(?:FLUSH|PURGE)\s+", re.IGNORECASE),
+    "runtime checkpoint command": re.compile(r"\bCHECKPOINT\b", re.IGNORECASE),
+    "runtime reindex command": re.compile(r"\bREINDEX\b", re.IGNORECASE),
 }
 
 
