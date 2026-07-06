@@ -87,6 +87,10 @@ FORBIDDEN_OPERATIONAL_TERMS = {
     "runtime drop macro": "DROP MACRO",
     "runtime create trigger": "CREATE TRIGGER",
     "runtime drop trigger": "DROP TRIGGER",
+    "runtime create procedure": "CREATE PROCEDURE",
+    "runtime drop procedure": "DROP PROCEDURE",
+    "runtime create function": "CREATE FUNCTION",
+    "runtime drop function": "DROP FUNCTION",
     "bulk raw export in quality report": "SELECT * FROM raw_",
     "bulk clean export in quality report": "SELECT * FROM dwd_",
     "bulk ads export in quality report": "SELECT * FROM ads_",
@@ -112,6 +116,8 @@ FORBIDDEN_SQL_PATTERNS = {
     "runtime quoted index mutation": re.compile(r"\b(?:CREATE|DROP)\s+(?:UNIQUE\s+)?INDEX\s+", re.IGNORECASE),
     "runtime quoted macro mutation": re.compile(r"\b(?:CREATE|DROP)\s+(?:OR\s+REPLACE\s+)?MACRO\s+", re.IGNORECASE),
     "runtime quoted trigger mutation": re.compile(r"\b(?:CREATE|DROP)\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+", re.IGNORECASE),
+    "runtime quoted procedure mutation": re.compile(r"\b(?:CREATE|DROP)\s+(?:OR\s+REPLACE\s+)?PROCEDURE\s+", re.IGNORECASE),
+    "runtime quoted function mutation": re.compile(r"\b(?:CREATE|DROP)\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+", re.IGNORECASE),
 }
 
 
