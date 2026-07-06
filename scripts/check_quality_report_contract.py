@@ -108,6 +108,10 @@ FORBIDDEN_OPERATIONAL_TERMS = {
     "runtime purge command": "PURGE ",
     "runtime checkpoint command": "CHECKPOINT",
     "runtime reindex command": "REINDEX",
+    "runtime session discard": "DISCARD ",
+    "runtime session deallocate": "DEALLOCATE ",
+    "runtime session prepare": "PREPARE ",
+    "runtime session execute": "EXECUTE ",
     "bulk raw export in quality report": "SELECT * FROM raw_",
     "bulk clean export in quality report": "SELECT * FROM dwd_",
     "bulk ads export in quality report": "SELECT * FROM ads_",
@@ -142,6 +146,7 @@ FORBIDDEN_SQL_PATTERNS = {
     "runtime flush or purge command": re.compile(r"\b(?:FLUSH|PURGE)\s+", re.IGNORECASE),
     "runtime checkpoint command": re.compile(r"\bCHECKPOINT\b", re.IGNORECASE),
     "runtime reindex command": re.compile(r"\bREINDEX\b", re.IGNORECASE),
+    "runtime session command": re.compile(r"\b(?:DISCARD|DEALLOCATE|PREPARE|EXECUTE)\b", re.IGNORECASE),
 }
 
 
