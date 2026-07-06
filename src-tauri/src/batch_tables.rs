@@ -35,52 +35,15 @@ pub const TABLE_DEFS: &[TableDef] = &[
 ];
 
 pub fn ensure_registry_tables(conn: &mut mysql::PooledConn) -> Result<(), String> {
-    conn.query_drop(
-        "CREATE TABLE IF NOT EXISTS meta_batch_table_registry (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            import_batch_id VARCHAR(64) NOT NULL,
-            layer VARCHAR(32) NOT NULL,
-            data_type VARCHAR(32) NOT NULL,
-            logical_table_name VARCHAR(128) NOT NULL,
-            base_table_name VARCHAR(128) NOT NULL,
-            physical_table_name VARCHAR(160) NOT NULL,
-            row_count BIGINT NOT NULL DEFAULT 0,
-            status VARCHAR(32) NOT NULL DEFAULT 'created',
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY uk_batch_logical (import_batch_id, logical_table_name),
-            INDEX ix_batch_layer (import_batch_id, layer),
-            INDEX ix_physical_table (physical_table_name)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-    ).map_err(|err| format!("failed to create meta_batch_table_registry: {err}"))?;
-
-    conn.query_drop(
-        "CREATE TABLE IF NOT EXISTS meta_batch_module_status (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            import_batch_id VARCHAR(64) NOT NULL,
-            analysis_run_id VARCHAR(64) NULL,
-            module_id VARCHAR(64) NOT NULL,
-            module_name VARCHAR(128) NOT NULL,
-            enabled TINYINT(1) NOT NULL DEFAULT 0,
-            data_type VARCHAR(32) NULL,
-            missing_required_fields TEXT NULL,
-            missing_tables TEXT NULL,
-            row_count BIGINT NOT NULL DEFAULT 0,
-            status_text TEXT NULL,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY uk_batch_module (import_batch_id, module_id),
-            INDEX ix_batch_enabled (import_batch_id, enabled)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-    ).map_err(|err| format!("failed to create meta_batch_module_status: {err}"))?;
+    conn.query_drop("CREATE TABLE IF NOT EXISTS meta_batch_table_registry (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, import_batch_id VARCHAR(64) NOT NULL, layer VARCHAR(32) NOT NULL, data_type VARCHAR(32) NOT NULL, logical_table_name VARCHAR(128) NOT NULL, base_table_name VARCHAR(128) NOT NULL, physical_table_name VARCHAR(160) NOT NULL, row_count BIGINT NOT NULL DEFAULT 0, status VARCHAR(32) NOT NULL DEFAULT 'created', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, UNIQUE KEY uk_batch_logical (import_batch_id, logical_table_name), INDEX ix_batch_layer (import_batch_id, layer), INDEX ix_physical_table (physical_table_name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")
+        .map_err(|err| format!("failed to create meta_batch_table_registry: {err}"))?;
+    conn.query_drop("CREATE TABLE IF NOT EXISTS meta_batch_module_status (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, import_batch_id VARCHAR(64) NOT NULL, analysis_run_id VARCHAR(64) NULL, module_id VARCHAR(64) NOT NULL, module_name VARCHAR(128) NOT NULL, enabled TINYINT(1) NOT NULL DEFAULT 0, data_type VARCHAR(32) NULL, missing_required_fields TEXT NULL, missing_tables TEXT NULL, row_count BIGINT NOT NULL DEFAULT 0, status_text TEXT NULL, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, UNIQUE KEY uk_batch_module (import_batch_id, module_id), INDEX ix_batch_enabled (import_batch_id, enabled)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")
+        .map_err(|err| format!("failed to create meta_batch_module_status: {err}"))?;
     Ok(())
 }
 
 pub fn batch_short_id(import_batch_id: &str) -> String {
-    let normalized: String = import_batch_id
-        .chars()
-        .filter(|ch| ch.is_ascii_alphanumeric())
-        .map(|ch| ch.to_ascii_lowercase())
-        .collect();
+    let normalized: String = import_batch_id.chars().filter(|ch| ch.is_ascii_alphanumeric()).map(|ch| ch.to_ascii_lowercase()).collect();
     let tail = if normalized.len() > 16 { &normalized[normalized.len() - 16..] } else { normalized.as_str() };
     if tail.is_empty() { "manualbatch".to_string() } else { tail.to_string() }
 }
@@ -114,14 +77,10 @@ pub fn ensure_batch_tables(settings: &MySqlSettings, import_batch_id: &str) -> R
     let mut metrics = Vec::new();
     for def in TABLE_DEFS {
         let physical = physical_name(def.base, import_batch_id);
-        ensure_one_table(&mut conn, def, import_batch_id, &physical)?;
+        ensure_one_table(&mut conn, def, &physical)?;
         let rows = count_table_rows(&mut conn, &physical).unwrap_or(0);
         upsert_registry(&mut conn, def, import_batch_id, &physical, rows, "created")?;
-        metrics.push(MetricCard {
-            label: def.logical.to_string(),
-            value: physical,
-            hint: format!("layer={}, base={}, rows={rows}", def.layer, def.base),
-        });
+        metrics.push(MetricCard { label: def.logical.to_string(), value: physical, hint: format!("layer={}, base={}, rows={rows}", def.layer, def.base) });
     }
     Ok(metrics)
 }
@@ -132,12 +91,12 @@ pub fn ensure_raw_table(settings: &MySqlSettings, import_batch_id: &str, data_ty
     let mut conn = db::conn(settings)?;
     ensure_registry_tables(&mut conn)?;
     let physical = physical_name(base, import_batch_id);
-    ensure_one_table(&mut conn, &def, import_batch_id, &physical)?;
+    ensure_one_table(&mut conn, &def, &physical)?;
     upsert_registry(&mut conn, &def, import_batch_id, &physical, 0, "created")?;
     Ok(physical)
 }
 
-fn ensure_one_table(conn: &mut mysql::PooledConn, def: &TableDef, _import_batch_id: &str, physical: &str) -> Result<(), String> {
+fn ensure_one_table(conn: &mut mysql::PooledConn, def: &TableDef, physical: &str) -> Result<(), String> {
     let base = sanitize_identifier(def.base)?;
     let table = sanitize_identifier(physical)?;
     conn.query_drop(format!("CREATE TABLE IF NOT EXISTS `{table}` LIKE `{base}`"))
@@ -146,9 +105,7 @@ fn ensure_one_table(conn: &mut mysql::PooledConn, def: &TableDef, _import_batch_
 
 fn upsert_registry(conn: &mut mysql::PooledConn, def: &TableDef, import_batch_id: &str, physical: &str, rows: u64, status: &str) -> Result<(), String> {
     conn.exec_drop(
-        "INSERT INTO meta_batch_table_registry (import_batch_id, layer, data_type, logical_table_name, base_table_name, physical_table_name, row_count, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE physical_table_name=VALUES(physical_table_name), row_count=VALUES(row_count), status=VALUES(status), updated_at=NOW()",
+        "INSERT INTO meta_batch_table_registry (import_batch_id, layer, data_type, logical_table_name, base_table_name, physical_table_name, row_count, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE physical_table_name=VALUES(physical_table_name), row_count=VALUES(row_count), status=VALUES(status), updated_at=NOW()",
         (import_batch_id, def.layer, def.data_type, def.logical, def.base, physical, rows, status),
     ).map_err(|err| format!("failed to upsert batch table registry: {err}"))
 }
@@ -156,10 +113,8 @@ fn upsert_registry(conn: &mut mysql::PooledConn, def: &TableDef, import_batch_id
 pub fn refresh_registry_counts(settings: &MySqlSettings, import_batch_id: &str) -> Result<Vec<MetricCard>, String> {
     let mut conn = db::conn(settings)?;
     ensure_registry_tables(&mut conn)?;
-    let rows: Vec<(String, String, String, String)> = conn.exec(
-        "SELECT logical_table_name, layer, base_table_name, physical_table_name FROM meta_batch_table_registry WHERE import_batch_id=? ORDER BY layer, logical_table_name",
-        (import_batch_id,),
-    ).map_err(|err| format!("failed to read batch table registry: {err}"))?;
+    let rows: Vec<(String, String, String, String)> = conn.exec("SELECT logical_table_name, layer, base_table_name, physical_table_name FROM meta_batch_table_registry WHERE import_batch_id=? ORDER BY layer, logical_table_name", (import_batch_id,))
+        .map_err(|err| format!("failed to read batch table registry: {err}"))?;
     let mut metrics = Vec::new();
     for (logical, layer, base, physical) in rows {
         let count = count_table_rows(&mut conn, &physical).unwrap_or(0);
@@ -172,21 +127,15 @@ pub fn refresh_registry_counts(settings: &MySqlSettings, import_batch_id: &str) 
 pub fn resolve_table(settings: &MySqlSettings, import_batch_id: &str, base_table: &str) -> Result<String, String> {
     let mut conn = db::conn(settings)?;
     ensure_registry_tables(&mut conn)?;
-    if let Some(table): Option<String> = conn.exec_first(
-        "SELECT physical_table_name FROM meta_batch_table_registry WHERE import_batch_id=? AND base_table_name=? LIMIT 1",
-        (import_batch_id, base_table),
-    ).map_err(|err| format!("failed to resolve batch table {base_table}: {err}"))? {
-        return Ok(table);
-    }
-    Ok(physical_for_base(import_batch_id, base_table))
+    let found: Option<String> = conn.exec_first("SELECT physical_table_name FROM meta_batch_table_registry WHERE import_batch_id=? AND base_table_name=? LIMIT 1", (import_batch_id, base_table))
+        .map_err(|err| format!("failed to resolve batch table {base_table}: {err}"))?;
+    Ok(found.unwrap_or_else(|| physical_for_base(import_batch_id, base_table)))
 }
 
 pub fn analysis_run_batch(settings: &MySqlSettings, analysis_run_id: &str) -> Result<Option<String>, String> {
     let mut conn = db::conn(settings)?;
-    conn.exec_first(
-        "SELECT import_batch_id FROM meta_analysis_run WHERE analysis_run_id=? ORDER BY started_at DESC LIMIT 1",
-        (analysis_run_id,),
-    ).map_err(|err| format!("failed to resolve analysis run batch: {err}"))
+    conn.exec_first("SELECT import_batch_id FROM meta_analysis_run WHERE analysis_run_id=? ORDER BY started_at DESC LIMIT 1", (analysis_run_id,))
+        .map_err(|err| format!("failed to resolve analysis run batch: {err}"))
 }
 
 pub fn bind_batch_tables(settings: &MySqlSettings, import_batch_id: &str, sql: &str) -> Result<String, String> {
@@ -202,8 +151,7 @@ pub fn bind_batch_tables(settings: &MySqlSettings, import_batch_id: &str, sql: &
 }
 
 fn replace_table_name(sql: &str, base: &str, physical: &str) -> String {
-    sql.replace(&format!("`{base}`"), &format!("`{physical}`"))
-        .replace(base, &format!("`{physical}`"))
+    sql.replace(&format!("`{base}`"), &format!("`{physical}`")).replace(base, &format!("`{physical}`"))
 }
 
 pub fn table_counts_for_diagnostics(settings: &MySqlSettings, import_batch_id: &str) -> Result<Vec<MetricCard>, String> {
@@ -218,11 +166,7 @@ fn count_table_rows(conn: &mut mysql::PooledConn, table: &str) -> Result<u64, St
 }
 
 fn sanitize_identifier(value: &str) -> Result<String, String> {
-    if value.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_') {
-        Ok(value.to_string())
-    } else {
-        Err(format!("unsafe SQL identifier: {}", escape_sql_literal(value)))
-    }
+    if value.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_') { Ok(value.to_string()) } else { Err(format!("unsafe SQL identifier: {}", escape_sql_literal(value))) }
 }
 
 pub fn base_to_physical_map(import_batch_id: &str) -> HashMap<&'static str, String> {
