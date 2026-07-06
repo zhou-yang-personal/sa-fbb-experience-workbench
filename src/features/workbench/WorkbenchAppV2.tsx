@@ -1,106 +1,71 @@
-import { useMemo, useState } from 'react';
-import type { PipelineStepStatus } from '../../shared/types';
-import { ConnectionPanel } from './ConnectionPanel';
-import { DashboardCenter } from './DashboardCenter';
-import { EtlJobCenter } from './EtlJobCenter';
-import { FinalLeadCenter } from './FinalLeadCenter';
+import { useState } from 'react';
+import { AnalysisWorkspace } from './AnalysisWorkspace';
 import { ImportPanel } from './ImportPanel';
-import { MetricGrid } from './MetricGrid';
 import { NextActionHint } from './NextActionHint';
-import { PipelineStatusBar, type PipelineStep, type PipelineStepId } from './PipelineStatusBar';
-import { QualityCenter } from './QualityCenter';
-import { ResultTables } from './ResultTables';
 import { RunLogDrawer } from './RunLogDrawer';
+import { SystemPanel } from './SystemPanel';
 import { WorkbenchContextBar } from './WorkbenchContextBar';
 import { WorkbenchHeader } from './WorkbenchHeader';
 import { useWorkbenchController } from './useWorkbenchController';
 import './extra.css';
 
-type WorkbenchSection = PipelineStepId;
+type WorkbenchSection = 'analysis' | 'import' | 'system';
 
-function hasSuccess(state?: { status?: string }) {
-  return state?.status === 'success';
-}
+type ProductNavItem = {
+  id: WorkbenchSection;
+  label: string;
+  hint: string;
+};
 
-function hasFailure(state?: { status?: string }) {
-  return state?.status === 'failure';
-}
-
-function hasRunning(states: Record<string, { status?: string }>, keys: string[]) {
-  return keys.some((key) => states[key]?.status === 'running');
-}
-
-function stepStatus(done: boolean, running: boolean, failed: boolean): PipelineStepStatus {
-  if (running) return 'running';
-  if (failed) return 'failed';
-  if (done) return 'success';
-  return 'not_started';
-}
+const productNav: ProductNavItem[] = [
+  { id: 'analysis', label: '数据分析', hint: '默认入口：先选批次，再看看板' },
+  { id: 'import', label: '数据导入', hint: 'CSV → RAW → 可分析批次' },
+  { id: 'system', label: '系统管理', hint: '连接、诊断日志、后台任务' },
+];
 
 export function WorkbenchAppV2() {
   const c = useWorkbenchController();
-  const [activeSection, setActiveSection] = useState<WorkbenchSection>('start');
+  const [activeSection, setActiveSection] = useState<WorkbenchSection>('analysis');
   const [logOpen, setLogOpen] = useState(false);
 
-  const pipeline = useMemo<PipelineStep[]>(() => {
-    const startDone = hasSuccess(c.actionStates.db_initialize) || hasSuccess(c.actionStates.config_seed_defaults) || hasSuccess(c.actionStates.db_test_connection) || hasSuccess(c.actionStates.start_prepare_database);
-    const importDone = Boolean(c.batch || c.importBatchId || hasSuccess(c.actionStates.import_current_file) || hasSuccess(c.actionStates.import_start_raw_load));
-    const validateDone = hasSuccess(c.actionStates.quality_run_gate) || hasSuccess(c.actionStates.quality_get_gate_results);
-    const analyzeDone = hasSuccess(c.actionStates.analyze_generate_results) || hasSuccess(c.actionStates.leads_run_final_fusion) || c.dashboardCharts.length > 0;
-    const resultsDone = c.dashboardCharts.length > 0 || c.leads.length > 0 || c.finalLeads.length > 0;
-    return [
-      { id: 'start', label: 'Start', hint: 'DB ready', status: stepStatus(startDone, hasRunning(c.actionStates, ['db_test_connection', 'db_initialize', 'config_seed_defaults', 'start_prepare_database']), hasFailure(c.actionStates.start_prepare_database)) },
-      { id: 'import', label: 'Import', hint: 'CSV to RAW', status: stepStatus(importDone, hasRunning(c.actionStates, ['import_current_file', 'import_start_raw_load']), hasFailure(c.actionStates.import_current_file)) },
-      { id: 'validate', label: 'Validate', hint: 'Quality gate', status: stepStatus(validateDone, hasRunning(c.actionStates, ['quality_run_gate', 'quality_get_gate_results']), hasFailure(c.actionStates.quality_run_gate)) },
-      { id: 'analyze', label: 'Analyze', hint: 'DWS / ADS / Leads', status: stepStatus(analyzeDone, hasRunning(c.actionStates, ['analyze_generate_results', 'etl_start_clean_job', 'etl_start_aggregate_job', 'leads_run_final_fusion']), hasFailure(c.actionStates.analyze_generate_results)) },
-      { id: 'results', label: 'Results', hint: 'Review and export', status: stepStatus(resultsDone, hasRunning(c.actionStates, ['dashboard_refresh_all', 'export_final_leads_csv', 'export_leads_csv']), hasFailure(c.actionStates.export_final_leads_csv)) },
-    ];
-  }, [c.actionStates, c.batch, c.dashboardCharts.length, c.finalLeads.length, c.importBatchId, c.leads.length]);
+  const hasBatch = Boolean(c.importBatchId.trim());
+  const hasBatchName = Boolean(c.batchDisplayName.trim());
 
-  const hint = useMemo(() => {
-    if (activeSection === 'start') return { title: '测试并初始化数据库', detail: '连接成功后进入 Import。密码不会保存到本地。' };
-    if (activeSection === 'import') return { title: c.filePath ? '导入当前 CSV 文件' : '先选择 CSV 文件', detail: c.filePath ? '系统会自动执行 probe、创建批次、映射校验、RAW 入库和画像刷新。' : '使用系统弹框选择文件，不要手输路径。', tone: c.filePath ? 'normal' as const : 'warning' as const };
-    if (activeSection === 'validate') return { title: c.importBatchId ? '运行质量检查' : '先完成导入', detail: c.importBatchId ? '检查 RAW 完整性、字段可用性、时间范围、接入类型和应用有效性。' : '没有 import_batch_id 时不能做质量检查。', tone: c.importBatchId ? 'normal' as const : 'blocked' as const };
-    if (activeSection === 'analyze') return { title: c.importBatchId ? '生成分析结果' : '先完成质量检查', detail: '系统会依次执行 RAW→CLEAN、DWS/ADS 和 Final Lead Fusion。' };
-    return { title: c.analysisRunId ? '刷新结果并导出' : '先生成 analysis_run_id', detail: '在一个页面查看 Dashboard、Lead、Final Lead，并用保存弹框选择导出位置。' };
-  }, [activeSection, c.analysisRunId, c.filePath, c.importBatchId]);
-
-  function renderSection() {
-    if (activeSection === 'start') {
-      return <ConnectionPanel settings={c.settings} setSettings={c.setSettings} runAction={c.runAction} clearPersistedContext={c.clearPersistedContext} actionStates={c.actionStates} />;
+  function hint() {
+    if (activeSection === 'analysis') {
+      if (!hasBatch) return { title: '先选择导入批次', detail: '数据分析以 import_batch_id 为边界。可以先去“数据导入”创建批次，也可以直接粘贴已有批次 ID。', tone: 'warning' as const };
+      return { title: '查看当前批次看板', detail: '模块会根据批次类型、必填字段和所需聚合表判断是否可用；不可用模块会置灰。', tone: 'normal' as const };
     }
     if (activeSection === 'import') {
-      return <ImportPanel {...c} />;
+      if (!hasBatchName) return { title: '导入前先命名批次', detail: '批次名称必须是正常人能读懂的业务名称，后续所有看板先按这个批次进入。', tone: 'warning' as const };
+      return { title: c.filePath ? '导入当前 CSV 文件' : '先选择 CSV 文件', detail: c.filePath ? '系统会自动执行 probe、创建批次、映射校验、RAW 入库和画像刷新。' : '使用系统弹框选择文件，不要手输路径。', tone: c.filePath ? 'normal' as const : 'warning' as const };
     }
-    if (activeSection === 'validate') {
-      return (
-        <section className="workbench-section-stack">
-          <QualityCenter {...c} />
-          <MetricGrid metrics={c.allMetrics} />
-        </section>
-      );
-    }
-    if (activeSection === 'analyze') {
-      return <EtlJobCenter {...c} />;
-    }
-    return (
-      <section className="workbench-section-stack">
-        <DashboardCenter {...c} />
-        <FinalLeadCenter {...c} />
-        <MetricGrid metrics={c.allMetrics} />
-        <ResultTables leads={c.leads} finalLeads={c.finalLeads} />
-      </section>
-    );
+    return { title: '系统诊断与后台能力', detail: '数据库连接、数据可用性、ETL 任务和执行日志只作为支撑能力，不再占用主分析入口。', tone: 'normal' as const };
   }
 
+  function renderSection() {
+    if (activeSection === 'analysis') return <AnalysisWorkspace c={c} />;
+    if (activeSection === 'import') return <ImportPanel {...c} />;
+    return <SystemPanel c={c} />;
+  }
+
+  const nextHint = hint();
+
   return (
-    <main className="app-shell guided-shell">
-      <aside className="sidebar guided-sidebar">
+    <main className="app-shell guided-shell product-shell">
+      <aside className="sidebar guided-sidebar product-sidebar">
         <div className="brand">SA FBB Experience Workbench</div>
-        <PipelineStatusBar steps={pipeline} activeStep={activeSection} onSelect={setActiveSection} />
+        <nav className="product-nav" aria-label="Product navigation">
+          {productNav.map((item) => (
+            <button key={item.id} type="button" className={`nav-item ${activeSection === item.id ? 'is-active' : ''}`} onClick={() => setActiveSection(item.id)}>
+              <span>{item.label}</span>
+              <small>{item.hint}</small>
+            </button>
+          ))}
+        </nav>
         <div className="sidebar-log-card">
-          <strong>当前动作</strong>
-          <small>{c.currentAction || '无运行中动作'}</small>
+          <strong>诊断日志</strong>
+          <small>{c.currentAction || c.lastActionMessage || '无运行中动作'}</small>
           <button type="button" onClick={() => setLogOpen(true)}>查看执行日志</button>
         </div>
       </aside>
@@ -112,11 +77,12 @@ export function WorkbenchAppV2() {
           importMode={c.importMode}
           filePath={c.filePath}
           importBatchId={c.importBatchId}
+          batchDisplayName={c.batchDisplayName}
           analysisRunId={c.analysisRunId}
           outputPath={c.outputPath}
           batch={c.batch}
         />
-        <NextActionHint title={hint.title} detail={hint.detail} tone={hint.tone} />
+        <NextActionHint title={nextHint.title} detail={nextHint.detail} tone={nextHint.tone} />
         <section className="action-feedback-bar">
           <span>{c.lastActionMessage}</span>
           {c.currentAction && <strong>Running: {c.currentAction}</strong>}
