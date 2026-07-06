@@ -24,6 +24,7 @@ REQUIRED_READONLY_ANCHORS = {
     "query map API": "query_map",
     "count projection": "COUNT(*)",
     "explicit batch id": "import_batch_id",
+    "error context": "quality report",
 }
 
 FORBIDDEN_COMMAND_PATTERNS = {
@@ -33,6 +34,7 @@ FORBIDDEN_COMMAND_PATTERNS = {
     "maintenance command": re.compile(r"\b(?:VACUUM|ANALYZE|REINDEX|CHECKPOINT|REPAIR|OPTIMIZE|CHECKSUM|FLUSH|PURGE)\b", re.IGNORECASE),
     "extension/import/export command": re.compile(r"\b(?:LOAD|INSTALL|IMPORT|EXPORT|COPY|ATTACH|DETACH)\b", re.IGNORECASE),
     "privilege/session command": re.compile(r"\b(?:GRANT|REVOKE|DENY|SET|RESET|CALL|PREPARE|EXECUTE|DEALLOCATE|DISCARD)\b", re.IGNORECASE),
+    "schema metadata command": re.compile(r"\b(?:COMMENT|CLUSTER|EXPLAIN|DESCRIBE|SHOW)\b", re.IGNORECASE),
     "dangerous pragma command": re.compile(r"\bPRAGMA\b", re.IGNORECASE),
 }
 
