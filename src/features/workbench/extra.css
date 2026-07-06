@@ -49,7 +49,11 @@
 .summary-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .summary-pills .status-pill { border: 1px solid rgba(148, 163, 184, 0.22); cursor: pointer; }
 .status-pill:disabled, button:disabled { opacity: 0.45; cursor: not-allowed; }
-.guided-sidebar nav { display: none; }
+.guided-sidebar nav:not(.product-nav) { display: none; }
+.product-nav { display: grid; gap: 8px; margin-top: 14px; }
+.guided-sidebar .product-nav { display: grid; }
+.product-sidebar .brand { margin-bottom: 14px; }
+.product-shell .section-shell { margin-top: 18px; }
 .pipeline-status-bar { display: grid; gap: 8px; margin-top: 14px; }
 .pipeline-step { display: grid; grid-template-columns: 26px 1fr; gap: 8px; width: 100%; text-align: left; padding: 10px; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 12px; background: rgba(15, 23, 42, 0.48); color: #dbeafe; }
 .pipeline-step.is-active { border-color: rgba(96, 165, 250, 0.62); background: rgba(37, 99, 235, 0.22); }
@@ -85,7 +89,21 @@
 .file-picker-card { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 12px; padding: 10px; background: rgba(15, 23, 42, 0.42); margin-top: 10px; }
 .file-picker-card span, .file-picker-card small { display: block; color: #94a3b8; }
 .file-picker-card strong { color: #e8eefc; }
-.import-form-grid label { display: grid; gap: 6px; color: #94a3b8; font-size: 12px; }
+.import-form-grid { grid-template-columns: 1.4fr 0.8fr 1fr; }
+.import-form-grid label, .batch-context-form label { display: grid; gap: 6px; color: #94a3b8; font-size: 12px; }
+.batch-context-form { grid-template-columns: 1.4fr 1.2fr 1fr 0.9fr; }
+.analysis-module-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.analysis-module-card { display: grid; gap: 6px; align-content: start; min-height: 128px; text-align: left; border: 1px solid rgba(148, 163, 184, 0.18); background: rgba(15, 23, 42, 0.46); }
+.analysis-module-card strong { color: #e8eefc; }
+.analysis-module-card span { color: #cbd5e1; font-size: 12px; line-height: 1.45; }
+.analysis-module-card small { color: #93c5fd; font-size: 11px; line-height: 1.4; }
+.analysis-module-card.is-active { border-color: rgba(96, 165, 250, 0.62); background: rgba(37, 99, 235, 0.2); }
+.analysis-module-card.is-disabled { background: rgba(15, 23, 42, 0.22); }
+.analysis-module-card.is-disabled small { color: #fca5a5; }
+.module-readiness-table { margin-top: 12px; max-height: 320px; overflow: auto; }
+.module-readiness-row { grid-template-columns: 0.9fr 2fr 1.8fr 1.2fr; align-items: start; }
+.disabled-analysis-panel { opacity: 0.72; }
+.diagnostic-row-failed { border-color: rgba(248, 113, 113, 0.42); background: rgba(127, 29, 29, 0.18); }
 .quality-conclusion { border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 12px; padding: 10px; margin-bottom: 10px; background: rgba(15, 23, 42, 0.36); display: grid; gap: 4px; }
 .run-log-drawer-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(2, 6, 23, 0.64); display: flex; justify-content: flex-end; }
 .run-log-drawer { width: min(760px, 92vw); height: 100%; overflow: auto; background: #020617; border-left: 1px solid rgba(148, 163, 184, 0.24); padding: 16px; box-shadow: -24px 0 80px rgba(0, 0, 0, 0.35); }
