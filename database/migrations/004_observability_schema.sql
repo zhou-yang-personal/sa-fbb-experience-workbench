@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS meta_mapping_validation_result (
   matched_source_header VARCHAR(255) NULL,
   required_flag TINYINT NOT NULL DEFAULT 0,
   match_status VARCHAR(32) NOT NULL,
+  alias_candidates TEXT NULL,
+  normalized_aliases TEXT NULL,
+  normalized_csv_headers TEXT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX ix_mapping_validation_batch (import_batch_id, data_type, match_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

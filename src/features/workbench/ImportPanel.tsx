@@ -28,8 +28,10 @@ type Props = {
 };
 
 function parseHint(hint: string) {
-  return hint.split(',').reduce<Record<string, string>>((acc, part) => {
-    const [key, value] = part.split('=').map((item) => item.trim());
+  return hint.split(/\s+\|\s+|,\s+/).reduce<Record<string, string>>((acc, part) => {
+    const separator = part.indexOf('=');
+    const key = separator >= 0 ? part.slice(0, separator).trim() : part.trim();
+    const value = separator >= 0 ? part.slice(separator + 1).trim() : '';
     if (key) acc[key] = value ?? '';
     return acc;
   }, {});
@@ -51,20 +53,15 @@ function defaultBatchName(dataType: ImportDataType, path: string) {
 }
 
 function missingRequiredMessage(items: MetricCard[]) {
-  const friendlyNames: Record<string, string> = {
-    user_account: 'Subscriber Account',
-    universal_video_applications: 'Universal Video Applications',
-    statistics_duration: 'Statistics Duration',
-    downloaded_data_volume_kb: 'Downloaded Data Volume (KB)',
-    effective_download_duration_s: 'Effective Download Duration (s)',
-  };
   const detail = items.map((item, index) => {
     const parsed = parseHint(item.hint);
     const source = parsed.source || '未匹配到任何 CSV header';
-    const display = friendlyNames[item.label] || item.label;
-    return `${index + 1}. ${item.label}: no alias matched. Suggested source: ${display} (${source}), required=${parsed.required ?? '?'}`;
+    const candidates = parsed.alias_candidates || '未配置候选 alias';
+    const normalizedAliases = parsed.normalized_aliases || '未生成 normalized alias';
+    const normalizedHeaders = parsed.normalized_csv_headers || '未读取 CSV normalized headers';
+    return `${index + 1}. target_column=${item.label}, required_flag=${parsed.required ?? '?'}, no alias matched, matched_source=${source}, candidate_aliases=[${candidates}], normalized_aliases=[${normalizedAliases}], csv_normalized_headers=[${normalizedHeaders}]`;
   }).join('；');
-  return `字段映射存在 ${items.length} 个 required 缺失，已停止 RAW 入库：${detail}。当前 CSV header 已按 Universal Video detail format 识别，请补充 Universal Video alias mapping。`;
+  return `字段映射存在 ${items.length} 个 required 缺失，已停止 RAW 入库：${detail}。请检查字段映射目录和 CSV header alias。`;
 }
 
 export function ImportPanel(props: Props) {
