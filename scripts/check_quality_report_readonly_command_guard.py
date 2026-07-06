@@ -21,6 +21,7 @@ REQUIRED_READONLY_ANCHORS = {
     "single latest batch bound": "LIMIT 1",
     "parameter binding": "?1",
     "query row API": "query_row",
+    "query map API": "query_map",
     "count projection": "COUNT(*)",
     "explicit batch id": "import_batch_id",
 }
@@ -32,6 +33,7 @@ FORBIDDEN_COMMAND_PATTERNS = {
     "maintenance command": re.compile(r"\b(?:VACUUM|ANALYZE|REINDEX|CHECKPOINT|REPAIR|OPTIMIZE|CHECKSUM|FLUSH|PURGE)\b", re.IGNORECASE),
     "extension/import/export command": re.compile(r"\b(?:LOAD|INSTALL|IMPORT|EXPORT|COPY|ATTACH|DETACH)\b", re.IGNORECASE),
     "privilege/session command": re.compile(r"\b(?:GRANT|REVOKE|DENY|SET|RESET|CALL|PREPARE|EXECUTE|DEALLOCATE|DISCARD)\b", re.IGNORECASE),
+    "dangerous pragma command": re.compile(r"\bPRAGMA\b", re.IGNORECASE),
 }
 
 
