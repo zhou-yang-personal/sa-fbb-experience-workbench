@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.18
+1.0.19
 ```
 
 ## Source-of-truth branch
@@ -14,7 +14,7 @@ dev
 
 ## Current baseline
 
-The project now includes the Phase 1-7 complete application baseline plus 1.0.18 batch-first analysis closure:
+The project now includes the Phase 1-7 complete application baseline plus 1.0.19 Universal Video import mapping fixes:
 
 - Governance files and detailed architecture design.
 - React + TypeScript + Vite workflow UI.
@@ -85,7 +85,12 @@ The project now includes the Phase 1-7 complete application baseline plus 1.0.18
 - 1.0.18 adds business-backed module dashboard commands for Game, Network, User Profile, Video detail and Cable/FTTH hourly detail.
 - 1.0.18 changes module CSV export to query business ADS / DWS / DWD physical tables instead of exporting module status / registry metadata.
 - 1.0.18 extends `meta_etl_job_step.source_table` and `target_table` to `VARCHAR(512)` for multi-table physical diagnostics.
-- Package, Cargo, Tauri app config, README, handoff and header version markers are synchronized to `1.0.18`.
+- 1.0.19 fixes Universal Video detail CSV header normalization so NBSP, tabs, repeated whitespace, parentheses, `%`, slash and other non ASCII alphanumeric separators normalize to `_`.
+- 1.0.19 makes mapping validation and mapped RAW import share the same header normalization helper.
+- 1.0.19 changes `tcp.user_type` and `game.user_type` mapping required flags to optional; missing user_type no longer blocks RAW import.
+- 1.0.19 adds Universal Video detail aliases for subscriber account, user MAC, application, statistics duration, downloaded data volume and effective download duration.
+- 1.0.19 mapping validation diagnostics include candidate aliases, normalized aliases and normalized CSV headers.
+- Package, Cargo, Tauri app config, README, handoff and header version markers are synchronized to `1.0.19`.
 
 ## Important rules
 
@@ -94,22 +99,22 @@ The project now includes the Phase 1-7 complete application baseline plus 1.0.18
 3. Do not perform full in-memory cleaning of large CSV files.
 4. Dashboard pages must query DWS / ADS tables instead of RAW tables.
 5. Do not submit customer CSV files, database exports, local logs, build outputs or installers.
-6. Current 1.0.18 moves SQL routing, ETL diagnostics, module status and module export further onto per-batch physical tables, while real MySQL / CSV end-to-end smoke still must be confirmed in the target environment if not recorded as executed in the latest delivery report.
+6. Current 1.0.19 fixes Universal Video detail mapping failures while preserving the Raw First MySQL import path.
 
 ## Not verified
 
-- Real MySQL and TCP / Game CSV end-to-end smoke was not executed in the 1.0.18 local run because no `mysql` / `mysqladmin` client and no CSV samples were present in the environment.
+- Real MySQL and TCP / Game CSV end-to-end smoke must be checked from the latest delivery report.
 - Customer real CSV validation has not been recorded in this document.
 - Lead query/export and batch switching non-contamination must be checked with the 1.0.18 checklist when a MySQL test schema and sample CSVs are available.
 
 ## Latest local verification
 
-- `npm install`: passed; npm reported existing audit findings: 2 moderate and 1 high.
 - `npm run check`: passed.
 - `npm run build`: passed; Vite reported the existing large chunk warning.
 - `cd src-tauri && cargo check`: passed with existing dead_code warnings.
+- `cd src-tauri && cargo test -- --nocapture`: passed, 5 tests passed.
 - `npm run tauri:build`: passed and produced ignored local Linux bundles under `src-tauri/target`.
-- `cd src-tauri && cargo test replaces_identifier_positions_only -- --nocapture`: passed.
+- Real Universal Video detail CSV import smoke was not executed in this environment because no customer CSV / MySQL smoke setup was provided.
 
 ## Next recommended work
 

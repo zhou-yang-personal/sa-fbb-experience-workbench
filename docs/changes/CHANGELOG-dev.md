@@ -1,5 +1,30 @@
 # CHANGELOG-dev
 
+## 1.0.19 - 2026-07-06
+
+### Fixed
+
+- Fixed Universal Video detail CSV alias matching for headers such as `Subscriber Account`, `Subscriber Account` with NBSP, `Downloaded Data Volume (KB)` and `Effective Download Duration (s)`.
+- Replaced per-command header normalization with shared normalization that converts all non ASCII alphanumeric separators to `_`, trims leading/trailing `_` and compresses repeated `_`.
+- Made `mapping_validation_commands.rs` and `raw_import_v2.rs` use the same normalization helper to avoid validation / raw-load drift.
+- Changed `tcp.user_type` and `game.user_type` import mappings to optional so missing access type does not block RAW import.
+- Removed unsafe positional fallback from mapped streaming RAW import when a column has no matching header alias.
+- Expanded mapping validation diagnostics with candidate aliases, normalized aliases and normalized CSV headers.
+
+### Changed
+
+- Added Universal Video detail aliases for subscriber account, user MAC, application name, statistics duration, downloaded data volume and effective download duration.
+- Synchronized package, Cargo, Tauri config, README, handoff and header version markers to `1.0.19`.
+
+### Verification
+
+- `npm run check` passed.
+- `npm run build` passed; Vite reported the existing large chunk warning.
+- `cd src-tauri && cargo check` passed with existing dead_code warnings.
+- `cd src-tauri && cargo test -- --nocapture` passed: 5 tests passed.
+- `npm run tauri:build` passed and produced local Linux bundles under ignored `src-tauri/target`.
+- Real Universal Video detail CSV import smoke was not executed in this environment because no customer CSV / MySQL smoke setup was provided.
+
 ## 1.0.18 - 2026-07-06
 
 ### Added

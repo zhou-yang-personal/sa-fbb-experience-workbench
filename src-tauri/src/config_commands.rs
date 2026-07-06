@@ -9,20 +9,27 @@ const MAP_SEED: &str = include_str!("../../database/seeds/002_default_mapping_se
 #[tauri::command]
 pub fn config_seed_defaults(settings: MySqlSettings) -> Result<CommandAck, String> {
     let rows = sql_runner::execute_script(&settings, MAP_SEED)?;
-    Ok(ack(format!("default import mappings and join rules seeded: affected_rows={rows}")))
+    Ok(ack(format!(
+        "default import mappings and join rules seeded: affected_rows={rows}"
+    )))
 }
 
 #[tauri::command]
-pub fn config_get_import_mappings(settings: MySqlSettings, data_type: String) -> Result<Vec<MetricCard>, String> {
+pub fn config_get_import_mappings(
+    settings: MySqlSettings,
+    data_type: String,
+) -> Result<Vec<MetricCard>, String> {
     let mut conn = db::conn(&settings)?;
     conn.exec_map(
         "SELECT target_column, source_header, required_flag, priority FROM cfg_import_field_mapping WHERE data_type=? AND active_flag=1 ORDER BY target_column, priority, source_header",
         (&data_type,),
-        |(target_column, source_header, required_flag, priority): (String, String, u8, i32)| MetricCard {
+        |(target_column, source_header, required_flag, priority): (String, String, u8, i32)| {
+            let effective_required = if target_column.eq_ignore_ascii_case("user_type") && (data_type.eq_ignore_ascii_case("tcp") || data_type.eq_ignore_ascii_case("game")) { 0 } else { required_flag };
+            MetricCard {
             label: target_column,
             value: source_header,
-            hint: format!("required={}, priority={}", required_flag, priority),
-        },
+            hint: format!("required={}, priority={}", effective_required, priority),
+        }},
     ).map_err(|err| format!("failed to query import mappings: {err}"))
 }
 

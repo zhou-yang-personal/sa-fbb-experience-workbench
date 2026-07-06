@@ -8,6 +8,7 @@ mod dataset_profile_commands;
 mod db;
 mod etl_commands;
 mod final_fusion;
+mod header_normalizer;
 mod import_commands;
 mod import_commands_mapped;
 mod job_inspection_commands;
