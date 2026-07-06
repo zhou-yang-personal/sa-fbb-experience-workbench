@@ -1,5 +1,35 @@
 # CHANGELOG-dev
 
+## 1.0.16 - 2026-07-05
+
+### Added
+
+- Added `AnalysisWorkspace` as the default product entry for batch-first dashboard analysis.
+- Added `SystemPanel` to collect database connection, data availability checks, ETL task inspection and diagnostic logs under System Management.
+- Added `docs/design/product-function-tree-v0.2.md` to document the product function tree and batch-first constraints.
+- Added readable batch naming to frontend workbench context and `meta_import_batch.batch_display_name`.
+- Added backend auto-column guard for `meta_import_batch.batch_display_name` when creating or checking import batches on existing local databases.
+- Added module readiness definitions for Overview, App Usage, Video Experience, Game Experience, Network Quality, Cable vs FTTH, Migration Leads and User Profile.
+
+### Changed
+
+- Replaced the Start / Import / Validate / Analyze / Results navigation center with product navigation: Data Analysis / Data Import / System Management.
+- Made Data Analysis the default landing page.
+- Data Import now requires a human-readable batch name before creating or importing a batch.
+- Dashboard / Lead export remains inside the relevant dashboard panels; there is no standalone Export module.
+- Mapping required-field failure now reports missing target fields and source-header matching detail instead of only a missing count.
+- Execution Log is renamed and positioned as Diagnostic Log, with copy-all and copy-failure actions.
+- Synchronized package, Cargo, Tauri config, README and handoff version markers to `1.0.16`.
+
+### Not fully implemented
+
+- Per-batch physical RAW / CLEAN / DWS / ADS table creation is not fully switched in this round. 1.0.16 still uses shared physical tables plus `import_batch_id` isolation, with the target-state table naming documented for the next database-mainline refactor.
+
+### Not verified
+
+- ChatGPT GitHub connector cannot run `npm install`, `npm run check`, `npm run build`, `cargo check` or `tauri:build`.
+- Real MySQL and CSV end-to-end flow was not executed in this round.
+
 ## 1.0.15 - 2026-07-04
 
 ### Added
