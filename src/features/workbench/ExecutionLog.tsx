@@ -42,13 +42,14 @@ export function ExecutionLog({ log }: ExecutionLogProps) {
   const failedRows = log.filter((entry) => entry.status === 'failure');
   const successRows = log.filter((entry) => entry.status === 'success');
   const failedText = failedRows.map(formatEntry).join('\n\n---\n\n');
+  const allText = log.map(formatEntry).join('\n\n---\n\n');
 
   return (
     <section className="panel execution-log-panel">
       <div className="log-header">
         <div>
-          <h2>执行日志</h2>
-          <p className="muted-row">按结构化执行结果过滤操作记录，失败项可一键复制。</p>
+          <h2>诊断日志</h2>
+          <p className="muted-row">记录命令、错误、耗时和返回预览。字段映射、质量门禁、ETL 失败都应在这里看到可复制诊断信息。</p>
         </div>
         <div className="log-summary">
           <span>{log.length} total</span>
@@ -58,7 +59,7 @@ export function ExecutionLog({ log }: ExecutionLogProps) {
       </div>
 
       <div className="table-toolbar log-toolbar">
-        <input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Search command / message / result" />
+        <input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Search command / field / error / result" />
         <select value={filter} onChange={(e) => setFilter(e.target.value as LogFilter)}>
           <option value="all">All status</option>
           <option value="success">Success only</option>
@@ -66,6 +67,7 @@ export function ExecutionLog({ log }: ExecutionLogProps) {
         </select>
         <button type="button" onClick={() => { setFilter('all'); setKeyword(''); }}>清空筛选</button>
         <button type="button" disabled={!failedRows.length} onClick={() => copyText(failedText)}>复制失败信息</button>
+        <button type="button" disabled={!log.length} onClick={() => copyText(allText)}>复制全部日志</button>
       </div>
 
       <div className="log-list structured-log-list">
