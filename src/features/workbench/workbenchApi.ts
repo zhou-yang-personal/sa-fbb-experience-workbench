@@ -23,8 +23,8 @@ export const workbenchApi = {
   initDb: (settings: MySqlSettings) => invoke<CommandAck>('db_initialize', { settings }),
   seedConfig: (settings: MySqlSettings) => invoke<CommandAck>('config_seed_defaults', { settings }),
   probeCsv: (path: string) => invoke('import_probe_csv', { path }),
-  createBatch: (settings: MySqlSettings, dataType: string, filePath: string) =>
-    invoke<ImportBatchResult>('import_create_batch', { req: { settings, data_type: dataType, file_path: filePath } }),
+  createBatch: (settings: MySqlSettings, dataType: string, filePath: string, batchDisplayName?: string) =>
+    invoke<ImportBatchResult>('import_create_batch', { req: { settings, data_type: dataType, file_path: filePath, batch_display_name: batchDisplayName?.trim() || undefined } }),
   validateMapping: (settings: MySqlSettings, importBatchId: string, dataType: string, filePath: string) =>
     invoke<CommandAck>('import_validate_mapping', { settings, importBatchId, dataType, filePath }),
   loadRaw: (settings: MySqlSettings, importBatchId: string, dataType: string, filePath: string, mode: string) =>
