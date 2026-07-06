@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.19
+1.0.20
 ```
 
 ## Source-of-truth branch
@@ -14,7 +14,7 @@ dev
 
 ## Current baseline
 
-The project now includes the Phase 1-7 complete application baseline plus 1.0.19 Universal Video import mapping fixes:
+The project now includes the Phase 1-7 complete application baseline plus 1.0.20 Import / Mapping / RAW Load contract hardening:
 
 - Governance files and detailed architecture design.
 - React + TypeScript + Vite workflow UI.
@@ -90,7 +90,13 @@ The project now includes the Phase 1-7 complete application baseline plus 1.0.19
 - 1.0.19 changes `tcp.user_type` and `game.user_type` mapping required flags to optional; missing user_type no longer blocks RAW import.
 - 1.0.19 adds Universal Video detail aliases for subscriber account, user MAC, application, statistics duration, downloaded data volume and effective download duration.
 - 1.0.19 mapping validation diagnostics include candidate aliases, normalized aliases and normalized CSV headers.
-- Package, Cargo, Tauri app config, README, handoff and header version markers are synchronized to `1.0.19`.
+- 1.0.20 adds mapping catalog self-heal before validation, RAW load, atomic import and config seed.
+- 1.0.20 adds mapping catalog health metrics for app version, mapping seed version, applied time, stale status and critical alias gaps.
+- 1.0.20 moves the main import button to backend `import_current_file_atomic`.
+- 1.0.20 enforces required mapping gate inside RAW load so direct command invocation cannot bypass validation.
+- 1.0.20 marks batches `failed` on mapping validation or RAW load failure instead of leaving pending batches.
+- 1.0.20 truncates frontend missing-required normalized header previews to the first 20 headers while preserving full details in mapping results.
+- Package, Cargo, Tauri app config, README, handoff and header version markers are synchronized to `1.0.20`.
 
 ## Important rules
 
@@ -99,7 +105,7 @@ The project now includes the Phase 1-7 complete application baseline plus 1.0.19
 3. Do not perform full in-memory cleaning of large CSV files.
 4. Dashboard pages must query DWS / ADS tables instead of RAW tables.
 5. Do not submit customer CSV files, database exports, local logs, build outputs or installers.
-6. Current 1.0.19 fixes Universal Video detail mapping failures while preserving the Raw First MySQL import path.
+6. Current 1.0.20 hardens the Import / Mapping / RAW Load contract while preserving the Raw First MySQL import path.
 
 ## Not verified
 
@@ -112,9 +118,10 @@ The project now includes the Phase 1-7 complete application baseline plus 1.0.19
 - `npm run check`: passed.
 - `npm run build`: passed; Vite reported the existing large chunk warning.
 - `cd src-tauri && cargo check`: passed with existing dead_code warnings.
-- `cd src-tauri && cargo test -- --nocapture`: passed, 5 tests passed.
+- `cd src-tauri && cargo test -- --nocapture`: passed, 10 tests passed.
 - `npm run tauri:build`: passed and produced ignored local Linux bundles under `src-tauri/target`.
-- Real Universal Video detail CSV import smoke was not executed in this environment because no customer CSV / MySQL smoke setup was provided.
+- Synthetic Universal Video header coverage was verified by Rust tests.
+- Real Universal Video detail CSV import smoke must be checked from the latest delivery report; customer CSV / MySQL smoke status is not recorded as passed here unless the delivery report says so.
 
 ## Next recommended work
 

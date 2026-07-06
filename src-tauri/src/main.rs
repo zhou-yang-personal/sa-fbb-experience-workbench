@@ -15,6 +15,7 @@ mod job_inspection_commands;
 mod job_inspector;
 mod job_runner;
 mod lead_commands;
+mod mapping_catalog;
 mod mapping_result_commands;
 mod mapping_validation_commands;
 mod migrations;
@@ -39,6 +40,7 @@ fn main() {
             analysis_commands::analysis_get_module_metrics,
             import_commands::import_probe_csv,
             import_commands::import_create_batch,
+            import_commands::import_current_file_atomic,
             import_commands_mapped::import_start_raw_load,
             import_commands::import_get_batch_status,
             mapping_validation_commands::import_validate_mapping,
@@ -61,6 +63,7 @@ fn main() {
             lead_commands::export_leads_csv,
             lead_commands::export_final_leads_csv,
             config_commands::config_seed_defaults,
+            config_commands::config_check_import_catalog,
             config_commands::config_get_import_mappings,
             config_commands::config_get_join_rules,
             phase_commands::quality_run_gate,

@@ -58,18 +58,19 @@ function missingRequiredMessage(items: MetricCard[]) {
     const source = parsed.source || '未匹配到任何 CSV header';
     const candidates = parsed.alias_candidates || '未配置候选 alias';
     const normalizedAliases = parsed.normalized_aliases || '未生成 normalized alias';
-    const normalizedHeaders = parsed.normalized_csv_headers || '未读取 CSV normalized headers';
-    return `${index + 1}. target_column=${item.label}, required_flag=${parsed.required ?? '?'}, no alias matched, matched_source=${source}, candidate_aliases=[${candidates}], normalized_aliases=[${normalizedAliases}], csv_normalized_headers=[${normalizedHeaders}]`;
+    const normalizedHeaders = (parsed.normalized_csv_headers || '未读取 CSV normalized headers').split('|').slice(0, 20).join('|');
+    return `${index + 1}. target=${item.label}, required_flag=${parsed.required ?? '?'}, matched=false, matched_source=${source}, candidates=[${candidates}], normalized_candidates=[${normalizedAliases}], top_normalized_csv_headers=[${normalizedHeaders}]`;
   }).join('；');
-  return `字段映射存在 ${items.length} 个 required 缺失，已停止 RAW 入库：${detail}。请检查字段映射目录和 CSV header alias。`;
+  return `字段映射存在 ${items.length} 个 required 缺失，已停止 RAW 入库：${detail}。完整 normalized headers 可在映射结果中查看。`;
 }
 
 export function ImportPanel(props: Props) {
-  const { settings, effectiveSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, batchDisplayName, setBatchDisplayName, batch, setBatch, createBatch, runAction, loadMetrics, actionStates } = props;
+  const { settings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, batchDisplayName, setBatchDisplayName, batch, setBatch, createBatch, runAction, loadMetrics, actionStates } = props;
   const [mappingSummary, setMappingSummary] = useState<MetricCard[]>([]);
   const [mappingResults, setMappingResults] = useState<MetricCard[]>([]);
   const [profileMetrics, setProfileMetrics] = useState<MetricCard[]>([]);
   const [mappingCatalog, setMappingCatalog] = useState<MetricCard[]>([]);
+  const [catalogHealth, setCatalogHealth] = useState<MetricCard[]>([]);
   const [statusMessage, setStatusMessage] = useState('请选择 CSV 文件，并确认本次导入批次名称。');
 
   const mappingCounts = useMemo(() => {
@@ -133,6 +134,12 @@ export function ImportPanel(props: Props) {
     setStatusMessage(result.length ? '字段映射目录已刷新' : '字段映射目录为空');
   }
 
+  async function refreshCatalogHealth() {
+    const result = await loadMetrics('config_check_import_catalog', () => workbenchApi.checkImportCatalog(settings));
+    setCatalogHealth(result);
+    return result;
+  }
+
   async function validateMapping() {
     await runAction('import_validate_mapping', () => workbenchApi.validateMapping(settings, importBatchId, dataType, filePath));
     await refreshMappingSummary();
@@ -146,7 +153,7 @@ export function ImportPanel(props: Props) {
   }
 
   async function refreshRawLoad() {
-    await runAction('import_start_raw_load', () => workbenchApi.loadRaw(effectiveSettings, importBatchId, dataType, filePath, importMode));
+    await runAction('import_start_raw_load', () => workbenchApi.loadRaw(settings, importBatchId, dataType, filePath, importMode));
     await refreshRawStatus();
     await refreshProfile();
   }
@@ -155,26 +162,22 @@ export function ImportPanel(props: Props) {
     await runAction('import_current_file', async () => {
       if (!filePath.trim()) throw new Error('请先通过文件选择框选择 CSV 文件。');
       if (!batchDisplayName.trim()) throw new Error('请先为本次导入设置一个正常人可读的批次名称。');
-      await workbenchApi.probeCsv(filePath);
-      const nextBatch = await workbenchApi.createBatch(effectiveSettings, dataType, filePath, batchDisplayName);
-      setBatch(nextBatch);
-      setImportBatchId(nextBatch.import_batch_id);
-      await workbenchApi.validateMapping(settings, nextBatch.import_batch_id, dataType, filePath);
-      const summary = await mappingApi.summary(settings, nextBatch.import_batch_id, dataType);
-      const results = await mappingApi.results(settings, nextBatch.import_batch_id, dataType);
-      setMappingSummary(summary);
-      setMappingResults(results);
-      const missingRequired = results.filter((item) => item.value === 'missing_required');
-      if (missingRequired.length > 0) {
-        throw new Error(missingRequiredMessage(missingRequired));
+      const health = await workbenchApi.checkImportCatalog(settings);
+      setCatalogHealth(health);
+      const stale = health.some((item) => item.label === 'stale_catalog' && item.value === 'yes');
+      if (stale) {
+        await workbenchApi.seedConfig(settings);
+        const repaired = await workbenchApi.checkImportCatalog(settings);
+        setCatalogHealth(repaired);
       }
-      await workbenchApi.loadRaw(effectiveSettings, nextBatch.import_batch_id, dataType, filePath, importMode);
-      const rawStatus = await workbenchApi.importStatus(settings, nextBatch.import_batch_id);
-      await profileApi.refresh(settings, nextBatch.import_batch_id, dataType);
-      const profile = await profileApi.get(settings, nextBatch.import_batch_id, dataType);
-      setProfileMetrics(profile);
-      setStatusMessage(`导入完成：${batchDisplayName} / ${nextBatch.import_batch_id}`);
-      return { batch: nextBatch, batch_display_name: batchDisplayName, mapping_summary: summary, mapping_results: results, raw_status: rawStatus, profile };
+      const result = await workbenchApi.importCurrentFile(settings, dataType, filePath, batchDisplayName, importMode);
+      setBatch(result.batch);
+      setImportBatchId(result.batch.import_batch_id);
+      setMappingSummary(result.mapping_summary);
+      setMappingResults(result.mapping_results);
+      setProfileMetrics(result.profile);
+      setStatusMessage(`导入完成：${batchDisplayName} / ${result.batch.import_batch_id}`);
+      return result;
     });
   }
 
@@ -233,6 +236,7 @@ export function ImportPanel(props: Props) {
           <ActionButton actionKey="dataset_profile_get" actionStates={actionStates} label="查看画像" disabled={!importBatchId} onClick={() => refreshProfile()} />
           <ActionButton actionKey="import_start_raw_load" actionStates={actionStates} label="RAW 入库" disabled={!importBatchId || !filePath} onClick={refreshRawLoad} />
           <ActionButton actionKey="import_get_batch_status" actionStates={actionStates} label="刷新导入状态" disabled={!importBatchId} onClick={() => refreshRawStatus()} />
+          <ActionButton actionKey="config_check_import_catalog" actionStates={actionStates} label="Catalog 健康" onClick={refreshCatalogHealth} />
           <ActionButton actionKey="config_get_import_mappings" actionStates={actionStates} label="字段映射" onClick={refreshMappingCatalog} />
         </div>
       </details>
@@ -246,6 +250,12 @@ export function ImportPanel(props: Props) {
       </div>
       <p className={missingTotal ? 'muted-row status-failure-text' : 'muted-row'}>{mappingSummaryText}</p>
       <p className="muted-row">{statusMessage}</p>
+      {catalogHealth.length > 0 && (
+        <div className="table-like">
+          <div className="table-row table-head"><span>Catalog</span><span>Value</span><span>Hint</span></div>
+          {catalogHealth.map((item) => <div key={`${item.label}-${item.value}-${item.hint}`} className="table-row"><span>{item.label}</span><span>{item.value}</span><span>{item.hint}</span></div>)}
+        </div>
+      )}
       <div className="table-like">
         <div className="table-row table-head"><span>Status</span><span>Count</span><span>Scope</span></div>
         {mappingSummary.map((item) => (

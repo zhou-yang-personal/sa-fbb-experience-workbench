@@ -2,16 +2,17 @@ use mysql::prelude::*;
 
 use crate::db;
 use crate::models::{ack, CommandAck, MetricCard, MySqlSettings};
-use crate::sql_runner;
-
-const MAP_SEED: &str = include_str!("../../database/seeds/002_default_mapping_seed.sql");
-
 #[tauri::command]
 pub fn config_seed_defaults(settings: MySqlSettings) -> Result<CommandAck, String> {
-    let rows = sql_runner::execute_script(&settings, MAP_SEED)?;
+    let rows = crate::mapping_catalog::ensure_import_mapping_catalog(&settings)?;
     Ok(ack(format!(
         "default import mappings and join rules seeded: affected_rows={rows}"
     )))
+}
+
+#[tauri::command]
+pub fn config_check_import_catalog(settings: MySqlSettings) -> Result<Vec<MetricCard>, String> {
+    crate::mapping_catalog::check_import_mapping_catalog(&settings)
 }
 
 #[tauri::command]
@@ -19,6 +20,7 @@ pub fn config_get_import_mappings(
     settings: MySqlSettings,
     data_type: String,
 ) -> Result<Vec<MetricCard>, String> {
+    crate::mapping_catalog::ensure_import_mapping_catalog(&settings)?;
     let mut conn = db::conn(&settings)?;
     conn.exec_map(
         "SELECT target_column, source_header, required_flag, priority FROM cfg_import_field_mapping WHERE data_type=? AND active_flag=1 ORDER BY target_column, priority, source_header",

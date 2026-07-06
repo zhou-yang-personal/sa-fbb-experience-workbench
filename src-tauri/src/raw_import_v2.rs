@@ -116,6 +116,7 @@ const REACHABILITY_COLUMNS: &[&str] = &[
 ];
 
 pub fn start_raw_load(req: RawLoadRequest) -> Result<String, String> {
+    preflight_required_mapping(&req)?;
     let mode = req
         .mode
         .clone()
@@ -132,6 +133,21 @@ pub fn start_raw_load(req: RawLoadRequest) -> Result<String, String> {
     } else {
         mapped_load_data_or_fallback(req)
     }
+}
+
+fn preflight_required_mapping(req: &RawLoadRequest) -> Result<(), String> {
+    let rows = crate::mapping_validation_commands::validate_mapping_to_db(
+        &req.settings,
+        &req.import_batch_id,
+        &req.data_type,
+        &req.file_path,
+    )?;
+    if let Some(message) = crate::mapping_validation_commands::missing_required_message(&rows) {
+        let mut conn = db::conn(&req.settings)?;
+        mark_failed(&mut conn, &req.import_batch_id, &message);
+        return Err(message);
+    }
+    Ok(())
 }
 
 fn raw_spec(req: &RawLoadRequest) -> Result<RawSpec, String> {
@@ -445,4 +461,28 @@ fn finalize_batch(
 
 fn mark_failed(conn: &mut mysql::PooledConn, batch_id: &str, message: &str) {
     let _ = conn.exec_drop("UPDATE meta_import_batch SET status='failed', finished_at=NOW(), message=? WHERE import_batch_id=?", (message, batch_id));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{value_for_column, HeaderAliases};
+    use csv::StringRecord;
+    use std::collections::HashMap;
+
+    #[test]
+    fn value_for_column_missing_optional_returns_none_without_positional_fallback() {
+        let headers = StringRecord::from(vec!["ID", "Subscriber Account"]);
+        let row = StringRecord::from(vec!["1", "acct-001"]);
+        let header_index: HashMap<String, usize> = headers
+            .iter()
+            .enumerate()
+            .map(|(index, header)| (crate::header_normalizer::normalize_header(header), index))
+            .collect();
+        let aliases: HeaderAliases = HashMap::new();
+
+        assert_eq!(
+            value_for_column("user_type", &header_index, &aliases, &row),
+            None
+        );
+    }
 }

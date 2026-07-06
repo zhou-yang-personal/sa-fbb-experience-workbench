@@ -16,6 +16,7 @@ export function SystemDiagnostics({ settings, importBatchId, analysisRunId, data
   const [registry, setRegistry] = useState<BatchTableRegistryRow[]>([]);
   const [statusRows, setStatusRows] = useState<ModuleStatusRow[]>([]);
   const [mappingIssues, setMappingIssues] = useState<MetricCard[]>([]);
+  const [catalogHealth, setCatalogHealth] = useState<MetricCard[]>([]);
   const [qualityFailed, setQualityFailed] = useState<MetricCard[]>([]);
   const [etlFailed, setEtlFailed] = useState<MetricCard[]>([]);
   const [message, setMessage] = useState('等待刷新诊断数据。');
@@ -33,6 +34,7 @@ export function SystemDiagnostics({ settings, importBatchId, analysisRunId, data
       `data_type=${dataType || 'missing'}`,
       `registry=${registry.length}`,
       `modules=${statusRows.length}`,
+      ...catalogHealth.map((item) => `catalog.${item.label}=${item.value}; ${item.hint}`),
       ...registry.map((row) => `${row.logical_table_name} => ${row.physical_table_name} (${row.row_count})`),
       ...statusRows.map((row) => `${row.module_name}: enabled=${row.enabled}; ${row.status_text ?? '-'}`),
     ];
@@ -40,13 +42,15 @@ export function SystemDiagnostics({ settings, importBatchId, analysisRunId, data
   }
 
   async function refresh() {
+    const catalog = await workbenchApi.checkImportCatalog(settings);
+    setCatalogHealth(catalog);
     if (!importBatchId.trim()) {
       setRegistry([]);
       setStatusRows([]);
       setMappingIssues([]);
       setQualityFailed([]);
       setEtlFailed([]);
-      setMessage('请先选择批次。');
+      setMessage('Catalog 已刷新；请先选择批次查看 batch 诊断。');
       return;
     }
     const [registryRows, status, mapping, quality, etl] = await Promise.all([
@@ -61,7 +65,7 @@ export function SystemDiagnostics({ settings, importBatchId, analysisRunId, data
     setMappingIssues(mapping.filter((item) => item.value === 'missing_required'));
     setQualityFailed(quality);
     setEtlFailed(etl);
-    setMessage(`registry=${registryRows.length}, modules=${status.length}`);
+    setMessage(`registry=${registryRows.length}, modules=${status.length}, catalog=${catalog.length}`);
   }
 
   useEffect(() => {
@@ -86,9 +90,21 @@ export function SystemDiagnostics({ settings, importBatchId, analysisRunId, data
       <div className="summary-pills">
         <span className="status-pill">registry {registry.length}</span>
         <span className="status-pill">modules {statusRows.length}</span>
+        <span className="status-pill">catalog {catalogHealth.find((item) => item.label === 'stale_catalog')?.value ?? 'unknown'}</span>
         <span className="status-pill">batch {importBatchId || 'missing'}</span>
       </div>
       <div className="table-like">
+        <div className="table-row table-head"><span>Catalog</span><span>Value</span><span>Hint</span></div>
+        {catalogHealth.map((item) => (
+          <div key={`${item.label}-${item.value}-${item.hint}`} className="table-row">
+            <span>{item.label}</span>
+            <span>{item.value}</span>
+            <span>{item.hint}</span>
+          </div>
+        ))}
+        {!catalogHealth.length && <div className="table-row muted-row">未读取 mapping catalog health。</div>}
+      </div>
+      <div className="table-like" style={{ marginTop: 12 }}>
         <div className="table-row table-head"><span>Logical</span><span>Physical</span><span>Rows</span><span>Status</span></div>
         {registry.map((row) => (
           <div key={`${row.import_batch_id}-${row.logical_table_name}`} className="table-row">

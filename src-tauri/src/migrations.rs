@@ -15,5 +15,6 @@ pub fn init_database(settings: &MySqlSettings) -> Result<String, String> {
     let obs_rows = sql_runner::execute_script(settings, OBS_SCHEMA)?;
     let seed_rows = sql_runner::execute_script(settings, APP_MAPPING_SEED)?;
     let map_seed_rows = sql_runner::execute_script(settings, MAP_SEED)?;
+    crate::mapping_catalog::ensure_import_mapping_catalog(settings)?;
     Ok(format!("database initialized: core={core_rows}, ext={ext_rows}, map={map_rows}, obs={obs_rows}, seed={seed_rows}, map_seed={map_seed_rows}"))
 }

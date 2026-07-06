@@ -92,6 +92,25 @@ pub struct RawLoadRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct ImportCurrentFileRequest {
+    pub settings: MySqlSettings,
+    pub data_type: String,
+    pub file_path: String,
+    pub batch_display_name: String,
+    pub mode: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ImportCurrentFileResult {
+    pub batch: ImportBatchResult,
+    pub mapping_summary: Vec<MetricCard>,
+    pub mapping_results: Vec<MetricCard>,
+    pub raw_status: Vec<MetricCard>,
+    pub profile: Vec<MetricCard>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct EtlRequest {
     pub settings: MySqlSettings,
     pub import_batch_id: String,

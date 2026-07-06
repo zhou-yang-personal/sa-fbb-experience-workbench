@@ -38,3 +38,9 @@ CREATE TABLE IF NOT EXISTS meta_dataset_profile (
   UNIQUE KEY uk_dataset_profile (import_batch_id, data_type, profile_key),
   INDEX ix_dataset_profile_batch (import_batch_id, data_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS meta_app_config (
+  config_key VARCHAR(128) NOT NULL PRIMARY KEY,
+  config_value VARCHAR(512) NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

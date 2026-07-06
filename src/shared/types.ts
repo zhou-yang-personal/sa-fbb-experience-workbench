@@ -37,6 +37,15 @@ export interface ImportBatchResult {
   status: string;
 }
 
+export interface ImportCurrentFileResult {
+  batch: ImportBatchResult;
+  mapping_summary: MetricCard[];
+  mapping_results: MetricCard[];
+  raw_status: MetricCard[];
+  profile: MetricCard[];
+  message: string;
+}
+
 export interface BatchListItem {
   import_batch_id: string;
   batch_display_name?: string;

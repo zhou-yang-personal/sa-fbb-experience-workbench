@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { BatchListItem, BatchTableRegistryRow, CommandAck, DashboardOverview, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
+import type { BatchListItem, BatchTableRegistryRow, CommandAck, DashboardOverview, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
 
 function normalizeFilter(value?: string) {
   const normalized = value?.trim();
@@ -29,6 +29,7 @@ export const workbenchApi = {
   exportModule: (settings: MySqlSettings, importBatchId: string, analysisRunId: string | undefined, moduleId: string, outputPath: string) =>
     invoke<CommandAck>('analysis_export_module_csv', { settings, importBatchId, analysisRunId, moduleId, outputPath }),
   seedConfig: (settings: MySqlSettings) => invoke<CommandAck>('config_seed_defaults', { settings }),
+  checkImportCatalog: (settings: MySqlSettings) => invoke<MetricCard[]>('config_check_import_catalog', { settings }),
   probeCsv: (path: string) => invoke('import_probe_csv', { path }),
   createBatch: (settings: MySqlSettings, dataType: string, filePath: string, batchDisplayName?: string) =>
     invoke<ImportBatchResult>('import_create_batch', { req: { settings, data_type: dataType, file_path: filePath, batch_display_name: batchDisplayName?.trim() || undefined } }),
@@ -36,6 +37,8 @@ export const workbenchApi = {
     invoke<CommandAck>('import_validate_mapping', { settings, importBatchId, dataType, filePath }),
   loadRaw: (settings: MySqlSettings, importBatchId: string, dataType: string, filePath: string, mode: string) =>
     invoke<CommandAck>('import_start_raw_load', { req: { settings, import_batch_id: importBatchId, data_type: dataType, file_path: filePath, mode } }),
+  importCurrentFile: (settings: MySqlSettings, dataType: string, filePath: string, batchDisplayName: string, mode: string) =>
+    invoke<ImportCurrentFileResult>('import_current_file_atomic', { req: { settings, data_type: dataType, file_path: filePath, batch_display_name: batchDisplayName, mode } }),
   importStatus: (settings: MySqlSettings, importBatchId: string) => invoke<MetricCard[]>('import_get_batch_status', { settings, importBatchId }),
   importMappings: (settings: MySqlSettings, dataType: string) => invoke<MetricCard[]>('config_get_import_mappings', { settings, dataType }),
   joinRules: (settings: MySqlSettings) => invoke<MetricCard[]>('config_get_join_rules', { settings }),

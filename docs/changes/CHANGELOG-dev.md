@@ -1,5 +1,32 @@
 # CHANGELOG-dev
 
+## 1.0.20 - 2026-07-06
+
+### Added
+
+- Added mapping catalog self-heal before import validation, RAW load, atomic import and config seed.
+- Added mapping catalog health command with app version, mapping seed version, applied time, stale state and critical alias gap metrics.
+- Added `meta_app_config` for observable `app_version`, `mapping_seed_version` and `mapping_seed_applied_at`.
+- Added backend `import_current_file_atomic` so the main import path runs probe, catalog repair, batch creation, mapping validation, RAW load and dataset profile refresh as one backend flow.
+
+### Changed
+
+- Moved required mapping gate into the RAW load entrypoint so direct `import_start_raw_load` cannot bypass validation.
+- Mark mapping validation and RAW load failures as `meta_import_batch.status='failed'` with a failure message.
+- Main ImportPanel button now calls the backend atomic command instead of composing probe / create batch / validate / load RAW in the frontend.
+- Frontend missing-required errors now show only the first 20 normalized headers while preserving complete details in mapping results.
+- Synchronized package, Cargo, Tauri config, README, handoff and header version markers to `1.0.20`.
+
+### Verification
+
+- `npm run check` passed.
+- `npm run build` passed; Vite reported the existing large chunk warning.
+- `cd src-tauri && cargo check` passed with existing dead_code warnings.
+- `cd src-tauri && cargo test -- --nocapture` passed: 10 tests passed.
+- `npm run tauri:build` passed and produced ignored local Linux bundles under `src-tauri/target`.
+- Synthetic Universal Video header coverage was verified by Rust tests using `ID, Subscriber Account, User Mac, Local IP Address, Universal Video Applications, Statistics Duration, Downloaded Data Volume (KB), Effective Download Duration (s)`.
+- Real MySQL / customer CSV import smoke was not executed in this environment.
+
 ## 1.0.19 - 2026-07-06
 
 ### Fixed
