@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.15
+1.0.16
 ```
 
 ## Source-of-truth branch
@@ -14,7 +14,7 @@ dev
 
 ## Current baseline
 
-The project now includes the Phase 1-7 complete application baseline plus guided interaction fixes:
+The project now includes the Phase 1-7 complete application baseline plus product-tree interaction fixes:
 
 - Governance files and detailed architecture design.
 - React + TypeScript + Vite workflow UI.
@@ -71,14 +71,15 @@ The project now includes the Phase 1-7 complete application baseline plus guided
 - SA Lead query applies server-side pagination plus optional lead_type and keyword filters.
 - Final Lead query applies server-side pagination plus optional final_action and keyword filters.
 - Final Lead CSV export supports `final_actions` filtering for action-specific delivery files.
-- Export presets now use system save dialogs and set Final Action export scope.
-- Guided UI adds 5-step navigation: Start / Import / Validate / Analyze / Results.
-- Guided UI adds pipeline status bar, next-action hint, action feedback bar and Run Log drawer.
-- Guided UI adds `ActionButton` for running / success / failure / disabled button states.
-- Import uses a system CSV file picker in the main flow; manual path entry is kept only in advanced mode.
-- Import main action runs probe, create batch, mapping validation, RAW load, status refresh and dataset profile refresh.
-- Analyze main action runs RAW→CLEAN, aggregate and Final Fusion as one business action.
-- Package, Cargo, Tauri app config, README and handoff version markers are synchronized to `1.0.15`.
+- Export presets use system save dialogs and set Final Action export scope.
+- 1.0.16 replaces the 5-step guided navigation with the product function tree: Data Analysis / Data Import / System Management.
+- Data Analysis is the default entry and requires an import batch before dashboard use.
+- `AnalysisWorkspace` declares module required fields, applicable data types and required aggregate tables, then disables unavailable modules.
+- `ImportPanel` requires a readable batch name before creating an import batch.
+- `meta_import_batch.batch_display_name` is added to schema and auto-added for existing local databases when creating or checking a batch.
+- Mapping required-field failure messages now list missing target fields instead of only a count.
+- `ExecutionLog` is promoted to diagnostic log and can copy all logs or failure logs.
+- Package, Cargo, Tauri app config, README and handoff version markers are synchronized to `1.0.16`.
 
 ## Important rules
 
@@ -87,6 +88,7 @@ The project now includes the Phase 1-7 complete application baseline plus guided
 3. Do not perform full in-memory cleaning of large CSV files.
 4. Dashboard pages must query DWS / ADS tables instead of RAW tables.
 5. Do not submit customer CSV files, database exports, local logs, build outputs or installers.
+6. Current 1.0.16 still uses shared physical RAW / CLEAN / DWS / ADS tables with `import_batch_id` isolation. Per-batch physical table generation is documented as the next database-mainline refactor, not fully switched in this round.
 
 ## Not verified
 
@@ -95,11 +97,11 @@ The project now includes the Phase 1-7 complete application baseline plus guided
 - Rust check was not run in ChatGPT GitHub connector environment.
 - Tauri package build was not run in ChatGPT GitHub connector environment.
 - Real MySQL and CSV end-to-end flow was not executed in this round.
-- `QualityCenter.tsx` was not replaced because connector safety checks blocked large-file rewrite; guided quality component exists but the main route still uses the existing Quality Center.
+- Per-batch physical table generation is not fully implemented in 1.0.16; current implementation saves a readable batch name and uses `import_batch_id` isolation.
 
 ## Next recommended work
 
 1. Run local dependency installation and build checks.
 2. Run `npm run check`, `npm run build`, `cd src-tauri && cargo check`, and `npm run tauri:build`.
-3. If build passes, finish the remaining Validate-page route switch locally or through Codex.
-4. Run a real CSV smoke test: Start → Import → Validate → Analyze → Results & Export.
+3. Run a real CSV smoke test: Data Import → import named batch → Data Analysis → select batch → refresh dashboards.
+4. Implement the database-mainline refactor for per-batch physical RAW / CLEAN / DWS / ADS table creation and SQL routing.
