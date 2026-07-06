@@ -77,6 +77,23 @@ pub struct DashboardRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct ModuleStatusRequest {
+    pub settings: MySqlSettings,
+    pub import_batch_id: String,
+    pub data_type: Option<String>,
+    pub analysis_run_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ExportModuleRequest {
+    pub settings: MySqlSettings,
+    pub import_batch_id: String,
+    pub analysis_run_id: Option<String>,
+    pub module_id: String,
+    pub output_path: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct LeadsQueryRequest {
     pub settings: MySqlSettings,
     pub analysis_run_id: String,
