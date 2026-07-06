@@ -78,6 +78,9 @@ FORBIDDEN_OPERATIONAL_TERMS = {
     "runtime drop sequence": "DROP SEQUENCE",
     "runtime grant mutation": "GRANT ",
     "runtime revoke mutation": "REVOKE ",
+    "runtime role creation": "CREATE ROLE",
+    "runtime role drop": "DROP ROLE",
+    "runtime role alter": "ALTER ROLE",
     "runtime start transaction": "START TRANSACTION",
     "runtime begin transaction": "BEGIN TRANSACTION",
     "runtime commit transaction": "COMMIT",
@@ -126,6 +129,7 @@ FORBIDDEN_SQL_PATTERNS = {
     "runtime quoted procedure mutation": re.compile(r"\b(?:CREATE|DROP)\s+(?:OR\s+REPLACE\s+)?PROCEDURE\s+", re.IGNORECASE),
     "runtime quoted function mutation": re.compile(r"\b(?:CREATE|DROP)\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+", re.IGNORECASE),
     "runtime quoted policy mutation": re.compile(r"\b(?:CREATE|ALTER|DROP)\s+(?:OR\s+REPLACE\s+)?POLICY\s+", re.IGNORECASE),
+    "runtime quoted role mutation": re.compile(r"\b(?:CREATE|ALTER|DROP)\s+(?:OR\s+REPLACE\s+)?ROLE\s+", re.IGNORECASE),
 }
 
 
