@@ -31,6 +31,7 @@ export interface CsvProbeResult {
 
 export interface ImportBatchResult {
   import_batch_id: string;
+  batch_display_name?: string;
   data_type: string;
   source_file_name: string;
   status: string;
@@ -126,6 +127,7 @@ export interface FinalLeadUserRow {
 
 export interface ImportBatchSummary {
   importBatchId: string;
+  batchDisplayName?: string;
   dataType: ImportDataType;
   sourceFileName: string;
   totalRows: number;
