@@ -81,7 +81,7 @@ const MODULE_SPECS: &[ModuleSpec] = &[
         module_id: "migration_lead",
         module_name: "迁转升套机会",
         data_types: &["tcp", "game", "mixed", "crm", "coverage", "reachability"],
-        required_tables: &["ads_migration_lead_user", "ads_final_marketing_lead_user"],
+        required_tables: &["ads_migration_lead_user"],
     },
     ModuleSpec {
         module_id: "user_profile",
@@ -271,30 +271,14 @@ fn field_checks(module_id: &str) -> &'static [RequiredFieldCheck] {
             ],
         },
     ];
-    const MIGRATION: &[RequiredFieldCheck] = &[
-        RequiredFieldCheck {
-            field: "lead_type",
-            logical: false,
-            checks: &[
-                FieldTableCheck {
-                    table: "ads_migration_lead_user",
-                    columns: &["lead_type"],
-                },
-                FieldTableCheck {
-                    table: "ads_final_marketing_lead_user",
-                    columns: &["lead_type"],
-                },
-            ],
-        },
-        RequiredFieldCheck {
-            field: "final_action",
-            logical: false,
-            checks: &[FieldTableCheck {
-                table: "ads_final_marketing_lead_user",
-                columns: &["final_action"],
-            }],
-        },
-    ];
+    const MIGRATION: &[RequiredFieldCheck] = &[RequiredFieldCheck {
+        field: "lead_type",
+        logical: false,
+        checks: &[FieldTableCheck {
+            table: "ads_migration_lead_user",
+            columns: &["lead_type"],
+        }],
+    }];
     const USER: &[RequiredFieldCheck] = &[RequiredFieldCheck {
         field: "user_key",
         logical: false,
@@ -326,6 +310,46 @@ fn fetch_batch_data_type(
         (import_batch_id,),
     )
     .map_err(|err| format!("failed to query batch data_type: {err}"))
+}
+
+fn final_lead_readiness_text(
+    settings: &MySqlSettings,
+    conn: &mut mysql::PooledConn,
+    import_batch_id: &str,
+    analysis_run_id: Option<&String>,
+    registry_map: &HashMap<String, (String, i64)>,
+) -> Result<String, String> {
+    let base = "ads_final_marketing_lead_user";
+    let physical = batch_tables::resolve_table(settings, import_batch_id, base)?;
+    if !batch_tables::table_exists(conn, &physical)? {
+        return Ok(
+            "Final Lead not ready / degraded due to missing CRM/coverage/reachability".to_string(),
+        );
+    }
+    let registry_rows = registry_map.get(base).map(|(_, rows)| *rows).unwrap_or(0);
+    if registry_rows <= 0 {
+        return Ok(
+            "Final Lead not generated/degraded due to missing CRM/coverage/reachability"
+                .to_string(),
+        );
+    }
+    if let Some(run_id) = analysis_run_id.filter(|value| !value.trim().is_empty()) {
+        let table = batch_tables::sanitize_identifier(&physical)?;
+        let count: Option<i64> = conn
+            .exec_first(
+                format!("SELECT CAST(COUNT(*) AS SIGNED) FROM `{table}` WHERE analysis_run_id=?"),
+                (run_id,),
+            )
+            .map_err(|err| {
+                format!("failed to check Final Lead analysis_run_id for {physical}: {err}")
+            })?;
+        if count.unwrap_or(0) <= 0 {
+            return Ok(format!(
+                "Final Lead not generated for current analysis_run_id={run_id}; SA Lead remains available"
+            ));
+        }
+    }
+    Ok("Final Lead ready".to_string())
 }
 
 #[tauri::command]
@@ -560,16 +584,35 @@ pub fn analysis_get_module_status(
             && empty_tables.is_empty()
             && empty_run_tables.is_empty()
             && missing_fields.is_empty();
+        let final_lead_note = if spec.module_id == "migration_lead" {
+            Some(final_lead_readiness_text(
+                &settings,
+                &mut conn,
+                &import_batch_id,
+                analysis_run_id.as_ref(),
+                &registry_map,
+            )?)
+        } else {
+            None
+        };
         let missing_required_fields = if missing_fields.is_empty() {
             None
         } else {
             Some(missing_fields.join(", "))
         };
         let status_text = if enabled {
-            Some(format!(
-                "enabled: data_type={batch_data_type}, tables={}, rows={row_count}",
-                normalize_list(table_names.into_iter())
-            ))
+            if spec.module_id == "migration_lead" {
+                Some(format!(
+                    "SA Lead available; {}; data_type={batch_data_type}, tables={}, rows={row_count}",
+                    final_lead_note.unwrap_or_else(|| "Final Lead not checked".to_string()),
+                    normalize_list(table_names.into_iter())
+                ))
+            } else {
+                Some(format!(
+                    "enabled: data_type={batch_data_type}, tables={}, rows={row_count}",
+                    normalize_list(table_names.into_iter())
+                ))
+            }
         } else {
             let mut reasons = Vec::new();
             if !data_type_ok {
@@ -579,7 +622,10 @@ pub fn analysis_get_module_status(
                 reasons.push(format!("missing table: {}", missing_tables.join(", ")));
             }
             if !empty_tables.is_empty() {
-                reasons.push(format!("当前批次尚未生成分析结果，请回到数据导入完成 CLEAN/DWS/ADS：{}", empty_tables.join(", ")));
+                reasons.push(format!(
+                    "当前批次尚未生成分析结果，请回到数据导入完成 CLEAN/DWS/ADS：{}",
+                    empty_tables.join(", ")
+                ));
             }
             if !empty_run_tables.is_empty() {
                 let run_id = analysis_run_id
@@ -732,8 +778,8 @@ fn export_query(
             Ok((vec!["analysis_run_id", "stat_date", "hour_of_day", "metric_key", "cable_value", "ftth_value", "diff_value"], format!("SELECT analysis_run_id, stat_date, hour_of_day, metric_key, cable_value, ftth_value, diff_value FROM `{t}` WHERE analysis_run_id='{run_id}' ORDER BY stat_date, hour_of_day, metric_key")))
         }
         "migration_lead" => {
-            let t = table("ads_final_marketing_lead_user")?;
-            Ok((vec!["analysis_run_id", "final_action", "lead_type", "users", "avg_demand_score", "avg_migration_motive_score"], format!("SELECT analysis_run_id, COALESCE(final_action,'UNKNOWN') AS final_action, lead_type, COUNT(*) AS users, ROUND(AVG(demand_score),2) AS avg_demand_score, ROUND(AVG(migration_motive_score),2) AS avg_migration_motive_score FROM `{t}` WHERE analysis_run_id='{run_id}' GROUP BY analysis_run_id, COALESCE(final_action,'UNKNOWN'), lead_type ORDER BY users DESC, final_action, lead_type")))
+            let t = table("ads_migration_lead_user")?;
+            Ok((vec!["analysis_run_id", "lead_type", "users", "avg_demand_score", "avg_migration_motive_score"], format!("SELECT analysis_run_id, lead_type, COUNT(*) AS users, ROUND(AVG(demand_score),2) AS avg_demand_score, ROUND(AVG(migration_motive_score),2) AS avg_migration_motive_score FROM `{t}` WHERE analysis_run_id='{run_id}' GROUP BY analysis_run_id, lead_type ORDER BY users DESC, lead_type")))
         }
         "user_profile" => {
             let t = table("dws_user_daily_profile")?;
@@ -797,5 +843,34 @@ fn value_to_csv(value: &Value) -> String {
                 micros
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{field_checks, module_spec};
+
+    #[test]
+    fn migration_lead_requires_sa_lead_table_only() {
+        let spec = module_spec("migration_lead").expect("migration_lead spec");
+
+        assert_eq!(spec.required_tables, &["ads_migration_lead_user"]);
+        assert!(!spec
+            .required_tables
+            .contains(&"ads_final_marketing_lead_user"));
+    }
+
+    #[test]
+    fn migration_lead_required_fields_do_not_depend_on_final_lead() {
+        let checks = field_checks("migration_lead");
+        let fields: Vec<&str> = checks.iter().map(|check| check.field).collect();
+        let tables: Vec<&str> = checks
+            .iter()
+            .flat_map(|check| check.checks.iter().map(|table| table.table))
+            .collect();
+
+        assert_eq!(fields, vec!["lead_type"]);
+        assert!(tables.contains(&"ads_migration_lead_user"));
+        assert!(!tables.contains(&"ads_final_marketing_lead_user"));
     }
 }

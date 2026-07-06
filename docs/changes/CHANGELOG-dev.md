@@ -1,5 +1,31 @@
 # CHANGELOG-dev
 
+## 1.0.22 - 2026-07-06
+
+### Changed
+
+- Extended TCP / Game CLEAN timestamp guards to accept one- or two-digit day/month slash dates such as `20/9/2025 23:58:06` and `1/9/2025 03:05:00`.
+- Normalized tab, LF, CR and NBSP in CLEAN timestamp text to spaces instead of deleting them, then compressed repeated whitespace before guarded `STR_TO_DATE`.
+- Made `migration_lead` module readiness depend on base SA Lead results in `ads_migration_lead_user`; Final Lead readiness is reported as ready or degraded without disabling the base module.
+- Changed module-level `migration_lead` CSV export to use SA Lead summary results so Final Lead degradation does not make the module export empty by default.
+- Synchronized package, Cargo, Tauri config, README, handoff, header and mapping catalog version markers to `1.0.22`.
+
+### Fixed
+
+- Fixed valid SA timestamps with single-digit month/day being classified as `WARN_INVALID_STAT_TIME`.
+- Fixed middle tab/CR/LF in timestamp text being removed and joining date/time into an unparsable value.
+- Fixed Final Lead missing/empty rows making the whole Migration Lead module appear unavailable even when SA Lead results exist.
+
+### Verification
+
+- `npm run check` passed.
+- `npm run build` passed; Vite reported the existing large chunk warning.
+- `cd src-tauri && cargo check` passed with existing dead_code warnings.
+- `cd src-tauri && cargo test -- --nocapture` passed: 18 tests passed.
+- `npm run tauri:build` passed and produced ignored local Linux bundles under `src-tauri/target`.
+- SQL-level tests verify CLEAN templates normalize `CHAR(9)`, `CHAR(10)`, `CHAR(13)` and `CHAR(160)` to spaces, use one- or two-digit slash date guards, and do not call `STR_TO_DATE` on raw timestamp fields.
+- Real MySQL / customer CSV smoke has not been executed yet.
+
 ## 1.0.21 - 2026-07-06
 
 ### Changed
