@@ -1,5 +1,33 @@
 # CHANGELOG-dev
 
+## 1.0.18 - 2026-07-06
+
+### Added
+
+- Added business-backed dashboard commands for Game Experience, Network Quality, User Profile, Video Experience detail and Cable / FTTH hourly detail.
+- Added module business CSV export queries for Overview, App Usage, Video Experience, Game Experience, Network Quality, Cable / FTTH, Migration Lead and User Profile.
+- Added `docs/validation/mysql-smoke-checklist-1.0.18.md` for MySQL / CSV / Lead / batch switching smoke validation.
+
+### Changed
+
+- Hardened batch SQL table binding to replace table identifiers in quoted names and supported SQL table positions instead of broad substring replacement.
+- Updated complete aggregate and dashboard ETL Job Step metadata to record physical source / target table names.
+- Extended `meta_etl_job_step.source_table` and `target_table` to `VARCHAR(512)` for multi-table physical diagnostics.
+- Module status now checks supported data_type, physical table existence, row_count, required physical fields via `information_schema.columns`, and optional ADS rows for the selected `analysis_run_id`.
+- Game, Network and User Profile module dashboards now call business DWD / DWS / ADS commands instead of generic moduleMetrics.
+- Module export filename presets now include safe batch name, analysis_run_id, module_id and timestamp.
+- Synchronized package, Cargo, Tauri config, README, handoff and header version markers to `1.0.18`.
+
+### Verification
+
+- `npm install` passed; npm reported existing audit findings: 2 moderate and 1 high.
+- `npm run check` passed.
+- `npm run build` passed; Vite reported the existing large chunk warning.
+- `cd src-tauri && cargo check` passed with existing dead_code warnings.
+- `npm run tauri:build` passed and produced local Linux bundles under ignored `src-tauri/target`.
+- `cd src-tauri && cargo test replaces_identifier_positions_only -- --nocapture` passed for the SQL table replacement helper.
+- MySQL / TCP CSV / Game CSV / Lead export / batch switching smoke was not executed in this environment because no `mysql` / `mysqladmin` client and no CSV samples were present.
+
 ## 1.0.17 - 2026-07-06
 
 ### Added

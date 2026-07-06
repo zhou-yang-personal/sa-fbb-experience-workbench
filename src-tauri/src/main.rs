@@ -68,7 +68,12 @@ fn main() {
             phase_commands::leads_run_final_fusion,
             phase_commands::dashboard_get_app_category,
             phase_commands::dashboard_get_experience_quality,
+            phase_commands::dashboard_get_game_experience,
+            phase_commands::dashboard_get_network_quality,
+            phase_commands::dashboard_get_user_profile,
+            phase_commands::dashboard_get_video_experience_detail,
             phase_commands::dashboard_get_cable_fiber_compare,
+            phase_commands::dashboard_get_cable_fiber_hourly_detail,
             phase_commands::leads_get_final_summary
         ])
         .run(tauri::generate_context!())

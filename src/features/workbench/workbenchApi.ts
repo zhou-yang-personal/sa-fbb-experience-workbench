@@ -51,8 +51,18 @@ export const workbenchApi = {
     invoke<MetricCard[]>('dashboard_get_app_category', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
   experience: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
     invoke<MetricCard[]>('dashboard_get_experience_quality', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
+  gameExperience: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
+    invoke<MetricCard[]>('dashboard_get_game_experience', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
+  networkQuality: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
+    invoke<MetricCard[]>('dashboard_get_network_quality', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
+  userProfile: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
+    invoke<MetricCard[]>('dashboard_get_user_profile', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
+  videoDetail: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
+    invoke<MetricCard[]>('dashboard_get_video_experience_detail', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
   cableFiber: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
     invoke<MetricCard[]>('dashboard_get_cable_fiber_compare', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
+  cableFiberHourly: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
+    invoke<MetricCard[]>('dashboard_get_cable_fiber_hourly_detail', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
   fuse: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
     invoke<CommandAck>('leads_run_final_fusion', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
   leadSummary: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>

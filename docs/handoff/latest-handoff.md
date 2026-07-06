@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.17
+1.0.18
 ```
 
 ## Source-of-truth branch
@@ -14,7 +14,7 @@ dev
 
 ## Current baseline
 
-The project now includes the Phase 1-7 complete application baseline plus product-tree interaction fixes:
+The project now includes the Phase 1-7 complete application baseline plus 1.0.18 batch-first analysis closure:
 
 - Governance files and detailed architecture design.
 - React + TypeScript + Vite workflow UI.
@@ -72,14 +72,20 @@ The project now includes the Phase 1-7 complete application baseline plus produc
 - Final Lead query applies server-side pagination plus optional final_action and keyword filters.
 - Final Lead CSV export supports `final_actions` filtering for action-specific delivery files.
 - Export presets use system save dialogs and set Final Action export scope.
-- 1.0.17 replaces the 5-step guided navigation with the product function tree: Data Analysis / Data Import / System Management.
+- 1.0.17 replaced the 5-step guided navigation with the product function tree: Data Analysis / Data Import / System Management.
 - Data Analysis is the default entry and requires an import batch before dashboard use.
 - `AnalysisWorkspace` declares module required fields, applicable data types and required aggregate tables, then disables unavailable modules.
 - `ImportPanel` requires a readable batch name before creating an import batch.
 - `meta_import_batch.batch_display_name` is added to schema and auto-added for existing local databases when creating or checking a batch.
 - Mapping required-field failure messages now list missing target fields instead of only a count.
 - `ExecutionLog` is promoted to diagnostic log and can copy all logs or failure logs.
-- Package, Cargo, Tauri app config, README and handoff version markers are synchronized to `1.0.17`.
+- 1.0.18 hardens batch physical table SQL replacement to only replace table identifiers in supported SQL positions and quoted table names.
+- 1.0.18 records physical table names in ETL Job Step source / target metadata for clean, aggregate, dashboard and final fusion jobs.
+- 1.0.18 module status checks data_type support, physical table existence, physical row_count, required field presence via `information_schema.columns`, and optional ADS `analysis_run_id` rows.
+- 1.0.18 adds business-backed module dashboard commands for Game, Network, User Profile, Video detail and Cable/FTTH hourly detail.
+- 1.0.18 changes module CSV export to query business ADS / DWS / DWD physical tables instead of exporting module status / registry metadata.
+- 1.0.18 extends `meta_etl_job_step.source_table` and `target_table` to `VARCHAR(512)` for multi-table physical diagnostics.
+- Package, Cargo, Tauri app config, README, handoff and header version markers are synchronized to `1.0.18`.
 
 ## Important rules
 
@@ -88,20 +94,25 @@ The project now includes the Phase 1-7 complete application baseline plus produc
 3. Do not perform full in-memory cleaning of large CSV files.
 4. Dashboard pages must query DWS / ADS tables instead of RAW tables.
 5. Do not submit customer CSV files, database exports, local logs, build outputs or installers.
-6. Current 1.0.17 moves analysis navigation and module status toward batch-first selection, while the deeper per-batch physical table routing still needs end-to-end smoke confirmation.
+6. Current 1.0.18 moves SQL routing, ETL diagnostics, module status and module export further onto per-batch physical tables, while real MySQL / CSV end-to-end smoke still must be confirmed in the target environment if not recorded as executed in the latest delivery report.
 
 ## Not verified
 
-- Dependency installation was not run in ChatGPT GitHub connector environment.
-- Frontend build was not run in ChatGPT GitHub connector environment.
-- Rust check was not run in ChatGPT GitHub connector environment.
-- Tauri package build was not run in ChatGPT GitHub connector environment.
-- Real MySQL and CSV end-to-end flow was not executed in this round.
-- Per-batch physical table generation is still being expanded in 1.0.17; current implementation now exposes batch selection and batch registry status to the frontend.
+- Real MySQL and TCP / Game CSV end-to-end smoke was not executed in the 1.0.18 local run because no `mysql` / `mysqladmin` client and no CSV samples were present in the environment.
+- Customer real CSV validation has not been recorded in this document.
+- Lead query/export and batch switching non-contamination must be checked with the 1.0.18 checklist when a MySQL test schema and sample CSVs are available.
+
+## Latest local verification
+
+- `npm install`: passed; npm reported existing audit findings: 2 moderate and 1 high.
+- `npm run check`: passed.
+- `npm run build`: passed; Vite reported the existing large chunk warning.
+- `cd src-tauri && cargo check`: passed with existing dead_code warnings.
+- `npm run tauri:build`: passed and produced ignored local Linux bundles under `src-tauri/target`.
+- `cd src-tauri && cargo test replaces_identifier_positions_only -- --nocapture`: passed.
 
 ## Next recommended work
 
-1. Run local dependency installation and build checks.
-2. Run `npm run check`, `npm run build`, `cd src-tauri && cargo check`, and `npm run tauri:build`.
-3. Run a real CSV smoke test: Data Import → import named batch → Data Analysis → select batch → refresh dashboards.
-4. Implement the database-mainline refactor for per-batch physical RAW / CLEAN / DWS / ADS table creation and SQL routing.
+1. Run `docs/validation/mysql-smoke-checklist-1.0.18.md` against a clean MySQL test schema.
+2. Use real customer-shaped TCP and Game CSVs when available; if synthetic CSVs are used, mark the smoke as synthetic-only.
+3. Validate Lead query/export and batch switching non-contamination before merge if MySQL access is available.

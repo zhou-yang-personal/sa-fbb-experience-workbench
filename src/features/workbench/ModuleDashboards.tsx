@@ -16,9 +16,21 @@ type ModuleShellProps = {
   useFinalLeadCenter?: boolean;
 };
 
-function buildExportName(moduleId: string, analysisRunId: string) {
-  const runId = analysisRunId.trim() || 'RUN_MANUAL';
-  return `${moduleId}_${runId}.csv`;
+function safeFilenamePart(value: string, fallback: string) {
+  const cleaned = value.trim().replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').replace(/\s+/g, '_').replace(/\.+$/g, '');
+  return cleaned || fallback;
+}
+
+function timestampPart() {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+}
+
+function buildExportName(moduleId: string, analysisRunId: string, batchDisplayName: string, importBatchId: string) {
+  const batch = safeFilenamePart(batchDisplayName || importBatchId, 'batch');
+  const runId = safeFilenamePart(analysisRunId.trim() || 'RUN_MANUAL', 'RUN_MANUAL');
+  return `${batch}_${runId}_${safeFilenamePart(moduleId, 'module')}_${timestampPart()}.csv`;
 }
 
 function ModuleShell({ c, moduleId, title, description, chartTitle, chartKind = 'bar', loadMetrics, useFinalLeadCenter }: ModuleShellProps) {
@@ -36,7 +48,7 @@ function ModuleShell({ c, moduleId, title, description, chartTitle, chartKind = 
   }
 
   async function exportModule() {
-    const selected = await selectCsvSavePath(buildExportName(moduleId, c.analysisRunId));
+    const selected = await selectCsvSavePath(buildExportName(moduleId, c.analysisRunId, c.batchDisplayName || c.batch?.batch_display_name || '', c.importBatchId));
     if (!selected) return;
     await c.runAction(`${moduleId}_export_csv`, () => workbenchApi.exportModule(c.effectiveSettings, c.importBatchId, c.analysisRunId || undefined, moduleId, selected));
   }
@@ -68,15 +80,15 @@ export function AppUsageDashboard({ c }: { c: WorkbenchController }) {
 }
 
 export function VideoExperienceDashboard({ c }: { c: WorkbenchController }) {
-  return <ModuleShell c={c} moduleId="video_experience" title="VideoExperienceDashboard" description="围绕 Universal Video / OTT / Short Video 分析 VMOS、速率和卡顿。" chartTitle="Experience Quality" chartKind="radar" loadMetrics={() => workbenchApi.experience(c.effectiveSettings, c.importBatchId, c.analysisRunId)} />;
+  return <ModuleShell c={c} moduleId="video_experience" title="VideoExperienceDashboard" description="围绕 Universal Video / OTT / Short Video 分析 VMOS、速率和卡顿。" chartTitle="Video Experience Detail" chartKind="radar" loadMetrics={() => workbenchApi.videoDetail(c.effectiveSettings, c.importBatchId, c.analysisRunId)} />;
 }
 
 export function GameExperienceDashboard({ c }: { c: WorkbenchController }) {
-  return <ModuleShell c={c} moduleId="game_experience" title="GameExperienceDashboard" description="围绕 Game 应用分析 MOS、RTT、jitter 和游戏时长。" chartTitle="Game Experience" loadMetrics={() => workbenchApi.moduleMetrics(c.effectiveSettings, c.importBatchId, c.analysisRunId)} />;
+  return <ModuleShell c={c} moduleId="game_experience" title="GameExperienceDashboard" description="围绕 Game 应用分析 MOS、RTT、jitter 和游戏时长。" chartTitle="Game Experience" loadMetrics={() => workbenchApi.gameExperience(c.effectiveSettings, c.importBatchId, c.analysisRunId)} />;
 }
 
 export function NetworkQualityDashboard({ c }: { c: WorkbenchController }) {
-  return <ModuleShell c={c} moduleId="network_quality" title="NetworkQualityDashboard" description="RTT、PLR、MOS / VMOS、Wi-Fi delay 和瓶颈侧拆分。" chartTitle="Network Quality" chartKind="radar" loadMetrics={() => workbenchApi.moduleMetrics(c.effectiveSettings, c.importBatchId, c.analysisRunId)} />;
+  return <ModuleShell c={c} moduleId="network_quality" title="NetworkQualityDashboard" description="RTT、PLR、MOS / VMOS、Wi-Fi delay 和瓶颈侧拆分。" chartTitle="Network Quality" chartKind="radar" loadMetrics={() => workbenchApi.networkQuality(c.effectiveSettings, c.importBatchId, c.analysisRunId)} />;
 }
 
 export function CableFiberCompareDashboard({ c }: { c: WorkbenchController }) {
@@ -88,5 +100,5 @@ export function MigrationLeadDashboard({ c }: { c: WorkbenchController }) {
 }
 
 export function UserProfileDashboard({ c }: { c: WorkbenchController }) {
-  return <ModuleShell c={c} moduleId="user_profile" title="UserProfileDashboard" description="按用户查看应用偏好、体验指标、Lead Type 和推荐动作。" chartTitle="User Profile" loadMetrics={() => workbenchApi.moduleMetrics(c.effectiveSettings, c.importBatchId, c.analysisRunId)} />;
+  return <ModuleShell c={c} moduleId="user_profile" title="UserProfileDashboard" description="按用户查看应用偏好、体验指标、Lead Type 和推荐动作。" chartTitle="User Profile" loadMetrics={() => workbenchApi.userProfile(c.effectiveSettings, c.importBatchId, c.analysisRunId)} />;
 }
