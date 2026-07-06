@@ -200,14 +200,11 @@ CREATE TABLE IF NOT EXISTS dwd_game_detail_clean (
   stat_time DATETIME NULL,
   stat_date DATE NULL,
   hour_of_day TINYINT NULL,
-  game_duration_s DECIMAL(24, 6) NULL,
+  game_hours DECIMAL(18, 6) NULL,
   mos DECIMAL(18, 6) NULL,
-  subscriber_side_rtt_ms DECIMAL(18, 6) NULL,
-  network_side_rtt_ms DECIMAL(18, 6) NULL,
-  user_down_loss DECIMAL(18, 6) NULL,
-  network_down_loss DECIMAL(18, 6) NULL,
-  upstream_jitter_ms DECIMAL(18, 6) NULL,
-  downstream_jitter_ms DECIMAL(18, 6) NULL,
+  worst_latency_ms DECIMAL(18, 6) NULL,
+  worst_loss DECIMAL(18, 6) NULL,
+  worst_jitter_ms DECIMAL(18, 6) NULL,
   wifi_delay_ms DECIMAL(18, 6) NULL,
   bras VARCHAR(255) NULL,
   olt VARCHAR(255) NULL,
@@ -215,4 +212,36 @@ CREATE TABLE IF NOT EXISTS dwd_game_detail_clean (
   data_quality_flag VARCHAR(64) NOT NULL DEFAULT 'OK',
   INDEX ix_batch_user_time (import_batch_id, user_key, stat_time),
   INDEX ix_batch_category (import_batch_id, app_category, user_type, stat_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS dws_user_daily_profile (
+  import_batch_id VARCHAR(64) NOT NULL,
+  user_key VARCHAR(255) NOT NULL,
+  user_type VARCHAR(32) NULL,
+  stat_date DATE NOT NULL,
+  video_rows BIGINT NOT NULL DEFAULT 0,
+  game_rows BIGINT NOT NULL DEFAULT 0,
+  total_download_gb DECIMAL(24, 6) NOT NULL DEFAULT 0,
+  total_game_hours DECIMAL(18, 6) NOT NULL DEFAULT 0,
+  avg_vmos DECIMAL(18, 6) NULL,
+  avg_mos DECIMAL(18, 6) NULL,
+  avg_subscriber_rtt_ms DECIMAL(18, 6) NULL,
+  avg_network_rtt_ms DECIMAL(18, 6) NULL,
+  avg_user_down_loss DECIMAL(18, 6) NULL,
+  avg_network_down_loss DECIMAL(18, 6) NULL,
+  peak_row_pct DECIMAL(18, 6) NULL,
+  PRIMARY KEY (import_batch_id, user_key, stat_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ads_migration_lead_user (
+  analysis_run_id VARCHAR(64) NOT NULL,
+  import_batch_id VARCHAR(64) NOT NULL,
+  user_key VARCHAR(255) NOT NULL,
+  user_type VARCHAR(32) NULL,
+  lead_type VARCHAR(128) NOT NULL,
+  demand_score INT NOT NULL DEFAULT 0,
+  migration_motive_score INT NOT NULL DEFAULT 0,
+  recommended_offer VARCHAR(512) NULL,
+  PRIMARY KEY (analysis_run_id, user_key),
+  INDEX ix_batch_lead (import_batch_id, lead_type, demand_score)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
