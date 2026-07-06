@@ -30,6 +30,7 @@ pub struct CsvProbeResult {
 #[derive(Debug, Clone, Serialize)]
 pub struct ImportBatchResult {
     pub import_batch_id: String,
+    pub batch_display_name: Option<String>,
     pub data_type: String,
     pub source_file_name: String,
     pub status: String,
@@ -40,6 +41,7 @@ pub struct CreateBatchRequest {
     pub settings: MySqlSettings,
     pub data_type: String,
     pub file_path: String,
+    pub batch_display_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
