@@ -6,14 +6,33 @@
 ## 当前修改主题总结
 
 - 当前主题：quality report 只读边界 guard-hardening 与 hourly review 日志可观测性加固。
-- 覆盖时间：2026-07-06 05:58–15:58 America/Mexico_City。
+- 覆盖时间：2026-07-06 05:58–17:01 America/Mexico_City。
 - 总结：
   - 近期连续加固 quality report 的只读命令边界，避免 DML / DDL / PRAGMA / metadata command 漂移破坏本地分析工作台安全边界。
   - 已执行 per-repository v2 日志规范，把旧的 run summary 迁移为“主题总结 + 每小时修改记录”。
   - 本小时继续按 v2 规则补写真实小时流水；manual feedback 无未勾选项，因此未改业务代码。
-- 仍需人工关注：本仓 `chatgpt/hour-review` 落后 `dev` 314 commits，后续必须先人工审查/同步分支差异，再考虑合回；质量报告相关 Rust/Tauri 构建仍需本地验证。
+- 仍需人工关注：本仓 `chatgpt/hour-review` 落后 `dev` 316 commits，后续必须先人工审查/同步分支差异，再考虑合回；质量报告相关 Rust/Tauri 构建仍需本地验证。
 
 ## 每小时修改记录
+
+### 2026-07-06 17:01 America/Mexico_City / 2026-07-06 23:01 UTC
+
+- 分支：`chatgpt/hour-review`
+- 工作分支：direct serial write to `chatgpt/hour-review`
+- Manual feedback 状态：0 unchecked items；latest checked batch 为新增 hourly review 手工反馈入口；closure guard clean。
+- 本小时 P0：按 per-repository v2 规则延续本仓 hourly review 真实流水记录。
+- 选择原因：本仓 manual feedback 无未勾选项；本小时没有新的用户手工反馈，继续保证本仓日志逐小时记录不断档，并更新与 `dev` 的分歧状态。
+- 本小时修改内容：
+  - 更新“当前修改主题总结”的覆盖时间到 17:01。
+  - 新增 17:01 小时记录，明确本轮读取 `AGENTS.md`、manual feedback 和本仓小时日志。
+  - 记录当前分支状态：`chatgpt/hour-review` 相对 `dev` 为 diverged，ahead 91 / behind 316。
+  - 未修改业务代码、quality report guard 脚本、版本文件或依赖文件。
+- 修改文件：
+  - `docs/review/hour-review-log.md`
+- Commit：本次提交。
+- 验证：已通过 GitHub connector 回读 `AGENTS.md`、`docs/requirements/manual-feedback-p0.md`、`docs/review/hour-review-log.md`，并比较 `dev..chatgpt/hour-review`；未运行本地 `python scripts/check_quality_report_contract.py`、`python scripts/check_quality_report_readonly_command_guard.py` 或 Rust/Tauri 构建，因为本轮仅通过 connector 修改文档日志。
+- 剩余风险：历史缺失小时不会补造；13:00 以前已被压缩成索引的历史内容仍不是完整逐条流水；本仓 `chatgpt/hour-review` 落后 `dev` 316 commits，合回前需人工分支审查。
+- 下一步建议：未来每小时只新增完整小时记录；若日志过长，优先新增 archive 文件并保留链接，而不是压缩 active log 内已有逐小时记录；合回前本地执行 quality report guard 脚本和 Rust/Tauri 构建。
 
 ### 2026-07-06 15:58 America/Mexico_City / 2026-07-06 21:58 UTC
 
