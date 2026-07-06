@@ -157,6 +157,7 @@ export function AnalysisWorkspace({ c }: { c: WorkbenchController }) {
 
   const visibleStatus = activeStatus ?? moduleStatus.find((item) => item.module_id === activeModule.id);
   const enabled = isModuleEnabled(activeModule, visibleStatus, c.dataType);
+  const resultsNotGenerated = moduleStatus.some((item) => (item.status_text ?? '').includes('尚未生成分析结果'));
 
   return (
     <section className="workbench-section-stack analysis-workspace">
@@ -209,6 +210,7 @@ export function AnalysisWorkspace({ c }: { c: WorkbenchController }) {
       <article className="panel form-panel">
         <h2>模块可用性</h2>
         <p className="hero-text">模块可用性来自后端真实检查。缺 data_type、缺 required table 或 batch 状态不完整时会置灰并给出原因。</p>
+        {resultsNotGenerated && <p className="muted-row status-failure-text">当前批次尚未完成分析结果生成，请回到数据导入，完成 CLEAN/DWS/ADS 后再查看。</p>}
         <div className="analysis-module-grid">
           {analysisModules.map((module) => {
             const status = moduleStatus.find((item) => item.module_id === module.id);

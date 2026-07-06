@@ -18,14 +18,14 @@ type ProductNavItem = {
 };
 
 const productNav: ProductNavItem[] = [
-  { id: 'analysis', label: '数据分析', hint: '默认入口：先选批次，再看看板' },
   { id: 'import', label: '数据导入', hint: 'CSV → RAW → 可分析批次' },
+  { id: 'analysis', label: '数据分析', hint: '消费已准备好的批次结果' },
   { id: 'system', label: '系统管理', hint: '连接、诊断日志、后台任务' },
 ];
 
 export function WorkbenchAppV2() {
   const c = useWorkbenchController();
-  const [activeSection, setActiveSection] = useState<WorkbenchSection>('analysis');
+  const [activeSection, setActiveSection] = useState<WorkbenchSection>('import');
   const [logOpen, setLogOpen] = useState(false);
 
   const hasBatch = Boolean(c.importBatchId.trim());
@@ -38,14 +38,14 @@ export function WorkbenchAppV2() {
     }
     if (activeSection === 'import') {
       if (!hasBatchName) return { title: '导入前先命名批次', detail: '批次名称必须是正常人能读懂的业务名称，后续所有看板先按这个批次进入。', tone: 'warning' as const };
-      return { title: c.filePath ? '导入当前 CSV 文件' : '先选择 CSV 文件', detail: c.filePath ? '系统会自动执行 probe、创建批次、映射校验、RAW 入库和画像刷新。' : '使用系统弹框选择文件，不要手输路径。', tone: c.filePath ? 'normal' as const : 'warning' as const };
+      return { title: c.filePath ? '完成数据导入闭环' : '先选择 CSV 文件', detail: c.filePath ? '按页面 8 步完成 RAW、Quality Gate、CLEAN/DWS/ADS 和 Module Ready。' : '使用系统弹框选择文件，不要手输路径。', tone: c.filePath ? 'normal' as const : 'warning' as const };
     }
     return { title: '系统诊断与后台能力', detail: '数据库连接、数据可用性、ETL 任务和执行日志只作为支撑能力，不再占用主分析入口。', tone: 'normal' as const };
   }
 
   function renderSection() {
     if (activeSection === 'analysis') return <AnalysisWorkspace c={c} />;
-    if (activeSection === 'import') return <ImportPanel {...c} />;
+    if (activeSection === 'import') return <ImportPanel {...c} onOpenAnalysis={() => setActiveSection('analysis')} />;
     return <SystemPanel c={c} />;
   }
 

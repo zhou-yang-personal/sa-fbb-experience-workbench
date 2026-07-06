@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.20
+1.0.21
 ```
 
 ## Source-of-truth branch
@@ -14,7 +14,7 @@ dev
 
 ## Current baseline
 
-The project now includes the Phase 1-7 complete application baseline plus 1.0.20 Import / Mapping / RAW Load contract hardening:
+The project now includes the Phase 1-7 complete application baseline plus 1.0.21 import-to-analysis workflow closure:
 
 - Governance files and detailed architecture design.
 - React + TypeScript + Vite workflow UI.
@@ -96,7 +96,12 @@ The project now includes the Phase 1-7 complete application baseline plus 1.0.20
 - 1.0.20 enforces required mapping gate inside RAW load so direct command invocation cannot bypass validation.
 - 1.0.20 marks batches `failed` on mapping validation or RAW load failure instead of leaving pending batches.
 - 1.0.20 truncates frontend missing-required normalized header previews to the first 20 headers while preserving full details in mapping results.
-- Package, Cargo, Tauri app config, README, handoff and header version markers are synchronized to `1.0.20`.
+- 1.0.21 keeps the left navigation to three entries: Data Import, Data Analysis and System Management.
+- 1.0.21 moves Quality Gate, RAW to CLEAN, DWS/ADS and Module Ready into the Data Import main workflow.
+- 1.0.21 fixes CLEAN time parsing by normalizing tab, LF, CR and NBSP before guarded `STR_TO_DATE`.
+- 1.0.21 routes clean jobs by batch data_type so tcp batches run only tcp clean and game batches run only game clean.
+- 1.0.21 improves module status text for missing table, rows=0 result not generated, missing analysis_run_id rows, not applicable data_type and missing fields.
+- Package, Cargo, Tauri app config, README, handoff and header version markers are synchronized to `1.0.21`.
 
 ## Important rules
 
@@ -105,7 +110,7 @@ The project now includes the Phase 1-7 complete application baseline plus 1.0.20
 3. Do not perform full in-memory cleaning of large CSV files.
 4. Dashboard pages must query DWS / ADS tables instead of RAW tables.
 5. Do not submit customer CSV files, database exports, local logs, build outputs or installers.
-6. Current 1.0.20 hardens the Import / Mapping / RAW Load contract while preserving the Raw First MySQL import path.
+6. Current 1.0.21 closes the Data Import workflow from CSV to analyzable batch while preserving the Raw First MySQL import path.
 
 ## Not verified
 
@@ -118,9 +123,10 @@ The project now includes the Phase 1-7 complete application baseline plus 1.0.20
 - `npm run check`: passed.
 - `npm run build`: passed; Vite reported the existing large chunk warning.
 - `cd src-tauri && cargo check`: passed with existing dead_code warnings.
-- `cd src-tauri && cargo test -- --nocapture`: passed, 10 tests passed.
+- `cd src-tauri && cargo test -- --nocapture`: passed, 14 tests passed.
 - `npm run tauri:build`: passed and produced ignored local Linux bundles under `src-tauri/target`.
 - Synthetic Universal Video header coverage was verified by Rust tests.
+- CLEAN SQL invisible-character handling and clean data_type routing were verified by Rust tests.
 - Real Universal Video detail CSV import smoke must be checked from the latest delivery report; customer CSV / MySQL smoke status is not recorded as passed here unless the delivery report says so.
 
 ## Next recommended work

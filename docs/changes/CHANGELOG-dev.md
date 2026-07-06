@@ -1,5 +1,31 @@
 # CHANGELOG-dev
 
+## 1.0.21 - 2026-07-06
+
+### Changed
+
+- Kept the top-level product navigation to three entries and made Data Import the default workflow entry.
+- Reworked Data Import into an eight-step visible workflow from CSV preparation through RAW load, Quality Gate, CLEAN/DWD, DWS/ADS and Module Ready.
+- Moved Quality Gate, RAW to CLEAN, DWS/ADS and Module Ready into the Data Import main workflow while keeping system-side entries as advanced diagnostics.
+- Clean jobs now route by batch `data_type`: tcp batches run only `tcp_raw_to_clean`, game batches run only `game_raw_to_clean`, and auxiliary batch types record skipped/not-applicable instead of failing.
+- Module status text now distinguishes missing table, rows=0 result not generated, current analysis_run_id without rows, not-applicable data_type and missing fields.
+- Synchronized package, Cargo, Tauri config, README, handoff and header version markers to `1.0.21`.
+
+### Fixed
+
+- Fixed MySQL ERROR 1411 during CLEAN when `statistics_duration` / `statistical_time` contains trailing tab, CR, LF or NBSP.
+- Guarded `STR_TO_DATE` calls by first creating cleaned `stat_time_text`, then calling date parsing only for supported timestamp patterns; invalid values become `WARN_INVALID_STAT_TIME` instead of aborting the clean job.
+
+### Verification
+
+- `npm run check` passed.
+- `npm run build` passed; Vite reported the existing large chunk warning.
+- `cd src-tauri && cargo check` passed with existing dead_code warnings.
+- `cd src-tauri && cargo test -- --nocapture` passed: 14 tests passed.
+- `npm run tauri:build` passed and produced ignored local Linux bundles under `src-tauri/target`.
+- SQL-level synthetic coverage checks verify CLEAN templates normalize `CHAR(9)`, `CHAR(10)`, `CHAR(13)` and `CHAR(160)` before guarded `STR_TO_DATE`.
+- Real MySQL / customer CSV smoke was not executed in this environment.
+
 ## 1.0.20 - 2026-07-06
 
 ### Added

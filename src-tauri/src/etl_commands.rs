@@ -29,20 +29,130 @@ pub fn etl_get_recent_jobs(settings: MySqlSettings, import_batch_id: String) -> 
 #[tauri::command]
 pub fn etl_start_clean_job(req: EtlRequest) -> Result<CommandAck, String> {
     batch_tables::ensure_batch_tables(&req.settings, &req.import_batch_id)?;
-    let tcp_bound = sql_runner::bind_batch_params(TCP_CLEAN_SQL, &req.import_batch_id, None);
-    let game_bound = sql_runner::bind_batch_params(GAME_CLEAN_SQL, &req.import_batch_id, None);
-    let tcp_sql = batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &tcp_bound)?;
-    let game_sql = batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &game_bound)?;
-    let raw_tcp = batch_tables::resolve_table(&req.settings, &req.import_batch_id, "raw_tcp_detail_import")?;
-    let raw_game = batch_tables::resolve_table(&req.settings, &req.import_batch_id, "raw_game_detail_import")?;
-    let dwd_tcp = batch_tables::resolve_table(&req.settings, &req.import_batch_id, "dwd_tcp_detail_clean")?;
-    let dwd_game = batch_tables::resolve_table(&req.settings, &req.import_batch_id, "dwd_game_detail_clean")?;
-    let message = job_runner::run_job(&req.settings, &req.import_batch_id, "raw_to_clean", vec![
-        JobStep { step_name: "tcp_raw_to_clean", source_table: Box::leak(raw_tcp.into_boxed_str()), target_table: Box::leak(dwd_tcp.into_boxed_str()), sql_template: "001_tcp_raw_to_clean.sql", sql: tcp_sql },
-        JobStep { step_name: "game_raw_to_clean", source_table: Box::leak(raw_game.into_boxed_str()), target_table: Box::leak(dwd_game.into_boxed_str()), sql_template: "002_game_raw_to_clean.sql", sql: game_sql },
-    ])?;
+    let data_type = fetch_batch_data_type(&req.settings, &req.import_batch_id)?;
+    let clean_plan = clean_steps_for_data_type(&data_type);
+    if clean_plan.is_empty() {
+        let message = format!(
+            "raw_to_clean skipped: data_type={data_type} is auxiliary and has no TCP/Game clean step"
+        );
+        record_skipped_clean_job(&req.settings, &req.import_batch_id, &data_type, &message)?;
+        return Ok(ack(message));
+    }
+    let mut steps = Vec::new();
+    for step_name in clean_plan {
+        if step_name == "tcp_raw_to_clean" {
+            let bound = sql_runner::bind_batch_params(TCP_CLEAN_SQL, &req.import_batch_id, None);
+            let sql = batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &bound)?;
+            let raw =
+                batch_tables::resolve_table(&req.settings, &req.import_batch_id, "raw_tcp_detail_import")?;
+            let dwd =
+                batch_tables::resolve_table(&req.settings, &req.import_batch_id, "dwd_tcp_detail_clean")?;
+            steps.push(JobStep {
+                step_name: "tcp_raw_to_clean",
+                source_table: Box::leak(raw.into_boxed_str()),
+                target_table: Box::leak(dwd.into_boxed_str()),
+                sql_template: "001_tcp_raw_to_clean.sql",
+                sql,
+            });
+        } else if step_name == "game_raw_to_clean" {
+            let bound = sql_runner::bind_batch_params(GAME_CLEAN_SQL, &req.import_batch_id, None);
+            let sql = batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &bound)?;
+            let raw = batch_tables::resolve_table(
+                &req.settings,
+                &req.import_batch_id,
+                "raw_game_detail_import",
+            )?;
+            let dwd = batch_tables::resolve_table(
+                &req.settings,
+                &req.import_batch_id,
+                "dwd_game_detail_clean",
+            )?;
+            steps.push(JobStep {
+                step_name: "game_raw_to_clean",
+                source_table: Box::leak(raw.into_boxed_str()),
+                target_table: Box::leak(dwd.into_boxed_str()),
+                sql_template: "002_game_raw_to_clean.sql",
+                sql,
+            });
+        }
+    }
+    let message = job_runner::run_job(&req.settings, &req.import_batch_id, "raw_to_clean", steps)?;
     let _ = batch_tables::refresh_registry_counts(&req.settings, &req.import_batch_id);
     Ok(ack(message))
+}
+
+fn fetch_batch_data_type(settings: &MySqlSettings, import_batch_id: &str) -> Result<String, String> {
+    let mut conn = db::conn(settings)?;
+    let data_type: Option<String> = conn
+        .exec_first(
+            "SELECT data_type FROM meta_import_batch WHERE import_batch_id=? LIMIT 1",
+            (import_batch_id,),
+        )
+        .map_err(|err| format!("failed to query batch data_type for clean job: {err}"))?;
+    Ok(data_type.unwrap_or_else(|| "mixed".to_string()).to_lowercase())
+}
+
+fn clean_steps_for_data_type(data_type: &str) -> Vec<&'static str> {
+    match data_type.to_lowercase().as_str() {
+        "tcp" => vec!["tcp_raw_to_clean"],
+        "game" => vec!["game_raw_to_clean"],
+        "mixed" => vec!["tcp_raw_to_clean", "game_raw_to_clean"],
+        _ => Vec::new(),
+    }
+}
+
+fn record_skipped_clean_job(
+    settings: &MySqlSettings,
+    import_batch_id: &str,
+    data_type: &str,
+    message: &str,
+) -> Result<(), String> {
+    let job_id = format!("JOB_{}", Uuid::new_v4().simple());
+    let mut conn = db::conn(settings)?;
+    conn.exec_drop(
+        "INSERT INTO meta_etl_job (job_id, import_batch_id, job_type, status, current_step, started_at, finished_at, affected_rows) VALUES (?, ?, 'raw_to_clean', 'success', 'skipped_not_applicable', NOW(), NOW(), 0)",
+        (&job_id, import_batch_id),
+    )
+    .map_err(|err| format!("failed to record skipped clean job: {err}"))?;
+    conn.exec_drop(
+        "INSERT INTO meta_etl_job_step (job_id, step_name, source_table, target_table, sql_template, status, started_at, finished_at, affected_rows, message) VALUES (?, 'skipped_not_applicable', ?, NULL, NULL, 'skipped', NOW(), NOW(), 0, ?)",
+        (&job_id, data_type, message),
+    )
+    .map_err(|err| format!("failed to record skipped clean step: {err}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{clean_steps_for_data_type, TCP_CLEAN_SQL, GAME_CLEAN_SQL};
+
+    #[test]
+    fn tcp_batch_clean_job_only_contains_tcp_step() {
+        assert_eq!(clean_steps_for_data_type("tcp"), vec!["tcp_raw_to_clean"]);
+    }
+
+    #[test]
+    fn game_batch_clean_job_only_contains_game_step() {
+        assert_eq!(clean_steps_for_data_type("game"), vec!["game_raw_to_clean"]);
+    }
+
+    #[test]
+    fn auxiliary_batch_clean_job_is_not_applicable() {
+        assert!(clean_steps_for_data_type("crm").is_empty());
+        assert!(clean_steps_for_data_type("coverage").is_empty());
+        assert!(clean_steps_for_data_type("reachability").is_empty());
+    }
+
+    #[test]
+    fn clean_sql_normalizes_invisible_stat_time_characters() {
+        for sql in [TCP_CLEAN_SQL, GAME_CLEAN_SQL] {
+            assert!(sql.contains("CHAR(9)"));
+            assert!(sql.contains("CHAR(10)"));
+            assert!(sql.contains("CHAR(13)"));
+            assert!(sql.contains("CHAR(160)"));
+            assert!(sql.contains("stat_time_text"));
+            assert!(sql.contains("WARN_INVALID_STAT_TIME"));
+        }
+    }
 }
 
 #[tauri::command]

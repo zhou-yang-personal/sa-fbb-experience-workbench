@@ -33,14 +33,20 @@ WITH params AS (
     NULLIF(TRIM(r.user_account), '') AS account_key,
     NULLIF(TRIM(r.user_mac), '') AS mac_key,
     NULLIF(TRIM(r.local_ip_address), '') AS ip_key,
-    COALESCE(
-      STR_TO_DATE(NULLIF(TRIM(r.statistical_time), ''), '%d/%m/%Y %H:%i:%s'),
-      STR_TO_DATE(NULLIF(TRIM(r.statistical_time), ''), '%Y-%m-%d %H:%i:%s'),
-      STR_TO_DATE(NULLIF(TRIM(r.statistical_time), ''), '%d/%m/%Y %H:%i'),
-      STR_TO_DATE(NULLIF(TRIM(r.statistical_time), ''), '%Y-%m-%d %H:%i')
-    ) AS parsed_stat_time
+    NULLIF(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(r.statistical_time, ''), CHAR(9), ''), CHAR(10), ''), CHAR(13), ''), CHAR(160), ' ')), '') AS stat_time_text
   FROM raw_game_detail_import r
   JOIN params p ON p.import_batch_id = r.import_batch_id
+), parsed AS (
+  SELECT
+    r.*,
+    CASE
+      WHEN r.stat_time_text REGEXP '^[0-9]{2}/[0-9]{2}/[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}$' THEN STR_TO_DATE(r.stat_time_text, '%d/%m/%Y %H:%i:%s')
+      WHEN r.stat_time_text REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$' THEN STR_TO_DATE(r.stat_time_text, '%Y-%m-%d %H:%i:%s')
+      WHEN r.stat_time_text REGEXP '^[0-9]{2}/[0-9]{2}/[0-9]{4} [0-9]{2}:[0-9]{2}$' THEN STR_TO_DATE(r.stat_time_text, '%d/%m/%Y %H:%i')
+      WHEN r.stat_time_text REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}$' THEN STR_TO_DATE(r.stat_time_text, '%Y-%m-%d %H:%i')
+      ELSE NULL
+    END AS parsed_stat_time
+  FROM raw_normalized r
 ), normalized AS (
   SELECT
     r.import_batch_id,
@@ -87,7 +93,7 @@ WITH params AS (
     NULLIF(TRIM(r.bras), '') AS bras,
     NULLIF(TRIM(r.olt), '') AS olt,
     NULLIF(TRIM(r.pon), '') AS pon
-  FROM raw_normalized r
+  FROM parsed r
   LEFT JOIN dim_app_mapping m ON m.raw_app_name = r.application_protocol
 )
 SELECT

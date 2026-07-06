@@ -4,7 +4,7 @@ use crate::db;
 use crate::models::{MetricCard, MySqlSettings};
 use crate::sql_runner;
 
-pub const APP_VERSION: &str = "1.0.20";
+pub const APP_VERSION: &str = "1.0.21";
 pub const MAPPING_SEED_VERSION: &str = "1.0.20";
 
 const MAP_SEED: &str = include_str!("../../database/seeds/002_default_mapping_seed.sql");

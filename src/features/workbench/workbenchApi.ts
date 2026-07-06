@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { BatchListItem, BatchTableRegistryRow, CommandAck, DashboardOverview, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
+import type { BatchListItem, BatchTableRegistryRow, CommandAck, CsvProbeResult, DashboardOverview, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
 
 function normalizeFilter(value?: string) {
   const normalized = value?.trim();
@@ -30,7 +30,7 @@ export const workbenchApi = {
     invoke<CommandAck>('analysis_export_module_csv', { settings, importBatchId, analysisRunId, moduleId, outputPath }),
   seedConfig: (settings: MySqlSettings) => invoke<CommandAck>('config_seed_defaults', { settings }),
   checkImportCatalog: (settings: MySqlSettings) => invoke<MetricCard[]>('config_check_import_catalog', { settings }),
-  probeCsv: (path: string) => invoke('import_probe_csv', { path }),
+  probeCsv: (path: string) => invoke<CsvProbeResult>('import_probe_csv', { path }),
   createBatch: (settings: MySqlSettings, dataType: string, filePath: string, batchDisplayName?: string) =>
     invoke<ImportBatchResult>('import_create_batch', { req: { settings, data_type: dataType, file_path: filePath, batch_display_name: batchDisplayName?.trim() || undefined } }),
   validateMapping: (settings: MySqlSettings, importBatchId: string, dataType: string, filePath: string) =>
@@ -48,6 +48,10 @@ export const workbenchApi = {
   clean: (settings: MySqlSettings, importBatchId: string) => invoke<CommandAck>('etl_start_clean_job', { req: { settings, import_batch_id: importBatchId } }),
   aggregate: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
     invoke<CommandAck>('etl_start_aggregate_job', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
+  completeAggregates: (settings: MySqlSettings, importBatchId: string, analysisRunId?: string) =>
+    invoke<CommandAck>('etl_run_complete_aggregates', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
+  completeDashboards: (settings: MySqlSettings, importBatchId: string, analysisRunId?: string) =>
+    invoke<CommandAck>('ads_run_complete_dashboards', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
   overview: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
     invoke<DashboardOverview>('dashboard_get_overview', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
   appCategory: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>

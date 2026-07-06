@@ -488,13 +488,15 @@ pub fn analysis_get_module_status(
             })
             .collect();
         let mut missing_tables: Vec<String> = Vec::new();
+        let mut empty_tables: Vec<String> = Vec::new();
+        let mut empty_run_tables: Vec<String> = Vec::new();
         for (base, physical) in spec.required_tables.iter().zip(table_names.iter()) {
             let exists = batch_tables::table_exists(&mut conn, physical)?;
             let rows = registry_map.get(*base).map(|(_, rows)| *rows).unwrap_or(0);
             if !exists {
-                missing_tables.push(format!("{base}->{physical} not found"));
+                missing_tables.push(format!("{base}->{physical}"));
             } else if rows <= 0 {
-                missing_tables.push(format!("{base}->{physical} rows=0"));
+                empty_tables.push(format!("{base}->{physical}"));
             }
         }
         if let Some(run_id) = analysis_run_id
@@ -512,9 +514,7 @@ pub fn analysis_get_module_status(
                     let count: Option<i64> = conn.exec_first(format!("SELECT CAST(COUNT(*) AS SIGNED) FROM `{table}` WHERE analysis_run_id=?"), (run_id,))
                         .map_err(|err| format!("failed to check analysis_run_id for {physical}: {err}"))?;
                     if count.unwrap_or(0) <= 0 {
-                        missing_tables.push(format!(
-                            "{base}->{physical} analysis_run_id={run_id} rows=0"
-                        ));
+                        empty_run_tables.push(format!("{base}->{physical}"));
                     }
                 }
             }
@@ -555,7 +555,11 @@ pub fn analysis_get_module_status(
             .map(|base| registry_map.get(*base).map(|(_, rows)| *rows).unwrap_or(0))
             .sum::<i64>();
         let data_type_ok = is_supported(spec, &batch_data_type);
-        let enabled = data_type_ok && missing_tables.is_empty() && missing_fields.is_empty();
+        let enabled = data_type_ok
+            && missing_tables.is_empty()
+            && empty_tables.is_empty()
+            && empty_run_tables.is_empty()
+            && missing_fields.is_empty();
         let missing_required_fields = if missing_fields.is_empty() {
             None
         } else {
@@ -569,13 +573,26 @@ pub fn analysis_get_module_status(
         } else {
             let mut reasons = Vec::new();
             if !data_type_ok {
-                reasons.push(format!("data_type {} not supported", batch_data_type));
+                reasons.push(format!("当前模块不适用于 {batch_data_type} 批次"));
             }
             if !missing_tables.is_empty() {
-                reasons.push(format!("missing tables: {}", missing_tables.join(", ")));
+                reasons.push(format!("missing table: {}", missing_tables.join(", ")));
+            }
+            if !empty_tables.is_empty() {
+                reasons.push(format!("当前批次尚未生成分析结果，请回到数据导入完成 CLEAN/DWS/ADS：{}", empty_tables.join(", ")));
+            }
+            if !empty_run_tables.is_empty() {
+                let run_id = analysis_run_id
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("current");
+                reasons.push(format!(
+                    "当前 analysis_run_id 暂无结果，请确认是否使用正确 run id：{run_id}; {}",
+                    empty_run_tables.join(", ")
+                ));
             }
             if !missing_fields.is_empty() {
-                reasons.push(format!("missing fields: {}", missing_fields.join(", ")));
+                reasons.push(format!("当前模块缺少字段：{}", missing_fields.join(", ")));
             }
             Some(reasons.join("; "))
         };
