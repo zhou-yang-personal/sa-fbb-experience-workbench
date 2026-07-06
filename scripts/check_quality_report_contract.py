@@ -100,6 +100,12 @@ FORBIDDEN_OPERATIONAL_TERMS = {
     "runtime create policy": "CREATE POLICY",
     "runtime alter policy": "ALTER POLICY",
     "runtime drop policy": "DROP POLICY",
+    "runtime repair command": "REPAIR TABLE",
+    "runtime optimize command": "OPTIMIZE TABLE",
+    "runtime check command": "CHECK TABLE",
+    "runtime checksum command": "CHECKSUM TABLE",
+    "runtime flush command": "FLUSH ",
+    "runtime purge command": "PURGE ",
     "bulk raw export in quality report": "SELECT * FROM raw_",
     "bulk clean export in quality report": "SELECT * FROM dwd_",
     "bulk ads export in quality report": "SELECT * FROM ads_",
@@ -130,6 +136,8 @@ FORBIDDEN_SQL_PATTERNS = {
     "runtime quoted function mutation": re.compile(r"\b(?:CREATE|DROP)\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+", re.IGNORECASE),
     "runtime quoted policy mutation": re.compile(r"\b(?:CREATE|ALTER|DROP)\s+(?:OR\s+REPLACE\s+)?POLICY\s+", re.IGNORECASE),
     "runtime quoted role mutation": re.compile(r"\b(?:CREATE|ALTER|DROP)\s+(?:OR\s+REPLACE\s+)?ROLE\s+", re.IGNORECASE),
+    "runtime quoted maintenance command": re.compile(r"\b(?:REPAIR|OPTIMIZE|CHECK|CHECKSUM)\s+TABLE\s+[\"`']?", re.IGNORECASE),
+    "runtime flush or purge command": re.compile(r"\b(?:FLUSH|PURGE)\s+", re.IGNORECASE),
 }
 
 
