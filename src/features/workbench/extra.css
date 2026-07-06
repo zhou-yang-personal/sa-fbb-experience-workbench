@@ -77,6 +77,11 @@
 .step-card-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
 .step-badge { border: 1px solid rgba(96, 165, 250, 0.34); border-radius: 999px; padding: 4px 10px; color: #bfdbfe; font-size: 12px; }
 .primary-action-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+.pipeline-plan-table .table-row { grid-template-columns: minmax(180px, 0.8fr) minmax(320px, 1.8fr) minmax(80px, 0.3fr); }
+.status-running { border-color: rgba(96, 165, 250, 0.52); background: rgba(37, 99, 235, 0.18); }
+.status-warning { border-color: rgba(250, 204, 21, 0.42); background: rgba(113, 63, 18, 0.22); }
+.status-success { border-color: rgba(74, 222, 128, 0.32); background: rgba(20, 83, 45, 0.18); }
+.status-failure { border-color: rgba(248, 113, 113, 0.52); background: rgba(127, 29, 29, 0.22); }
 .action-button { display: inline-flex; align-items: center; gap: 8px; justify-content: center; min-height: 34px; }
 .action-button small { opacity: 0.76; font-size: 11px; }
 .action-button-primary { min-width: 190px; border-color: rgba(96, 165, 250, 0.55); background: rgba(37, 99, 235, 0.28); }

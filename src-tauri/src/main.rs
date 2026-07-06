@@ -11,6 +11,7 @@ mod final_fusion;
 mod header_normalizer;
 mod import_commands;
 mod import_commands_mapped;
+mod import_pipeline_commands;
 mod job_inspection_commands;
 mod job_inspector;
 mod job_runner;
@@ -41,6 +42,9 @@ fn main() {
             import_commands::import_probe_csv,
             import_commands::import_create_batch,
             import_commands::import_current_file_atomic,
+            import_pipeline_commands::import_pipeline_start,
+            import_pipeline_commands::import_pipeline_get_status,
+            import_pipeline_commands::import_pipeline_get_logs,
             import_commands_mapped::import_start_raw_load,
             import_commands::import_get_batch_status,
             mapping_validation_commands::import_validate_mapping,

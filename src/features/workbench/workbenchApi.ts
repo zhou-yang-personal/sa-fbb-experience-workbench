@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { BatchListItem, BatchTableRegistryRow, CommandAck, CsvProbeResult, DashboardOverview, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
+import type { BatchListItem, BatchTableRegistryRow, CommandAck, CsvProbeResult, DashboardOverview, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, ImportPipelineLogRow, ImportPipelineStartResult, ImportPipelineStatus, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
 
 function normalizeFilter(value?: string) {
   const normalized = value?.trim();
@@ -39,6 +39,12 @@ export const workbenchApi = {
     invoke<CommandAck>('import_start_raw_load', { req: { settings, import_batch_id: importBatchId, data_type: dataType, file_path: filePath, mode } }),
   importCurrentFile: (settings: MySqlSettings, dataType: string, filePath: string, batchDisplayName: string, mode: string) =>
     invoke<ImportCurrentFileResult>('import_current_file_atomic', { req: { settings, data_type: dataType, file_path: filePath, batch_display_name: batchDisplayName, mode } }),
+  pipelineStart: (settings: MySqlSettings, dataType: string, filePath: string, batchDisplayName: string, importMode: string, analysisRunId?: string) =>
+    invoke<ImportPipelineStartResult>('import_pipeline_start', { req: { settings, data_type: dataType, file_path: filePath, batch_display_name: batchDisplayName, import_mode: importMode, analysis_run_id: analysisRunId } }),
+  pipelineStatus: (settings: MySqlSettings, pipelineRunId: string) =>
+    invoke<ImportPipelineStatus>('import_pipeline_get_status', { req: { settings, pipeline_run_id: pipelineRunId } }),
+  pipelineLogs: (settings: MySqlSettings, pipelineRunId: string, afterSequence?: number) =>
+    invoke<ImportPipelineLogRow[]>('import_pipeline_get_logs', { req: { settings, pipeline_run_id: pipelineRunId, after_sequence: afterSequence } }),
   importStatus: (settings: MySqlSettings, importBatchId: string) => invoke<MetricCard[]>('import_get_batch_status', { settings, importBatchId }),
   importMappings: (settings: MySqlSettings, dataType: string) => invoke<MetricCard[]>('config_get_import_mappings', { settings, dataType }),
   joinRules: (settings: MySqlSettings) => invoke<MetricCard[]>('config_get_join_rules', { settings }),

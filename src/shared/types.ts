@@ -46,6 +46,53 @@ export interface ImportCurrentFileResult {
   message: string;
 }
 
+export type ImportPipelineStatusValue = 'pending' | 'running' | 'success' | 'failed' | 'degraded' | 'canceled';
+
+export interface ImportPipelineStartResult {
+  pipeline_run_id: string;
+  import_batch_id?: string;
+  analysis_run_id: string;
+  status: ImportPipelineStatusValue | string;
+}
+
+export interface ImportPipelineStepRow {
+  step_index: number;
+  step_name: string;
+  step_label: string;
+  status: string;
+  started_at?: string;
+  finished_at?: string;
+  elapsed_ms: number;
+  message?: string;
+  error_message?: string;
+}
+
+export interface ImportPipelineStatus {
+  pipeline_run_id: string;
+  status: ImportPipelineStatusValue | string;
+  current_step?: string;
+  percent: number;
+  started_at?: string;
+  finished_at?: string;
+  elapsed_ms: number;
+  import_batch_id?: string;
+  analysis_run_id?: string;
+  failed_step?: string;
+  error_message?: string;
+  final_fusion_status?: string;
+  message?: string;
+  steps: ImportPipelineStepRow[];
+}
+
+export interface ImportPipelineLogRow {
+  sequence: number;
+  timestamp: string;
+  level: string;
+  step_name?: string;
+  message: string;
+  elapsed_ms: number;
+}
+
 export interface BatchListItem {
   import_batch_id: string;
   batch_display_name?: string;

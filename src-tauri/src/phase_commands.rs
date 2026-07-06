@@ -4,38 +4,115 @@ use crate::batch_tables;
 use crate::db;
 use crate::final_fusion;
 use crate::job_runner::{self, JobStep};
-use crate::models::{ack, CommandAck, DashboardRequest, EtlRequest, MetricCard};
+use crate::models::{ack, CommandAck, DashboardRequest, EtlRequest, MetricCard, MySqlSettings};
 use crate::sql_runner;
 
-const QUALITY_SQL: &str = include_str!("../../database/sql/quality/001_raw_quality_gate.sql");
+const TCP_QUALITY_SQL: &str =
+    include_str!("../../database/sql/quality/001_tcp_raw_quality_gate.sql");
+const GAME_QUALITY_SQL: &str =
+    include_str!("../../database/sql/quality/002_game_raw_quality_gate.sql");
 const COMPLETE_DWS_SQL: &str =
     include_str!("../../database/sql/clean_to_dws/002_complete_aggregates.sql");
 const COMPLETE_DASHBOARD_SQL: &str =
     include_str!("../../database/sql/dws_to_ads/002_complete_dashboards.sql");
 
+fn fetch_batch_data_type(
+    settings: &MySqlSettings,
+    import_batch_id: &str,
+) -> Result<String, String> {
+    let mut conn = db::conn(settings)?;
+    let data_type: Option<String> = conn
+        .exec_first(
+            "SELECT data_type FROM meta_import_batch WHERE import_batch_id=? LIMIT 1",
+            (import_batch_id,),
+        )
+        .map_err(|err| format!("failed to query batch data_type for quality gate: {err}"))?;
+    Ok(data_type
+        .unwrap_or_else(|| "mixed".to_string())
+        .to_lowercase())
+}
+
+fn quality_templates_for_data_type(
+    data_type: &str,
+) -> Vec<(&'static str, &'static str, &'static str)> {
+    match data_type.to_lowercase().as_str() {
+        "tcp" => vec![(
+            "tcp_raw_quality_gate",
+            "raw_tcp_detail_import,dwd_tcp_detail_clean",
+            TCP_QUALITY_SQL,
+        )],
+        "game" => vec![(
+            "game_raw_quality_gate",
+            "raw_game_detail_import,dwd_game_detail_clean",
+            GAME_QUALITY_SQL,
+        )],
+        "mixed" => vec![
+            (
+                "tcp_raw_quality_gate",
+                "raw_tcp_detail_import,dwd_tcp_detail_clean",
+                TCP_QUALITY_SQL,
+            ),
+            (
+                "game_raw_quality_gate",
+                "raw_game_detail_import,dwd_game_detail_clean",
+                GAME_QUALITY_SQL,
+            ),
+        ],
+        _ => vec![],
+    }
+}
+
+fn quality_not_applicable_sql(import_batch_id: &str, data_type: &str) -> String {
+    format!(
+        "INSERT INTO meta_quality_check_result (import_batch_id, check_section, check_item, metric_name, metric_value, metric_text, severity, passed) VALUES ('{}', 'raw_quality', '{}_quality_not_applicable', 'skipped', 0, 'Quality Gate is not applicable for auxiliary data_type={}', 'info', 1);",
+        sql_runner::escape_sql_literal(import_batch_id),
+        sql_runner::escape_sql_literal(data_type),
+        sql_runner::escape_sql_literal(data_type)
+    )
+}
+
 #[tauri::command]
 pub fn quality_run_gate(req: EtlRequest) -> Result<CommandAck, String> {
-    let bound = sql_runner::bind_batch_params(QUALITY_SQL, &req.import_batch_id, None);
-    let sql = batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &bound)?;
-    let raw_tcp =
-        batch_tables::resolve_table(&req.settings, &req.import_batch_id, "raw_tcp_detail_import")?;
-    let raw_game = batch_tables::resolve_table(
-        &req.settings,
-        &req.import_batch_id,
-        "raw_game_detail_import",
-    )?;
-    let message = job_runner::run_job(
-        &req.settings,
-        &req.import_batch_id,
-        "quality_gate",
+    batch_tables::ensure_batch_tables(&req.settings, &req.import_batch_id)?;
+    let data_type = fetch_batch_data_type(&req.settings, &req.import_batch_id)?;
+    let mut conn = db::conn(&req.settings)?;
+    conn.exec_drop(
+        "DELETE FROM meta_quality_check_result WHERE import_batch_id=?",
+        (&req.import_batch_id,),
+    )
+    .map_err(|err| format!("failed to clear quality gate results: {err}"))?;
+    drop(conn);
+    let templates = quality_templates_for_data_type(&data_type);
+    let steps = if templates.is_empty() {
         vec![JobStep {
-            step_name: "raw_quality_gate",
-            source_table: Box::leak(format!("{raw_tcp},{raw_game}").into_boxed_str()),
+            step_name: "raw_quality_gate_skipped_not_applicable",
+            source_table: "meta_import_batch",
             target_table: "meta_quality_check_result",
-            sql_template: "001_raw_quality_gate.sql",
-            sql,
-        }],
-    )?;
+            sql_template: "quality_not_applicable",
+            sql: quality_not_applicable_sql(&req.import_batch_id, &data_type),
+        }]
+    } else {
+        templates
+            .into_iter()
+            .map(|(step_name, source_table, template)| {
+                let bound = sql_runner::bind_batch_params(template, &req.import_batch_id, None);
+                let sql =
+                    batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &bound)?;
+                Ok(JobStep {
+                    step_name,
+                    source_table,
+                    target_table: "meta_quality_check_result",
+                    sql_template: if step_name.starts_with("tcp") {
+                        "001_tcp_raw_quality_gate.sql"
+                    } else {
+                        "002_game_raw_quality_gate.sql"
+                    },
+                    sql,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?
+    };
+    let message = job_runner::run_job(&req.settings, &req.import_batch_id, "quality_gate", steps)?;
     Ok(ack(message))
 }
 
@@ -159,6 +236,52 @@ pub fn leads_run_final_fusion(req: EtlRequest) -> Result<CommandAck, String> {
         vec![step],
     )?;
     Ok(ack(format!("analysis_run_id={run_id}; {message}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{quality_templates_for_data_type, GAME_QUALITY_SQL, TCP_QUALITY_SQL};
+
+    #[test]
+    fn quality_gate_routes_by_data_type() {
+        let tcp = quality_templates_for_data_type("tcp");
+        let game = quality_templates_for_data_type("game");
+        let mixed = quality_templates_for_data_type("mixed");
+
+        assert_eq!(
+            tcp.iter().map(|item| item.0).collect::<Vec<_>>(),
+            vec!["tcp_raw_quality_gate"]
+        );
+        assert_eq!(
+            game.iter().map(|item| item.0).collect::<Vec<_>>(),
+            vec!["game_raw_quality_gate"]
+        );
+        assert_eq!(
+            mixed.iter().map(|item| item.0).collect::<Vec<_>>(),
+            vec!["tcp_raw_quality_gate", "game_raw_quality_gate"]
+        );
+        assert!(quality_templates_for_data_type("crm").is_empty());
+        assert!(quality_templates_for_data_type("coverage").is_empty());
+        assert!(quality_templates_for_data_type("reachability").is_empty());
+    }
+
+    #[test]
+    fn quality_gate_sql_uses_guarded_clean_timestamp_text() {
+        for sql in [TCP_QUALITY_SQL, GAME_QUALITY_SQL] {
+            assert!(sql.contains("CHAR(9)"));
+            assert!(sql.contains("CHAR(10)"));
+            assert!(sql.contains("CHAR(13)"));
+            assert!(sql.contains("CHAR(160)"));
+            assert!(sql.contains("REGEXP_REPLACE"));
+            assert!(sql.contains("[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}"));
+            assert!(sql.contains("stat_time_text"));
+            assert!(!sql.contains("STR_TO_DATE(NULLIF(TRIM(statistics_duration)"));
+            assert!(!sql.contains("STR_TO_DATE(NULLIF(TRIM(statistical_time)"));
+            assert!(!sql.contains("CHAR(9), '')"));
+            assert!(!sql.contains("CHAR(10), '')"));
+            assert!(!sql.contains("CHAR(13), '')"));
+        }
+    }
 }
 
 #[tauri::command]

@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.22
+1.0.23
 ```
 
 ## Source-of-truth branch
@@ -14,7 +14,7 @@ dev
 
 ## Current baseline
 
-The project now includes the Phase 1-7 complete application baseline plus 1.0.22 import-to-analysis workflow closure and CLEAN timestamp compatibility hardening:
+The project now includes the Phase 1-7 complete application baseline plus 1.0.23 asynchronous import pipeline workflow:
 
 - Governance files and detailed architecture design.
 - React + TypeScript + Vite workflow UI.
@@ -104,7 +104,12 @@ The project now includes the Phase 1-7 complete application baseline plus 1.0.22
 - 1.0.22 extends CLEAN timestamp parsing to support one- or two-digit slash day/month formats such as `20/9/2025 23:58:06`.
 - 1.0.22 replaces tab, LF, CR and NBSP with spaces before timestamp parsing and compresses repeated whitespace, so middle invisible separators do not join date/time text.
 - 1.0.22 keeps SA Lead / `ads_migration_lead_user` as the availability basis for `migration_lead`; Final Lead missing or empty results now produce a degraded readiness note instead of disabling the module.
-- Package, Cargo, Tauri app config, README, handoff, header and mapping catalog version markers are synchronized to `1.0.22`.
+- 1.0.23 adds persistent import pipeline tables `meta_pipeline_run`, `meta_pipeline_step` and `meta_pipeline_log`.
+- 1.0.23 adds backend async pipeline commands: `import_pipeline_start`, `import_pipeline_get_status` and `import_pipeline_get_logs`.
+- 1.0.23 changes Data Import default UX to one primary pipeline start button with per-second frontend polling of status, elapsed time, step rows and realtime logs.
+- 1.0.23 fixes Quality Gate timestamp parsing by using the same cleaned `stat_time_text` approach as CLEAN and routing quality checks by batch data_type.
+- 1.0.23 treats Final Lead as a degradable pipeline step so missing CRM/coverage/reachability does not block base DWS/ADS and SA Lead readiness.
+- Package, Cargo, Tauri app config, README, handoff, header and mapping catalog version markers are synchronized to `1.0.23`.
 
 ## Important rules
 
@@ -113,7 +118,7 @@ The project now includes the Phase 1-7 complete application baseline plus 1.0.22
 3. Do not perform full in-memory cleaning of large CSV files.
 4. Dashboard pages must query DWS / ADS tables instead of RAW tables.
 5. Do not submit customer CSV files, database exports, local logs, build outputs or installers.
-6. Current 1.0.22 closes CLEAN timestamp compatibility and Final Lead degradation behavior while preserving the Raw First MySQL import path.
+6. Current 1.0.23 runs the import-to-analysis workflow as an observable backend pipeline while preserving the Raw First MySQL import path.
 
 ## Not verified
 
@@ -126,7 +131,7 @@ The project now includes the Phase 1-7 complete application baseline plus 1.0.22
 - `npm run check`: passed.
 - `npm run build`: passed; Vite reported the existing large chunk warning.
 - `cd src-tauri && cargo check`: passed with existing dead_code warnings.
-- `cd src-tauri && cargo test -- --nocapture`: passed, 18 tests passed.
+- `cd src-tauri && cargo test -- --nocapture`: passed, 23 tests passed.
 - `npm run tauri:build`: passed and produced ignored local Linux bundles under `src-tauri/target`.
 - Synthetic Universal Video header coverage was verified by Rust tests.
 - CLEAN SQL invisible-character handling and clean data_type routing were verified by Rust tests.

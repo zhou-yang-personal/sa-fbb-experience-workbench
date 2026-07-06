@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import type { ActionState, BatchTableRegistryRow, CsvProbeResult, ImportBatchResult, ImportDataType, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ActionState, BatchTableRegistryRow, CsvProbeResult, ImportBatchResult, ImportDataType, ImportPipelineLogRow, ImportPipelineStatus, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
 import { ActionButton } from './ActionButton';
 import { selectCsvFile } from './fileDialogs';
 import { mappingApi } from './mappingApi';
@@ -81,6 +81,10 @@ export function ImportPanel(props: Props) {
   const [registry, setRegistry] = useState<BatchTableRegistryRow[]>([]);
   const [moduleStatus, setModuleStatus] = useState<ModuleStatusRow[]>([]);
   const [statusMessage, setStatusMessage] = useState('请选择 CSV 文件，并确认本次导入批次名称。');
+  const [pipelineStatus, setPipelineStatus] = useState<ImportPipelineStatus | null>(null);
+  const [pipelineLogs, setPipelineLogs] = useState<ImportPipelineLogRow[]>([]);
+  const [pipelineRunId, setPipelineRunId] = useState('');
+  const lastLogSeqRef = useRef(0);
 
   const mappingCounts = useMemo(() => {
     const counts = { required: 0, optional: 0, exact: 0, alias: 0, missingRequired: 0, missingOptional: 0 };
@@ -107,6 +111,100 @@ export function ImportPanel(props: Props) {
   const missingTotal = mappingCounts.missingRequired + mappingCounts.missingOptional;
   const canImport = Boolean(filePath.trim()) && Boolean(batchDisplayName.trim());
   const analysisRunId = props.analysisRunId.trim() || 'RUN_DEFAULT';
+  const pipelineRunning = pipelineStatus?.status === 'running' || pipelineStatus?.status === 'pending';
+  const pipelineDone = ['success', 'degraded', 'failed', 'canceled'].includes(String(pipelineStatus?.status ?? '').toLowerCase());
+
+  function formatMs(ms?: number) {
+    const safe = Number(ms ?? 0);
+    if (!Number.isFinite(safe) || safe <= 0) return '-';
+    const seconds = Math.floor(safe / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const rest = seconds % 60;
+    return minutes > 0 ? `${minutes}m ${rest}s` : `${rest}s`;
+  }
+
+  function stepTone(status: string) {
+    const normalized = status.toLowerCase();
+    if (normalized === 'success') return 'status-success';
+    if (normalized === 'failed') return 'status-failure';
+    if (normalized === 'degraded' || normalized === 'skipped') return 'status-warning';
+    if (normalized === 'running') return 'status-running';
+    return '';
+  }
+
+  async function refreshPipeline(runId = pipelineRunId) {
+    if (!runId) return null;
+    const [status, logs] = await Promise.all([
+      workbenchApi.pipelineStatus(settings, runId),
+      workbenchApi.pipelineLogs(settings, runId, lastLogSeqRef.current),
+    ]);
+    setPipelineStatus(status);
+    if (status.import_batch_id) setImportBatchId(status.import_batch_id);
+    if (logs.length) {
+      lastLogSeqRef.current = Math.max(lastLogSeqRef.current, ...logs.map((row) => row.sequence));
+      setPipelineLogs((items) => [...items, ...logs].slice(-200));
+    }
+    setStatusMessage(status.message ?? `Pipeline ${status.status}`);
+    if (status.import_batch_id && ['success', 'degraded'].includes(String(status.status).toLowerCase())) {
+      const [quality, jobs, nextRegistry, modules] = await Promise.all([
+        qualityApi.allResults(settings, status.import_batch_id),
+        workbenchApi.jobs(settings, status.import_batch_id),
+        workbenchApi.batchTableRegistry(settings, status.import_batch_id),
+        workbenchApi.moduleStatus(settings, status.import_batch_id, status.analysis_run_id ?? analysisRunId),
+      ]);
+      setQualityRows(quality);
+      setEtlJobs(jobs);
+      setRegistry(nextRegistry);
+      setModuleStatus(modules);
+    }
+    return status;
+  }
+
+  async function startPipeline() {
+    await runAction('import_pipeline_start', async () => {
+      if (!filePath.trim()) throw new Error('请先通过文件选择框选择 CSV 文件。');
+      if (!batchDisplayName.trim()) throw new Error('请先为本次导入设置批次名称。');
+      setPipelineLogs([]);
+      lastLogSeqRef.current = 0;
+      const started = await workbenchApi.pipelineStart(settings, dataType, filePath, batchDisplayName, importMode, analysisRunId);
+      setPipelineRunId(started.pipeline_run_id);
+      setPipelineStatus({
+        pipeline_run_id: started.pipeline_run_id,
+        status: started.status,
+        current_step: 'prepare_environment',
+        percent: 0,
+        elapsed_ms: 0,
+        import_batch_id: started.import_batch_id,
+        analysis_run_id: started.analysis_run_id,
+        final_fusion_status: 'pending',
+        message: '后台执行计划已启动，前台将每秒刷新。',
+        steps: [],
+      });
+      setStatusMessage(`后台执行计划已启动：${started.pipeline_run_id}`);
+      return started;
+    });
+  }
+
+  useEffect(() => {
+    if (!pipelineRunId) return;
+    const status = String(pipelineStatus?.status ?? 'running').toLowerCase();
+    if (['success', 'degraded', 'failed', 'canceled'].includes(status)) return;
+    let disposed = false;
+    const poll = async () => {
+      if (disposed) return;
+      try {
+        await refreshPipeline(pipelineRunId);
+      } catch (error) {
+        setStatusMessage(`Pipeline 状态刷新失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+    };
+    const timer = window.setInterval(poll, 1000);
+    void poll();
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [pipelineRunId, pipelineStatus?.status, settings]);
 
   async function chooseFile() {
     const selected = await selectCsvFile();
@@ -282,15 +380,20 @@ export function ImportPanel(props: Props) {
     });
   }
 
-  const importSteps = [
-    { title: '1. 导入准备', detail: '连接、schema、mapping catalog self-heal 与版本健康。' },
-    { title: '2. 选择文件与批次', detail: 'CSV 文件、data type、批次名称、probe header 和预览。' },
-    { title: '3. 字段映射校验', detail: 'missing_required / missing_optional / alias matched 和 catalog repair。' },
-    { title: '4. RAW 入库', detail: 'atomic import、physical RAW table、imported_rows / total_rows。' },
-    { title: '5. RAW 质量检查', detail: 'Quality Gate、行数、user_key、时间、app、access type 和失败项。' },
-    { title: '6. CLEAN / DWD 生成', detail: `${dataType} 批次只运行适用的 RAW→CLEAN step。` },
-    { title: '7. DWS / ADS 聚合', detail: '生成 DWS/ADS；Final Lead 缺辅助数据时降级提示。' },
-    { title: '8. 模块可用性检查', detail: '刷新 module status，完成后进入数据分析。' },
+  const importSteps = pipelineStatus?.steps.length ? pipelineStatus.steps.map((step) => ({
+    title: `Step ${step.step_index}. ${step.step_label}`,
+    detail: step.message || step.error_message || step.step_name,
+    status: step.status,
+    elapsed: step.elapsed_ms,
+  })) : [
+    { title: 'Step 1. 导入准备', detail: '连接、schema、mapping catalog self-heal 与版本健康。', status: 'pending', elapsed: 0 },
+    { title: 'Step 2. CSV 探测', detail: '读取文件名、大小、headers 和预览。', status: 'pending', elapsed: 0 },
+    { title: 'Step 3. 字段映射与 RAW 入库', detail: '后端 atomic import：catalog repair、batch、mapping、RAW load、profile。', status: 'pending', elapsed: 0 },
+    { title: 'Step 4. RAW 质量检查', detail: 'Quality Gate 按 data_type 路由。', status: 'pending', elapsed: 0 },
+    { title: 'Step 5. CLEAN/DWD 生成', detail: `${dataType} 批次只运行适用 RAW→CLEAN step。`, status: 'pending', elapsed: 0 },
+    { title: 'Step 6. DWS/ADS 聚合', detail: '生成基础聚合、看板 ADS 与 SA Lead。', status: 'pending', elapsed: 0 },
+    { title: 'Step 7. Final Lead 融合', detail: '缺 CRM/coverage/reachability 时 degraded，不阻断基础结果。', status: 'pending', elapsed: 0 },
+    { title: 'Step 8. Module Ready', detail: '刷新 registry 和 module status。', status: 'pending', elapsed: 0 },
   ];
 
   return (
@@ -302,10 +405,92 @@ export function ImportPanel(props: Props) {
         </div>
         <span className="step-badge">Import</span>
       </div>
-      <div className="table-like" style={{ marginBottom: 12 }}>
-        <div className="table-row table-head"><span>导入闭环</span><span>当前动作</span><span>目标</span></div>
-        {importSteps.map((step) => <div key={step.title} className="table-row"><span>{step.title}</span><span>{step.detail}</span><span>CSV → 可分析批次</span></div>)}
+      <div className="table-like pipeline-plan-table" style={{ marginBottom: 12 }}>
+        <div className="table-row table-head"><span>执行计划</span><span>状态 / 信息</span><span>耗时</span></div>
+        {importSteps.map((step) => <div key={step.title} className={`table-row ${stepTone(step.status)}`}><span>{step.title}</span><span>{step.status} · {step.detail}</span><span>{formatMs(step.elapsed)}</span></div>)}
       </div>
+      <section className="panel form-panel">
+        <h3>启动导入分析计划</h3>
+        <div className="form-grid import-form-grid">
+          <label>
+            批次名称
+            <input value={batchDisplayName} onChange={(e) => setBatchDisplayName(e.target.value)} placeholder="例如：TCP 视频体验｜Claro｜2026-07-05 晚高峰" />
+          </label>
+          <label>
+            数据类型
+            <select value={dataType} onChange={(e) => {
+              const next = e.target.value as ImportDataType;
+              setDataType(next);
+              if (filePath && !batchDisplayName.trim()) setBatchDisplayName(defaultBatchName(next, filePath));
+            }}>
+              <option value="tcp">TCP / Universal Video</option><option value="game">Game</option><option value="crm">CRM Users</option><option value="coverage">FTTH Coverage</option><option value="reachability">Reachability</option>
+            </select>
+          </label>
+          <label>
+            导入方式
+            <select value={importMode} onChange={(e) => setImportMode(e.target.value as 'load_data' | 'streaming_insert')}>
+              <option value="load_data">LOAD DATA LOCAL INFILE</option><option value="streaming_insert">Streaming INSERT fallback</option>
+            </select>
+          </label>
+        </div>
+        <section className="file-picker-card">
+          <div>
+            <span>CSV 文件</span>
+            <strong title={filePath}>{filePath ? fileName(filePath) : '未选择文件'}</strong>
+            <small>{filePath || '请使用系统弹框选择文件。'}</small>
+          </div>
+          <button type="button" disabled={pipelineRunning} onClick={chooseFile}>选择 CSV 文件</button>
+        </section>
+        <div className="primary-action-row">
+          <ActionButton actionKey="import_pipeline_start" actionStates={actionStates} primary label={pipelineRunning ? '执行计划运行中' : '启动导入分析计划'} disabled={!canImport || pipelineRunning} onClick={startPipeline} title={!filePath ? '请先选择 CSV 文件' : !batchDisplayName ? '请先设置批次名称' : undefined} />
+          <button type="button" disabled={!pipelineRunId} onClick={() => { void refreshPipeline(); }}>刷新状态</button>
+          {['success', 'degraded'].includes(String(pipelineStatus?.status ?? '').toLowerCase()) && <button type="button" onClick={props.onOpenAnalysis}>进入数据分析</button>}
+        </div>
+        <div className="summary-pills">
+          <span className={`status-pill ${stepTone(String(pipelineStatus?.status ?? 'pending'))}`}>status {pipelineStatus?.status ?? 'pending'}</span>
+          <span className="status-pill">current {pipelineStatus?.current_step ?? '-'}</span>
+          <span className="status-pill">progress {(pipelineStatus?.percent ?? 0).toFixed(0)}%</span>
+          <span className="status-pill">elapsed {formatMs(pipelineStatus?.elapsed_ms)}</span>
+          <span className="status-pill">batch {pipelineStatus?.import_batch_id ?? (importBatchId || '-')}</span>
+          <span className="status-pill">analysis {pipelineStatus?.analysis_run_id ?? analysisRunId}</span>
+          <span className="status-pill">final {pipelineStatus?.final_fusion_status ?? '-'}</span>
+        </div>
+        {pipelineStatus?.status === 'failed' && (
+          <div className="diagnostic-row-failed" style={{ padding: 12, borderRadius: 12 }}>
+            <strong>失败步骤：{pipelineStatus.failed_step ?? pipelineStatus.current_step ?? '-'}</strong>
+            <p className="muted-row">{pipelineStatus.error_message ?? pipelineStatus.message ?? '未返回错误详情'}</p>
+            <div className="action-row">
+              <button type="button" onClick={() => navigator.clipboard?.writeText(`${pipelineStatus.failed_step ?? ''}\n${pipelineStatus.error_message ?? ''}`)}>复制错误</button>
+              <button type="button" onClick={startPipeline}>重试整条计划</button>
+            </div>
+          </div>
+        )}
+      </section>
+      <section className="panel form-panel">
+        <div className="log-header">
+          <div>
+            <h3>实时日志</h3>
+            <p className="muted-row">前台每秒从后端 `meta_pipeline_log` 增量刷新。</p>
+          </div>
+          <button type="button" disabled={!pipelineLogs.length} onClick={() => navigator.clipboard?.writeText(pipelineLogs.map((row) => `[${row.sequence}] ${row.timestamp} ${row.level} ${row.step_name ?? '-'} ${row.elapsed_ms}ms ${row.message}`).join('\n'))}>复制日志</button>
+        </div>
+        <div className="log-list structured-log-list">
+          {pipelineLogs.slice().reverse().map((row) => (
+            <article key={row.sequence} className={`log-entry log-entry-${row.level === 'error' ? 'failure' : 'success'}`}>
+              <div className="log-entry-head">
+                <span className={`status-pill ${row.level === 'error' ? 'status-failure' : row.level === 'warning' ? 'status-warning' : 'status-success'}`}>{row.level}</span>
+                <strong>{row.step_name ?? '-'}</strong>
+                <small>{row.elapsed_ms} ms</small>
+              </div>
+              <div className="log-meta"><span>{row.timestamp}</span><span>seq {row.sequence}</span></div>
+              <pre>{row.message}</pre>
+            </article>
+          ))}
+          {!pipelineLogs.length && <pre>等待后台计划日志。</pre>}
+        </div>
+      </section>
+      <details className="advanced-actions">
+        <summary>高级排错：手工执行 1-8 步</summary>
       <section className="panel form-panel">
         <h3>1. 导入准备</h3>
         <div className="action-row">
@@ -402,6 +587,7 @@ export function ImportPanel(props: Props) {
           <button type="button" onClick={props.onOpenAnalysis}>进入数据分析</button>
         </div>
       </section>
+      </details>
       <details className="advanced-actions">
         <summary>高级操作：逐步执行 / 排错</summary>
         <input value={filePath} onChange={(e) => setFilePath(e.target.value)} placeholder="高级：CSV absolute path" />

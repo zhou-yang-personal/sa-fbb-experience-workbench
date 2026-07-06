@@ -111,6 +111,78 @@ pub struct ImportCurrentFileResult {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct ImportPipelineStartRequest {
+    pub settings: MySqlSettings,
+    pub data_type: String,
+    pub file_path: String,
+    pub batch_display_name: String,
+    pub import_mode: Option<String>,
+    pub analysis_run_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ImportPipelineStatusRequest {
+    pub settings: MySqlSettings,
+    pub pipeline_run_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ImportPipelineLogsRequest {
+    pub settings: MySqlSettings,
+    pub pipeline_run_id: String,
+    pub after_sequence: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ImportPipelineStartResult {
+    pub pipeline_run_id: String,
+    pub import_batch_id: Option<String>,
+    pub analysis_run_id: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ImportPipelineStepRow {
+    pub step_index: i32,
+    pub step_name: String,
+    pub step_label: String,
+    pub status: String,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+    pub elapsed_ms: i64,
+    pub message: Option<String>,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ImportPipelineStatus {
+    pub pipeline_run_id: String,
+    pub status: String,
+    pub current_step: Option<String>,
+    pub percent: f64,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+    pub elapsed_ms: i64,
+    pub import_batch_id: Option<String>,
+    pub analysis_run_id: Option<String>,
+    pub failed_step: Option<String>,
+    pub error_message: Option<String>,
+    pub final_fusion_status: Option<String>,
+    pub message: Option<String>,
+    pub steps: Vec<ImportPipelineStepRow>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ImportPipelineLogRow {
+    pub sequence: i64,
+    pub timestamp: String,
+    pub level: String,
+    pub step_name: Option<String>,
+    pub message: String,
+    pub elapsed_ms: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct EtlRequest {
     pub settings: MySqlSettings,
     pub import_batch_id: String,
