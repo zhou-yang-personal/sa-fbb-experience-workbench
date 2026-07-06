@@ -4,13 +4,14 @@ use std::path::Path;
 use csv::StringRecord;
 use mysql::prelude::*;
 
+use crate::batch_tables;
 use crate::db;
 use crate::models::RawLoadRequest;
 use crate::sql_runner::escape_sql_literal;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct RawSpec {
-    table: &'static str,
+    table: String,
     columns: &'static [&'static str],
 }
 
@@ -57,19 +58,20 @@ pub fn start_raw_load(req: RawLoadRequest) -> Result<String, String> {
     }
 }
 
-fn raw_spec(data_type: &str) -> Result<RawSpec, String> {
-    match data_type.to_lowercase().as_str() {
-        "tcp" => Ok(RawSpec { table: "raw_tcp_detail_import", columns: TCP_COLUMNS }),
-        "game" => Ok(RawSpec { table: "raw_game_detail_import", columns: GAME_COLUMNS }),
-        "crm" => Ok(RawSpec { table: "raw_crm_user_import", columns: CRM_COLUMNS }),
-        "coverage" => Ok(RawSpec { table: "raw_ftth_coverage_import", columns: COVERAGE_COLUMNS }),
-        "reachability" => Ok(RawSpec { table: "raw_reachability_import", columns: REACHABILITY_COLUMNS }),
+fn raw_spec(req: &RawLoadRequest) -> Result<RawSpec, String> {
+    let table = batch_tables::ensure_raw_table(&req.settings, &req.import_batch_id, &req.data_type)?;
+    match req.data_type.to_lowercase().as_str() {
+        "tcp" => Ok(RawSpec { table, columns: TCP_COLUMNS }),
+        "game" => Ok(RawSpec { table, columns: GAME_COLUMNS }),
+        "crm" => Ok(RawSpec { table, columns: CRM_COLUMNS }),
+        "coverage" => Ok(RawSpec { table, columns: COVERAGE_COLUMNS }),
+        "reachability" => Ok(RawSpec { table, columns: REACHABILITY_COLUMNS }),
         other => Err(format!("unsupported raw data type: {other}")),
     }
 }
 
 fn mapped_load_data_or_fallback(req: RawLoadRequest) -> Result<String, String> {
-    let spec = raw_spec(&req.data_type)?;
+    let spec = raw_spec(&req)?;
     let mut conn = db::conn(&req.settings)?;
     let aliases = load_header_aliases(&mut conn, &req.data_type);
     let header_check = header_order_matches(&req.file_path, spec.columns, &aliases)?;
@@ -92,7 +94,7 @@ fn load_data(req: RawLoadRequest, spec: RawSpec) -> Result<String, String> {
     let source_name = escape_sql_literal(&file_name);
     let columns = spec.columns.join(", ");
     conn.exec_drop("UPDATE meta_import_batch SET status='running', started_at=NOW(), total_rows=NULL, imported_rows=0, message='raw mapped load_data started' WHERE import_batch_id=?", (&req.import_batch_id,)).map_err(|err| format!("failed to mark batch running: {err}"))?;
-    let sql = format!("LOAD DATA LOCAL INFILE '{path}' INTO TABLE {} CHARACTER SET utf8mb4 FIELDS TERMINATED BY ',' ENCLOSED BY '\"' LINES TERMINATED BY '\n' IGNORE 1 LINES ({columns}) SET import_batch_id='{batch_id}', source_file_name='{source_name}', source_line_no=NULL", spec.table);
+    let sql = format!("LOAD DATA LOCAL INFILE '{path}' INTO TABLE `{}` CHARACTER SET utf8mb4 FIELDS TERMINATED BY ',' ENCLOSED BY '\"' LINES TERMINATED BY '\n' IGNORE 1 LINES ({columns}) SET import_batch_id='{batch_id}', source_file_name='{source_name}', source_line_no=NULL", spec.table);
     match conn.query_drop(sql) {
         Ok(_) => {
             let rows = conn.affected_rows();
@@ -108,7 +110,7 @@ fn load_data(req: RawLoadRequest, spec: RawSpec) -> Result<String, String> {
 }
 
 fn streaming_insert(req: RawLoadRequest) -> Result<String, String> {
-    let spec = raw_spec(&req.data_type)?;
+    let spec = raw_spec(&req)?;
     let mut conn = db::conn(&req.settings)?;
     let aliases = load_header_aliases(&mut conn, &req.data_type);
     let file_name = source_file_name(&req.file_path);
@@ -126,14 +128,14 @@ fn streaming_insert(req: RawLoadRequest) -> Result<String, String> {
         let row = row.map_err(|err| format!("failed to read CSV row {source_line_no}: {err}"))?;
         rows.push(row_to_values(&req.import_batch_id, &file_name, source_line_no, spec.columns, &header_index, &aliases, &row));
         if rows.len() >= 500 {
-            flush_rows(&mut conn, spec, &rows)?;
+            flush_rows(&mut conn, &spec, &rows)?;
             total_rows += rows.len() as u64;
             update_progress(&mut conn, &req.import_batch_id, total_rows, "mapped streaming insert running")?;
             rows.clear();
         }
     }
     if !rows.is_empty() {
-        flush_rows(&mut conn, spec, &rows)?;
+        flush_rows(&mut conn, &spec, &rows)?;
         total_rows += rows.len() as u64;
         update_progress(&mut conn, &req.import_batch_id, total_rows, "mapped streaming insert running")?;
     }
@@ -207,12 +209,12 @@ fn sql_literal(value: &str) -> String {
     if value.trim().is_empty() { "NULL".to_string() } else { format!("'{}'", escape_sql_literal(value)) }
 }
 
-fn flush_rows(conn: &mut mysql::PooledConn, spec: RawSpec, rows: &[Vec<String>]) -> Result<(), String> {
+fn flush_rows(conn: &mut mysql::PooledConn, spec: &RawSpec, rows: &[Vec<String>]) -> Result<(), String> {
     if rows.is_empty() { return Ok(()); }
     let mut insert_columns = vec!["import_batch_id", "source_file_name", "source_line_no"];
     insert_columns.extend_from_slice(spec.columns);
     let values = rows.iter().map(|row| format!("({})", row.join(", "))).collect::<Vec<_>>().join(", ");
-    let sql = format!("INSERT INTO {} ({}) VALUES {values}", spec.table, insert_columns.join(", "));
+    let sql = format!("INSERT INTO `{}` ({}) VALUES {values}", spec.table, insert_columns.join(", "));
     conn.query_drop(sql).map_err(|err| format!("failed to insert mapped streaming RAW rows: {err}"))
 }
 

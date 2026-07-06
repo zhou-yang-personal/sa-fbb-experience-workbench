@@ -1,5 +1,82 @@
 # CHANGELOG-dev
 
+## 1.0.18 - 2026-07-06
+
+### Added
+
+- Added business-backed dashboard commands for Game Experience, Network Quality, User Profile, Video Experience detail and Cable / FTTH hourly detail.
+- Added module business CSV export queries for Overview, App Usage, Video Experience, Game Experience, Network Quality, Cable / FTTH, Migration Lead and User Profile.
+- Added `docs/validation/mysql-smoke-checklist-1.0.18.md` for MySQL / CSV / Lead / batch switching smoke validation.
+
+### Changed
+
+- Hardened batch SQL table binding to replace table identifiers in quoted names and supported SQL table positions instead of broad substring replacement.
+- Updated complete aggregate and dashboard ETL Job Step metadata to record physical source / target table names.
+- Extended `meta_etl_job_step.source_table` and `target_table` to `VARCHAR(512)` for multi-table physical diagnostics.
+- Module status now checks supported data_type, physical table existence, row_count, required physical fields via `information_schema.columns`, and optional ADS rows for the selected `analysis_run_id`.
+- Game, Network and User Profile module dashboards now call business DWD / DWS / ADS commands instead of generic moduleMetrics.
+- Module export filename presets now include safe batch name, analysis_run_id, module_id and timestamp.
+- Synchronized package, Cargo, Tauri config, README, handoff and header version markers to `1.0.18`.
+
+### Verification
+
+- `npm install` passed; npm reported existing audit findings: 2 moderate and 1 high.
+- `npm run check` passed.
+- `npm run build` passed; Vite reported the existing large chunk warning.
+- `cd src-tauri && cargo check` passed with existing dead_code warnings.
+- `npm run tauri:build` passed and produced local Linux bundles under ignored `src-tauri/target`.
+- `cd src-tauri && cargo test replaces_identifier_positions_only -- --nocapture` passed for the SQL table replacement helper.
+- MySQL / TCP CSV / Game CSV / Lead export / batch switching smoke was not executed in this environment because no `mysql` / `mysqladmin` client and no CSV samples were present.
+
+## 1.0.17 - 2026-07-06
+
+### Added
+
+- Added batch list selection, batch table registry and module status commands for analysis workspace routing.
+- Added batch-first analysis workspace shell with real batch selection and backend module readiness checks.
+- Added per-module dashboard shell components and system diagnostics registry/status views.
+
+### Changed
+
+- Updated mapping validation to aggregate alias rows into target-level required checks.
+- Extended default mapping aliases for Universal Video CSV headers and required import fields.
+- Routed dashboard, lead and final fusion queries through batch physical table resolution where available.
+- Synchronized package, Cargo, Tauri config, README, handoff and header version markers to `1.0.17`.
+
+### Not fully implemented
+
+- End-to-end compile, MySQL smoke and tauri build still need to be run locally after the route changes.
+
+## 1.0.16 - 2026-07-05
+
+### Added
+
+- Added `AnalysisWorkspace` as the default product entry for batch-first dashboard analysis.
+- Added `SystemPanel` to collect database connection, data availability checks, ETL task inspection and diagnostic logs under System Management.
+- Added `docs/design/product-function-tree-v0.2.md` to document the product function tree and batch-first constraints.
+- Added readable batch naming to frontend workbench context and `meta_import_batch.batch_display_name`.
+- Added backend auto-column guard for `meta_import_batch.batch_display_name` when creating or checking import batches on existing local databases.
+- Added module readiness definitions for Overview, App Usage, Video Experience, Game Experience, Network Quality, Cable vs FTTH, Migration Leads and User Profile.
+
+### Changed
+
+- Replaced the Start / Import / Validate / Analyze / Results navigation center with product navigation: Data Analysis / Data Import / System Management.
+- Made Data Analysis the default landing page.
+- Data Import now requires a human-readable batch name before creating or importing a batch.
+- Dashboard / Lead export remains inside the relevant dashboard panels; there is no standalone Export module.
+- Mapping required-field failure now reports missing target fields and source-header matching detail instead of only a missing count.
+- Execution Log is renamed and positioned as Diagnostic Log, with copy-all and copy-failure actions.
+- Synchronized package, Cargo, Tauri config, README and handoff version markers to `1.0.16`.
+
+### Not fully implemented
+
+- Per-batch physical RAW / CLEAN / DWS / ADS table creation is not fully switched in this round. 1.0.16 still uses shared physical tables plus `import_batch_id` isolation, with the target-state table naming documented for the next database-mainline refactor.
+
+### Not verified
+
+- ChatGPT GitHub connector cannot run `npm install`, `npm run check`, `npm run build`, `cargo check` or `tauri:build`.
+- Real MySQL and CSV end-to-end flow was not executed in this round.
+
 ## 1.0.15 - 2026-07-04
 
 ### Added

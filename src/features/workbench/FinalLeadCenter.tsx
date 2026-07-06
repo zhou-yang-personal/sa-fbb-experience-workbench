@@ -30,11 +30,11 @@ export function FinalLeadCenter(props: Props) {
   const { settings, importBatchId, analysisRunId, loadMetrics, setOutputPath, setExportFinalActions } = props;
   return (
     <section className="panel form-panel">
-      <h2>Final Lead Center</h2>
-      <p className="hero-text">围绕 analysis_run_id 查询 SA Lead、Final Lead、Final Action Mix，并按 action 导出可交付 CSV。</p>
+      <h2>迁转升套机会</h2>
+      <p className="hero-text">围绕当前批次和 analysis_run_id 查询 SA Lead、Final Lead、Final Action Mix；导出按钮直接保留在本看板内。</p>
       <ExportPresetActions analysisRunId={analysisRunId} setOutputPath={setOutputPath} setExportFinalActions={setExportFinalActions} />
       <div className="action-row">
-        <button onClick={() => loadMetrics('final_lead_summary', () => workbenchApi.leadSummary(settings, importBatchId, analysisRunId))}>Final Action Mix</button>
+        <button onClick={() => loadMetrics('final_lead_summary', () => workbenchApi.leadSummary(settings, importBatchId, analysisRunId))}>刷新 Final Action Mix</button>
       </div>
       <LeadActions {...props} />
       <ol className="pipeline-list">

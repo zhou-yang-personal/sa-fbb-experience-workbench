@@ -3,6 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS meta_import_batch (
   import_batch_id VARCHAR(64) PRIMARY KEY,
+  batch_display_name VARCHAR(255) NULL,
   data_type VARCHAR(32) NOT NULL,
   source_file_name VARCHAR(512) NOT NULL,
   source_file_path TEXT NULL,
@@ -36,8 +37,8 @@ CREATE TABLE IF NOT EXISTS meta_etl_job_step (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   job_id VARCHAR(64) NOT NULL,
   step_name VARCHAR(128) NOT NULL,
-  source_table VARCHAR(128) NULL,
-  target_table VARCHAR(128) NULL,
+  source_table VARCHAR(512) NULL,
+  target_table VARCHAR(512) NULL,
   sql_template VARCHAR(255) NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'pending',
   started_at DATETIME NULL,
@@ -46,6 +47,9 @@ CREATE TABLE IF NOT EXISTS meta_etl_job_step (
   message TEXT NULL,
   INDEX ix_job_step (job_id, step_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE meta_etl_job_step MODIFY source_table VARCHAR(512) NULL;
+ALTER TABLE meta_etl_job_step MODIFY target_table VARCHAR(512) NULL;
 
 CREATE TABLE IF NOT EXISTS meta_quality_check_result (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,

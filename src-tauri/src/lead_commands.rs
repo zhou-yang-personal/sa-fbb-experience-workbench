@@ -1,6 +1,7 @@
 use mysql::prelude::*;
 use mysql::{Params, Value};
 
+use crate::batch_tables;
 use crate::db;
 use crate::models::{ack, CommandAck, ExportLeadsRequest, FinalLeadUserRow, LeadUserRow, LeadsQueryRequest};
 
@@ -45,8 +46,15 @@ fn normalized_actions(values: &Option<Vec<String>>) -> Vec<String> {
         .unwrap_or_default()
 }
 
+fn resolve_batch_id(settings: &crate::models::MySqlSettings, analysis_run_id: &str) -> Result<String, String> {
+    batch_tables::analysis_run_batch(settings, analysis_run_id)?
+        .ok_or_else(|| format!("analysis_run_id {analysis_run_id} has no mapped import_batch_id"))
+}
+
 #[tauri::command]
 pub fn leads_query_users(req: LeadsQueryRequest) -> Result<Vec<LeadUserRow>, String> {
+    let import_batch_id = resolve_batch_id(&req.settings, &req.analysis_run_id)?;
+    let table = batch_tables::resolve_table(&req.settings, &import_batch_id, "ads_migration_lead_user")?;
     let mut conn = db::conn(&req.settings)?;
     let page = req.page.unwrap_or(1).max(1);
     let page_size = req.page_size.unwrap_or(100).clamp(1, 1000);
@@ -64,7 +72,7 @@ pub fn leads_query_users(req: LeadsQueryRequest) -> Result<Vec<LeadUserRow>, Str
     params.push(Value::UInt(page_size));
     params.push(Value::UInt(offset));
     let sql = format!(
-        "SELECT user_key, user_type, lead_type, demand_score, migration_motive_score, recommended_offer FROM ads_migration_lead_user WHERE {} ORDER BY demand_score DESC, migration_motive_score DESC LIMIT ? OFFSET ?",
+        "SELECT user_key, user_type, lead_type, demand_score, migration_motive_score, recommended_offer FROM `{table}` WHERE {} ORDER BY demand_score DESC, migration_motive_score DESC LIMIT ? OFFSET ?",
         where_sql.join(" AND ")
     );
     conn.exec_map(
@@ -76,6 +84,8 @@ pub fn leads_query_users(req: LeadsQueryRequest) -> Result<Vec<LeadUserRow>, Str
 
 #[tauri::command]
 pub fn final_leads_query_users(req: LeadsQueryRequest) -> Result<Vec<FinalLeadUserRow>, String> {
+    let import_batch_id = resolve_batch_id(&req.settings, &req.analysis_run_id)?;
+    let table = batch_tables::resolve_table(&req.settings, &import_batch_id, "ads_final_marketing_lead_user")?;
     let mut conn = db::conn(&req.settings)?;
     let page = req.page.unwrap_or(1).max(1);
     let page_size = req.page_size.unwrap_or(100).clamp(1, 1000);
@@ -93,7 +103,7 @@ pub fn final_leads_query_users(req: LeadsQueryRequest) -> Result<Vec<FinalLeadUs
     params.push(Value::UInt(page_size));
     params.push(Value::UInt(offset));
     let sql = format!(
-        "SELECT user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, CAST(current_arpu AS DOUBLE), ftth_available_flag, reachable_flag, final_action, recommended_offer FROM ads_final_marketing_lead_user WHERE {} ORDER BY final_action, demand_score DESC, migration_motive_score DESC LIMIT ? OFFSET ?",
+        "SELECT user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, CAST(current_arpu AS DOUBLE), ftth_available_flag, reachable_flag, final_action, recommended_offer FROM `{table}` WHERE {} ORDER BY final_action, demand_score DESC, migration_motive_score DESC LIMIT ? OFFSET ?",
         where_sql.join(" AND ")
     );
     conn.exec_map(
@@ -105,6 +115,8 @@ pub fn final_leads_query_users(req: LeadsQueryRequest) -> Result<Vec<FinalLeadUs
 
 #[tauri::command]
 pub fn export_leads_csv(req: ExportLeadsRequest) -> Result<CommandAck, String> {
+    let import_batch_id = resolve_batch_id(&req.settings, &req.analysis_run_id)?;
+    let table = batch_tables::resolve_table(&req.settings, &import_batch_id, "ads_migration_lead_user")?;
     let mut conn = db::conn(&req.settings)?;
     let mut writer = csv::Writer::from_path(&req.output_path).map_err(|err| format!("failed to create export file: {err}"))?;
     writer.write_record(["user_key", "user_type", "lead_type", "demand_score", "migration_motive_score", "recommended_offer"]).map_err(|err| err.to_string())?;
@@ -112,7 +124,7 @@ pub fn export_leads_csv(req: ExportLeadsRequest) -> Result<CommandAck, String> {
     let mut offset = 0_u64;
     loop {
         let rows: Vec<LeadUserRow> = conn.exec_map(
-            "SELECT user_key, user_type, lead_type, demand_score, migration_motive_score, recommended_offer FROM ads_migration_lead_user WHERE analysis_run_id=? ORDER BY demand_score DESC, migration_motive_score DESC LIMIT 1000 OFFSET ?",
+            format!("SELECT user_key, user_type, lead_type, demand_score, migration_motive_score, recommended_offer FROM `{table}` WHERE analysis_run_id=? ORDER BY demand_score DESC, migration_motive_score DESC LIMIT 1000 OFFSET ?"),
             (&req.analysis_run_id, offset),
             |(user_key, user_type, lead_type, demand_score, migration_motive_score, recommended_offer)| LeadUserRow { user_key, user_type, lead_type, demand_score, migration_motive_score, recommended_offer },
         ).map_err(|err| format!("failed to query leads for export: {err}"))?;
@@ -129,6 +141,8 @@ pub fn export_leads_csv(req: ExportLeadsRequest) -> Result<CommandAck, String> {
 
 #[tauri::command]
 pub fn export_final_leads_csv(req: ExportLeadsRequest) -> Result<CommandAck, String> {
+    let import_batch_id = resolve_batch_id(&req.settings, &req.analysis_run_id)?;
+    let table = batch_tables::resolve_table(&req.settings, &import_batch_id, "ads_final_marketing_lead_user")?;
     let mut conn = db::conn(&req.settings)?;
     let final_actions = normalized_actions(&req.final_actions);
     let mut where_sql = vec!["analysis_run_id=?".to_string()];
@@ -141,7 +155,7 @@ pub fn export_final_leads_csv(req: ExportLeadsRequest) -> Result<CommandAck, Str
         }
     }
     let sql = format!(
-        "SELECT user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, CAST(current_arpu AS DOUBLE), ftth_available_flag, reachable_flag, final_action, recommended_offer FROM ads_final_marketing_lead_user WHERE {} ORDER BY final_action, demand_score DESC, migration_motive_score DESC LIMIT ? OFFSET ?",
+        "SELECT user_key, crm_user_id, lead_type, demand_score, migration_motive_score, current_plan_name, CAST(current_arpu AS DOUBLE), ftth_available_flag, reachable_flag, final_action, recommended_offer FROM `{table}` WHERE {} ORDER BY final_action, demand_score DESC, migration_motive_score DESC LIMIT ? OFFSET ?",
         where_sql.join(" AND ")
     );
     let mut writer = csv::Writer::from_path(&req.output_path).map_err(|err| format!("failed to create final lead export file: {err}"))?;

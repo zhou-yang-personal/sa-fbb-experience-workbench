@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { CommandAck, DashboardOverview, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, LeadQueryParams, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
+import type { BatchListItem, BatchTableRegistryRow, CommandAck, DashboardOverview, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
 
 function normalizeFilter(value?: string) {
   const normalized = value?.trim();
@@ -21,10 +21,17 @@ function leadQueryRequest(settings: MySqlSettings, analysisRunId: string, params
 export const workbenchApi = {
   testDb: (settings: MySqlSettings) => invoke<CommandAck>('db_test_connection', { settings }),
   initDb: (settings: MySqlSettings) => invoke<CommandAck>('db_initialize', { settings }),
+  listBatches: (settings: MySqlSettings, dataType?: string) => invoke<BatchListItem[]>('import_list_batches', { settings, dataType }),
+  prepareBatchTables: (settings: MySqlSettings, importBatchId: string) => invoke<MetricCard[]>('analysis_prepare_batch_tables', { settings, importBatchId }),
+  batchTableRegistry: (settings: MySqlSettings, importBatchId: string) => invoke<BatchTableRegistryRow[]>('batch_get_table_registry', { settings, importBatchId }),
+  moduleStatus: (settings: MySqlSettings, importBatchId: string, analysisRunId?: string) => invoke<ModuleStatusRow[]>('analysis_get_module_status', { settings, importBatchId, analysisRunId }),
+  moduleMetrics: (settings: MySqlSettings, importBatchId: string, analysisRunId?: string) => invoke<MetricCard[]>('analysis_get_module_metrics', { settings, importBatchId, analysisRunId }),
+  exportModule: (settings: MySqlSettings, importBatchId: string, analysisRunId: string | undefined, moduleId: string, outputPath: string) =>
+    invoke<CommandAck>('analysis_export_module_csv', { settings, importBatchId, analysisRunId, moduleId, outputPath }),
   seedConfig: (settings: MySqlSettings) => invoke<CommandAck>('config_seed_defaults', { settings }),
   probeCsv: (path: string) => invoke('import_probe_csv', { path }),
-  createBatch: (settings: MySqlSettings, dataType: string, filePath: string) =>
-    invoke<ImportBatchResult>('import_create_batch', { req: { settings, data_type: dataType, file_path: filePath } }),
+  createBatch: (settings: MySqlSettings, dataType: string, filePath: string, batchDisplayName?: string) =>
+    invoke<ImportBatchResult>('import_create_batch', { req: { settings, data_type: dataType, file_path: filePath, batch_display_name: batchDisplayName?.trim() || undefined } }),
   validateMapping: (settings: MySqlSettings, importBatchId: string, dataType: string, filePath: string) =>
     invoke<CommandAck>('import_validate_mapping', { settings, importBatchId, dataType, filePath }),
   loadRaw: (settings: MySqlSettings, importBatchId: string, dataType: string, filePath: string, mode: string) =>
@@ -44,8 +51,18 @@ export const workbenchApi = {
     invoke<MetricCard[]>('dashboard_get_app_category', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
   experience: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
     invoke<MetricCard[]>('dashboard_get_experience_quality', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
+  gameExperience: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
+    invoke<MetricCard[]>('dashboard_get_game_experience', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
+  networkQuality: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
+    invoke<MetricCard[]>('dashboard_get_network_quality', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
+  userProfile: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
+    invoke<MetricCard[]>('dashboard_get_user_profile', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
+  videoDetail: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
+    invoke<MetricCard[]>('dashboard_get_video_experience_detail', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
   cableFiber: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
     invoke<MetricCard[]>('dashboard_get_cable_fiber_compare', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
+  cableFiberHourly: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
+    invoke<MetricCard[]>('dashboard_get_cable_fiber_hourly_detail', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
   fuse: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
     invoke<CommandAck>('leads_run_final_fusion', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
   leadSummary: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>

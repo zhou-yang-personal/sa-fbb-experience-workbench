@@ -6,6 +6,7 @@ type Props = {
   importMode: 'load_data' | 'streaming_insert';
   filePath: string;
   importBatchId: string;
+  batchDisplayName: string;
   analysisRunId: string;
   outputPath: string;
   batch: ImportBatchResult | null;
@@ -23,14 +24,15 @@ function dbLabel(settings: MySqlSettings) {
   return `${host}:${port}/${database}`;
 }
 
-export function WorkbenchContextBar({ settings, dataType, importMode, filePath, importBatchId, analysisRunId, outputPath, batch }: Props) {
-  const batchStatus = batch?.status ?? (importBatchId ? 'manual' : 'not created');
+export function WorkbenchContextBar({ settings, dataType, importMode, filePath, importBatchId, batchDisplayName, analysisRunId, outputPath, batch }: Props) {
+  const batchStatus = batch?.status ?? (importBatchId ? 'manual selected' : 'not selected');
+  const displayName = batchDisplayName || batch?.batch_display_name || batch?.source_file_name || '';
   return (
     <section className="context-bar" aria-label="Current execution context">
       <div className="context-item context-primary">
         <span>Batch</span>
-        <strong>{shortValue(importBatchId, 'no batch')}</strong>
-        <small>{batchStatus}</small>
+        <strong title={displayName}>{shortValue(displayName, 'no batch name')}</strong>
+        <small>{shortValue(importBatchId, batchStatus)}</small>
       </div>
       <div className="context-item">
         <span>Run</span>
@@ -48,9 +50,9 @@ export function WorkbenchContextBar({ settings, dataType, importMode, filePath, 
         <small>{dbLabel(settings)}</small>
       </div>
       <div className="context-item context-wide">
-        <span>Export</span>
+        <span>Export target</span>
         <strong title={outputPath}>{shortValue(outputPath, 'no output path')}</strong>
-        <small>CSV output target</small>
+        <small>看板内按钮直接导出</small>
       </div>
     </section>
   );

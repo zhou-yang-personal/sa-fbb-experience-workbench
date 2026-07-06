@@ -18,15 +18,37 @@ pub fn import_validate_mapping(settings: MySqlSettings, import_batch_id: String,
         (&data_type,),
     ).map_err(|err| format!("failed to query import mappings: {err}"))?;
     let mut checked = 0_u64;
-    for (target_column, source_header, required_flag) in rows {
-        let matched = normalized_headers.contains(&normalize(&source_header));
-        let status = if matched { "matched" } else if required_flag == 1 { "missing_required" } else { "missing_optional" };
-        let matched_header = if matched { Some(source_header.clone()) } else { None };
+    let mut cursor: Option<(String, Vec<(String, u8)>)> = None;
+    let mut write_group = |target_column: String, items: Vec<(String, u8)>| -> Result<(), String> {
+        let required_flag = items.iter().map(|(_, required_flag)| *required_flag).max().unwrap_or(0);
+        let matched_header = items.iter().find_map(|(source_header, _)| {
+            if normalized_headers.contains(&normalize(source_header)) { Some(source_header.clone()) } else { None }
+        });
+        let status = if matched_header.is_some() { "matched" } else if required_flag == 1 { "missing_required" } else { "missing_optional" };
         conn.exec_drop(
             "INSERT INTO meta_mapping_validation_result (import_batch_id, data_type, target_column, matched_source_header, required_flag, match_status) VALUES (?, ?, ?, ?, ?, ?)",
             (&import_batch_id, &data_type, &target_column, matched_header, required_flag, status),
         ).map_err(|err| format!("failed to write mapping validation: {err}"))?;
         checked += 1;
+        Ok(())
+    };
+    for (target_column, source_header, required_flag) in rows {
+        match &mut cursor {
+            Some((current_target, items)) if current_target == &target_column => items.push((source_header, required_flag)),
+            Some((current_target, items)) => {
+                let previous_target = std::mem::take(current_target);
+                let previous_items = std::mem::take(items);
+                write_group(previous_target, previous_items)?;
+                *current_target = target_column;
+                items.push((source_header, required_flag));
+            }
+            None => {
+                cursor = Some((target_column, vec![(source_header, required_flag)]));
+            }
+        }
+    }
+    if let Some((target_column, items)) = cursor {
+        write_group(target_column, items)?;
     }
     Ok(ack(format!("mapping validation finished: checked={checked}")))
 }

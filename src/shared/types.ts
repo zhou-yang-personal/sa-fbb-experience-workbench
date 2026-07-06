@@ -31,9 +31,45 @@ export interface CsvProbeResult {
 
 export interface ImportBatchResult {
   import_batch_id: string;
+  batch_display_name?: string;
   data_type: string;
   source_file_name: string;
   status: string;
+}
+
+export interface BatchListItem {
+  import_batch_id: string;
+  batch_display_name?: string;
+  data_type: string;
+  source_file_name: string;
+  status: string;
+  total_rows?: number;
+  imported_rows?: number;
+  analysis_run_id?: string;
+}
+
+export interface BatchTableRegistryRow {
+  import_batch_id: string;
+  layer: string;
+  data_type: string;
+  logical_table_name: string;
+  base_table_name: string;
+  physical_table_name: string;
+  row_count: number;
+  status: string;
+}
+
+export interface ModuleStatusRow {
+  import_batch_id: string;
+  analysis_run_id?: string;
+  module_id: string;
+  module_name: string;
+  enabled: boolean;
+  data_type?: string;
+  missing_required_fields?: string;
+  missing_tables?: string;
+  row_count: number;
+  status_text?: string;
 }
 
 export interface MetricCard {
@@ -126,6 +162,7 @@ export interface FinalLeadUserRow {
 
 export interface ImportBatchSummary {
   importBatchId: string;
+  batchDisplayName?: string;
   dataType: ImportDataType;
   sourceFileName: string;
   totalRows: number;

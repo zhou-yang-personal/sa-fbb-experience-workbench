@@ -15,6 +15,7 @@ type PersistedWorkbenchContext = {
   importMode?: unknown;
   filePath?: unknown;
   importBatchId?: unknown;
+  batchDisplayName?: unknown;
   analysisRunId?: unknown;
   outputPath?: unknown;
   exportFinalActions?: unknown;
@@ -31,6 +32,8 @@ export type WorkbenchController = {
   setFilePath: Dispatch<SetStateAction<string>>;
   importBatchId: string;
   setImportBatchId: Dispatch<SetStateAction<string>>;
+  batchDisplayName: string;
+  setBatchDisplayName: Dispatch<SetStateAction<string>>;
   analysisRunId: string;
   setAnalysisRunId: Dispatch<SetStateAction<string>>;
   outputPath: string;
@@ -62,9 +65,9 @@ export type WorkbenchController = {
 
 function stringifyPreview(value: unknown) {
   try {
-    const text = JSON.stringify(value);
+    const text = JSON.stringify(value, null, 2);
     if (typeof text !== 'string') return String(value);
-    return text.length > 1200 ? `${text.slice(0, 1200)}…` : text;
+    return text.length > 5000 ? `${text.slice(0, 5000)}…` : text;
   } catch {
     return String(value);
   }
@@ -142,6 +145,7 @@ export function useWorkbenchController(): WorkbenchController {
   const [importMode, setImportMode] = useState<ImportMode>(safeImportMode(persisted.importMode));
   const [filePath, setFilePath] = useState(safeString(persisted.filePath));
   const [importBatchId, setImportBatchId] = useState(safeString(persisted.importBatchId));
+  const [batchDisplayName, setBatchDisplayName] = useState(safeString(persisted.batchDisplayName));
   const [analysisRunId, setAnalysisRunId] = useState(safeString(persisted.analysisRunId, 'RUN_MANUAL_001'));
   const [outputPath, setOutputPath] = useState(safeString(persisted.outputPath, 'leads_export.csv'));
   const [exportFinalActions, setExportFinalActions] = useState<string[]>(safeStringArray(persisted.exportFinalActions));
@@ -161,10 +165,10 @@ export function useWorkbenchController(): WorkbenchController {
 
   useEffect(() => {
     const { secret: _secret, ...persistableSettings } = settings;
-    writePersistedContext({ settings: persistableSettings, dataType, importMode, filePath, importBatchId, analysisRunId, outputPath, exportFinalActions });
-  }, [settings, dataType, importMode, filePath, importBatchId, analysisRunId, outputPath, exportFinalActions]);
+    writePersistedContext({ settings: persistableSettings, dataType, importMode, filePath, importBatchId, batchDisplayName, analysisRunId, outputPath, exportFinalActions });
+  }, [settings, dataType, importMode, filePath, importBatchId, batchDisplayName, analysisRunId, outputPath, exportFinalActions]);
 
-  function appendLog(entry: ExecutionLogEntry) { setLog((items) => [entry, ...items].slice(0, 120)); }
+  function appendLog(entry: ExecutionLogEntry) { setLog((items) => [entry, ...items].slice(0, 400)); }
   function setActionState(label: string, state: ActionState) {
     setActionStates((items) => ({ ...items, [label]: state }));
   }
@@ -176,6 +180,7 @@ export function useWorkbenchController(): WorkbenchController {
     setImportMode('load_data');
     setFilePath('');
     setImportBatchId('');
+    setBatchDisplayName('');
     setAnalysisRunId('RUN_MANUAL_001');
     setOutputPath('leads_export.csv');
     setExportFinalActions([]);
@@ -250,7 +255,7 @@ export function useWorkbenchController(): WorkbenchController {
   }
 
   async function createBatch() {
-    const result = await runAction('import_create_batch', () => workbenchApi.createBatch(effectiveSettings, dataType, filePath));
+    const result = await runAction('import_create_batch', () => workbenchApi.createBatch(effectiveSettings, dataType, filePath, batchDisplayName));
     if (result && typeof result === 'object' && 'import_batch_id' in result) {
       const next = result as ImportBatchResult;
       setBatch(next);
@@ -260,5 +265,5 @@ export function useWorkbenchController(): WorkbenchController {
     return null;
   }
 
-  return { settings, setSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, analysisRunId, setAnalysisRunId, outputPath, setOutputPath, exportFinalActions, setExportFinalActions, log, batch, setBatch, allMetrics, dashboardCharts, setDashboardCharts, etlSteps, setEtlSteps, leads, setLeads, finalLeads, setFinalLeads, effectiveSettings, actionStates, currentAction, lastActionMessage, runAction, loadMetrics, createBatch, clearPersistedContext, setOverview };
+  return { settings, setSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, batchDisplayName, setBatchDisplayName, analysisRunId, setAnalysisRunId, outputPath, setOutputPath, exportFinalActions, setExportFinalActions, log, batch, setBatch, allMetrics, dashboardCharts, setDashboardCharts, etlSteps, setEtlSteps, leads, setLeads, finalLeads, setFinalLeads, effectiveSettings, actionStates, currentAction, lastActionMessage, runAction, loadMetrics, createBatch, clearPersistedContext, setOverview };
 }

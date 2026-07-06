@@ -17,6 +17,8 @@ type Props = {
   setFilePath: (value: string) => void;
   importBatchId: string;
   setImportBatchId: (value: string) => void;
+  batchDisplayName: string;
+  setBatchDisplayName: (value: string) => void;
   batch: ImportBatchResult | null;
   setBatch: (value: ImportBatchResult | null) => void;
   createBatch: () => Promise<ImportBatchResult | null>;
@@ -38,13 +40,40 @@ function fileName(path: string) {
   return normalized.split('/').pop() || path;
 }
 
+function withoutExtension(name: string) {
+  return name.replace(/\.[^.]+$/, '');
+}
+
+function defaultBatchName(dataType: ImportDataType, path: string) {
+  const name = withoutExtension(fileName(path || 'CSV')) || 'CSV';
+  const time = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  return `${dataType.toUpperCase()}｜${name}｜${time}`;
+}
+
+function missingRequiredMessage(items: MetricCard[]) {
+  const friendlyNames: Record<string, string> = {
+    user_account: 'Subscriber Account',
+    universal_video_applications: 'Universal Video Applications',
+    statistics_duration: 'Statistics Duration',
+    downloaded_data_volume_kb: 'Downloaded Data Volume (KB)',
+    effective_download_duration_s: 'Effective Download Duration (s)',
+  };
+  const detail = items.map((item, index) => {
+    const parsed = parseHint(item.hint);
+    const source = parsed.source || '未匹配到任何 CSV header';
+    const display = friendlyNames[item.label] || item.label;
+    return `${index + 1}. ${item.label}: no alias matched. Suggested source: ${display} (${source}), required=${parsed.required ?? '?'}`;
+  }).join('；');
+  return `字段映射存在 ${items.length} 个 required 缺失，已停止 RAW 入库：${detail}。当前 CSV header 已按 Universal Video detail format 识别，请补充 Universal Video alias mapping。`;
+}
+
 export function ImportPanel(props: Props) {
-  const { settings, effectiveSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, batch, setBatch, createBatch, runAction, loadMetrics, actionStates } = props;
+  const { settings, effectiveSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, batchDisplayName, setBatchDisplayName, batch, setBatch, createBatch, runAction, loadMetrics, actionStates } = props;
   const [mappingSummary, setMappingSummary] = useState<MetricCard[]>([]);
   const [mappingResults, setMappingResults] = useState<MetricCard[]>([]);
   const [profileMetrics, setProfileMetrics] = useState<MetricCard[]>([]);
   const [mappingCatalog, setMappingCatalog] = useState<MetricCard[]>([]);
-  const [statusMessage, setStatusMessage] = useState('请选择 CSV 文件。');
+  const [statusMessage, setStatusMessage] = useState('请选择 CSV 文件，并确认本次导入批次名称。');
 
   const mappingCounts = useMemo(() => {
     const counts = { required: 0, optional: 0, exact: 0, alias: 0, missingRequired: 0, missingOptional: 0 };
@@ -69,12 +98,13 @@ export function ImportPanel(props: Props) {
     ? mappingSummary.map((item) => `${item.label}: ${item.value}`).join(' · ')
     : '未跑映射汇总';
   const missingTotal = mappingCounts.missingRequired + mappingCounts.missingOptional;
-  const canImport = Boolean(filePath.trim());
+  const canImport = Boolean(filePath.trim()) && Boolean(batchDisplayName.trim());
 
   async function chooseFile() {
     const selected = await selectCsvFile();
     if (selected) {
       setFilePath(selected);
+      if (!batchDisplayName.trim()) setBatchDisplayName(defaultBatchName(dataType, selected));
       setStatusMessage(`已选择文件：${fileName(selected)}`);
     }
   }
@@ -127,8 +157,9 @@ export function ImportPanel(props: Props) {
   async function importCurrentFile() {
     await runAction('import_current_file', async () => {
       if (!filePath.trim()) throw new Error('请先通过文件选择框选择 CSV 文件。');
+      if (!batchDisplayName.trim()) throw new Error('请先为本次导入设置一个正常人可读的批次名称。');
       await workbenchApi.probeCsv(filePath);
-      const nextBatch = await workbenchApi.createBatch(effectiveSettings, dataType, filePath);
+      const nextBatch = await workbenchApi.createBatch(effectiveSettings, dataType, filePath, batchDisplayName);
       setBatch(nextBatch);
       setImportBatchId(nextBatch.import_batch_id);
       await workbenchApi.validateMapping(settings, nextBatch.import_batch_id, dataType, filePath);
@@ -136,17 +167,17 @@ export function ImportPanel(props: Props) {
       const results = await mappingApi.results(settings, nextBatch.import_batch_id, dataType);
       setMappingSummary(summary);
       setMappingResults(results);
-      const missingRequired = results.filter((item) => item.value === 'missing_required').length;
-      if (missingRequired > 0) {
-        throw new Error(`字段映射存在 ${missingRequired} 个 required 缺失，已停止 RAW 入库。`);
+      const missingRequired = results.filter((item) => item.value === 'missing_required');
+      if (missingRequired.length > 0) {
+        throw new Error(missingRequiredMessage(missingRequired));
       }
       await workbenchApi.loadRaw(effectiveSettings, nextBatch.import_batch_id, dataType, filePath, importMode);
       const rawStatus = await workbenchApi.importStatus(settings, nextBatch.import_batch_id);
       await profileApi.refresh(settings, nextBatch.import_batch_id, dataType);
       const profile = await profileApi.get(settings, nextBatch.import_batch_id, dataType);
       setProfileMetrics(profile);
-      setStatusMessage(`导入完成：${nextBatch.import_batch_id}`);
-      return { batch: nextBatch, mapping_summary: summary, mapping_results: results, raw_status: rawStatus, profile };
+      setStatusMessage(`导入完成：${batchDisplayName} / ${nextBatch.import_batch_id}`);
+      return { batch: nextBatch, batch_display_name: batchDisplayName, mapping_summary: summary, mapping_results: results, raw_status: rawStatus, profile };
     });
   }
 
@@ -154,16 +185,24 @@ export function ImportPanel(props: Props) {
     <article className="panel form-panel step-card">
       <div className="step-card-head">
         <div>
-          <h2>Import：CSV 导入</h2>
-          <p className="hero-text">选择文件后点击一次“导入当前文件”，系统会自动完成预检查、批次、映射、RAW 入库和画像刷新。</p>
+          <h2>数据导入：导入新数据</h2>
+          <p className="hero-text">导入前必须确认批次名称。后续所有看板都以该批次为分析边界。</p>
         </div>
-        <span className="step-badge">2 / 5</span>
+        <span className="step-badge">Import</span>
       </div>
       <div className="form-grid import-form-grid">
         <label>
+          批次名称
+          <input value={batchDisplayName} onChange={(e) => setBatchDisplayName(e.target.value)} placeholder="例如：TCP 视频体验｜Claro｜2026-07-05 晚高峰" />
+        </label>
+        <label>
           数据类型
-          <select value={dataType} onChange={(e) => setDataType(e.target.value as ImportDataType)}>
-            <option value="tcp">TCP</option><option value="game">Game</option><option value="crm">CRM Users</option><option value="coverage">FTTH Coverage</option><option value="reachability">Reachability</option>
+          <select value={dataType} onChange={(e) => {
+            const next = e.target.value as ImportDataType;
+            setDataType(next);
+            if (filePath && !batchDisplayName.trim()) setBatchDisplayName(defaultBatchName(next, filePath));
+          }}>
+            <option value="tcp">TCP / Universal Video</option><option value="game">Game</option><option value="crm">CRM Users</option><option value="coverage">FTTH Coverage</option><option value="reachability">Reachability</option>
           </select>
         </label>
         <label>
@@ -182,14 +221,14 @@ export function ImportPanel(props: Props) {
         <button type="button" onClick={chooseFile}>选择 CSV 文件</button>
       </section>
       <div className="primary-action-row">
-        <ActionButton actionKey="import_current_file" actionStates={actionStates} primary label="导入当前文件" disabled={!canImport} onClick={importCurrentFile} title={!canImport ? '请先选择 CSV 文件' : undefined} />
+        <ActionButton actionKey="import_current_file" actionStates={actionStates} primary label="导入当前文件" disabled={!canImport} onClick={importCurrentFile} title={!filePath ? '请先选择 CSV 文件' : !batchDisplayName ? '请先设置批次名称' : undefined} />
       </div>
       <details className="advanced-actions">
         <summary>高级操作：逐步执行 / 排错</summary>
         <input value={filePath} onChange={(e) => setFilePath(e.target.value)} placeholder="高级：CSV absolute path" />
         <div className="action-row">
           <ActionButton actionKey="import_probe_csv" actionStates={actionStates} label="Probe" disabled={!filePath} onClick={() => runAction('import_probe_csv', () => workbenchApi.probeCsv(filePath))} />
-          <ActionButton actionKey="import_create_batch" actionStates={actionStates} label="创建批次" disabled={!filePath} onClick={createBatch} />
+          <ActionButton actionKey="import_create_batch" actionStates={actionStates} label="创建批次" disabled={!filePath || !batchDisplayName.trim()} onClick={createBatch} />
           <ActionButton actionKey="import_validate_mapping" actionStates={actionStates} label="映射校验" disabled={!importBatchId || !filePath} onClick={validateMapping} />
           <ActionButton actionKey="import_get_mapping_summary" actionStates={actionStates} label="映射汇总" disabled={!importBatchId} onClick={() => refreshMappingSummary()} />
           <ActionButton actionKey="import_get_mapping_results" actionStates={actionStates} label="映射结果" disabled={!importBatchId} onClick={() => refreshMappingResults()} />
@@ -224,7 +263,7 @@ export function ImportPanel(props: Props) {
           const source = parsed.source ?? 'UNKNOWN';
           const required = parsed.required ?? '?';
           const matchLabel = item.value === 'matched' ? (source.trim().toLowerCase() === item.label.trim().toLowerCase() ? 'exact matched' : 'alias matched') : item.value;
-          return <div key={`${item.label}-${item.value}-${item.hint}`} className="table-row"><span>{item.label}</span><span>{matchLabel}</span><span>{`source=${source} / required=${required}`}</span></div>;
+          return <div key={`${item.label}-${item.value}-${item.hint}`} className={`table-row ${item.value === 'missing_required' ? 'diagnostic-row-failed' : ''}`}><span>{item.label}</span><span>{matchLabel}</span><span>{`source=${source} / required=${required}`}</span></div>;
         })}
         {!mappingResults.length && <div className="table-row muted-row">未跑映射结果。</div>}
       </div>
@@ -241,7 +280,7 @@ export function ImportPanel(props: Props) {
           {!mappingCatalog.length && <div className="table-row muted-row">未加载字段映射目录。</div>}
         </div>
       </details>
-      <small>{batch ? `current batch: ${batch.import_batch_id}` : 'no batch created'}</small>
+      <small>{batch ? `current batch: ${batchDisplayName || batch.batch_display_name || batch.source_file_name} / ${batch.import_batch_id}` : 'no batch created'}</small>
     </article>
   );
 }

@@ -1,5 +1,6 @@
 use mysql::prelude::*;
 
+use crate::batch_tables;
 use crate::db;
 use crate::models::{DashboardRequest, MetricCard, MySqlSettings};
 
@@ -31,8 +32,9 @@ pub fn etl_get_recent_steps(settings: MySqlSettings, import_batch_id: String) ->
 pub fn final_leads_get_action_mix(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
     let run_id = req.analysis_run_id.unwrap_or_else(|| "RUN_DEFAULT".to_string());
     let mut conn = db::conn(&req.settings)?;
+    let table = batch_tables::resolve_table(&req.settings, &req.import_batch_id, "ads_final_marketing_lead_user")?;
     conn.exec_map(
-        "SELECT COALESCE(final_action,'UNKNOWN'), COUNT(*), ROUND(AVG(demand_score),2) FROM ads_final_marketing_lead_user WHERE analysis_run_id=? GROUP BY COALESCE(final_action,'UNKNOWN') ORDER BY COUNT(*) DESC",
+        format!("SELECT COALESCE(final_action,'UNKNOWN'), COUNT(*), ROUND(AVG(demand_score),2) FROM `{table}` WHERE analysis_run_id=? GROUP BY COALESCE(final_action,'UNKNOWN') ORDER BY COUNT(*) DESC"),
         (&run_id,),
         |(action, count, avg_score): (String, u64, Option<f64>)| MetricCard {
             label: action,

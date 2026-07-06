@@ -30,9 +30,48 @@ pub struct CsvProbeResult {
 #[derive(Debug, Clone, Serialize)]
 pub struct ImportBatchResult {
     pub import_batch_id: String,
+    pub batch_display_name: Option<String>,
     pub data_type: String,
     pub source_file_name: String,
     pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BatchListItem {
+    pub import_batch_id: String,
+    pub batch_display_name: Option<String>,
+    pub data_type: String,
+    pub source_file_name: String,
+    pub status: String,
+    pub total_rows: Option<i64>,
+    pub imported_rows: Option<i64>,
+    pub analysis_run_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BatchTableRegistryRow {
+    pub import_batch_id: String,
+    pub layer: String,
+    pub data_type: String,
+    pub logical_table_name: String,
+    pub base_table_name: String,
+    pub physical_table_name: String,
+    pub row_count: i64,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ModuleStatusRow {
+    pub import_batch_id: String,
+    pub analysis_run_id: Option<String>,
+    pub module_id: String,
+    pub module_name: String,
+    pub enabled: bool,
+    pub data_type: Option<String>,
+    pub missing_required_fields: Option<String>,
+    pub missing_tables: Option<String>,
+    pub row_count: i64,
+    pub status_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -40,6 +79,7 @@ pub struct CreateBatchRequest {
     pub settings: MySqlSettings,
     pub data_type: String,
     pub file_path: String,
+    pub batch_display_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -72,6 +112,23 @@ pub struct DashboardRequest {
     pub settings: MySqlSettings,
     pub import_batch_id: String,
     pub analysis_run_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModuleStatusRequest {
+    pub settings: MySqlSettings,
+    pub import_batch_id: String,
+    pub data_type: Option<String>,
+    pub analysis_run_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ExportModuleRequest {
+    pub settings: MySqlSettings,
+    pub import_batch_id: String,
+    pub analysis_run_id: Option<String>,
+    pub module_id: String,
+    pub output_path: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
