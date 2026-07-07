@@ -1,0 +1,13 @@
+1.0.33 - 2026-07-07
+
+Added:
+- AnalyticsAdsActions.tsx action panel.
+- Compact ADS materialization commands: ads_hour, ads_user, ads_lead, ads_net.
+- Frontend APIs for App, Hourly, User, Lead and Network materialization.
+
+Changed:
+- AnalysisWorkspace renders the ADS action panel.
+- README, package and mapping catalog are synchronized to 1.0.33.
+
+Not verified:
+- npm run check/build, cargo check and real MySQL smoke were not run in the connector environment.
