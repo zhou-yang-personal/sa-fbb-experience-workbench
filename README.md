@@ -52,10 +52,11 @@ CSV 文件选择
 - `src-tauri/src/migrations.rs` 已接入 `006_analytics_dashboard_schema.sql`，数据库初始化会创建 analytics ADS schema。
 - 新增结构化 Analytics 后端命令：`analytics_get_kpi_summary`、`analytics_get_app_rank`、`analytics_get_hourly_trend`、`analytics_get_network_hotspots`、`analytics_get_user_profiles`、`analytics_get_lead_evidence`。
 - `src-tauri/src/main.rs` 已注册上述结构化命令，且所有新增命令只查询 DWS / ADS 物理表，不扫描 RAW。
+- 新增 `analyticsStructuredApi.ts`，集中封装结构化 Analytics 的前端 Tauri invoke。
 - 新增 `AnalyticsStructuredKpiPanel.tsx`，在分析页展示 KPI / App Rank / Hourly Trend 结构化预览。
 - 新增 `AnalyticsStructuredDeepDivePanel.tsx`，在分析页展示 Network Hotspot / User Profile / Lead Evidence 结构化深钻预览。
 - 版本标记已同步到 `package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`WorkbenchHeader.tsx`、`mapping_catalog.rs`、README、handoff、changelog。
-- `workbenchApi.ts` 目前只封装 `analyticsKpis`；非 KPI 结构化面板直接使用 Tauri `invoke`，后续可继续统一封装。
+- `workbenchApi.ts` 仍保留原有工作台 API；结构化 Analytics 命令统一通过 `analyticsStructuredApi.ts` 调用。
 
 ## 5. 1.0.26 收口重点
 
