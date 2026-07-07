@@ -6,7 +6,7 @@ WITH params AS (SELECT :import_batch_id AS import_batch_id), batch AS (
 ), raw_normalized AS (
   SELECT
     r.*,
-    NULLIF(TRIM(REGEXP_REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(r.statistics_duration, ''), CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' '), CHAR(160), ' '), '[[:space:]]+', ' ')), '') AS stat_time_text
+    NULLIF(TRIM(REGEXP_REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(r.statistics_duration, ''), CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' '), CONVERT(0xC2A0 USING utf8mb4), ' '), '[[:space:]]+', ' ')), '') AS stat_time_text
   FROM raw_tcp_detail_import r
   JOIN params p ON p.import_batch_id = r.import_batch_id
 ), raw_parsed AS (
