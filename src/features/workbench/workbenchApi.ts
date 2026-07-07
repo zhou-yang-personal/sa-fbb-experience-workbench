@@ -58,6 +58,8 @@ export const workbenchApi = {
     invoke<CommandAck>('etl_run_complete_aggregates', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
   completeDashboards: (settings: MySqlSettings, importBatchId: string, analysisRunId?: string) =>
     invoke<CommandAck>('ads_run_complete_dashboards', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
+  analyticsKpis: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
+    invoke<MetricCard[]>('analytics_get_kpi_summary', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
   overview: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
     invoke<DashboardOverview>('dashboard_get_overview', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } }),
   appCategory: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
