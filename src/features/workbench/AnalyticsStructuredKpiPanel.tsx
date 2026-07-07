@@ -7,23 +7,27 @@ import { workbenchApi } from './workbenchApi';
 export function AnalyticsStructuredKpiPanel({ c }: { c: WorkbenchController }) {
   const [items, setItems] = useState<MetricCard[]>([]);
   const [appRows, setAppRows] = useState<MetricCard[]>([]);
+  const [hourlyRows, setHourlyRows] = useState<MetricCard[]>([]);
   const [status, setStatus] = useState('等待当前批次和 analysis_run_id。');
   const disabled = !c.importBatchId.trim() || !c.analysisRunId.trim();
 
   async function refresh() {
     if (disabled) return;
-    setStatus('正在读取结构化 KPI / App Rank API...');
+    setStatus('正在读取结构化 KPI / App Rank / Hourly Trend API...');
     try {
-      const [kpis, apps] = await Promise.all([
+      const [kpis, apps, hourly] = await Promise.all([
         workbenchApi.analyticsKpis(c.effectiveSettings, c.importBatchId, c.analysisRunId),
         invoke<MetricCard[]>('analytics_get_app_rank', { req: { settings: c.effectiveSettings, import_batch_id: c.importBatchId, analysis_run_id: c.analysisRunId } }).catch(() => []),
+        invoke<MetricCard[]>('analytics_get_hourly_trend', { req: { settings: c.effectiveSettings, import_batch_id: c.importBatchId, analysis_run_id: c.analysisRunId } }).catch(() => []),
       ]);
       setItems(kpis);
       setAppRows(apps.slice(0, 8));
-      setStatus(`结构化 API 已刷新：KPI=${kpis.length} 项，App Rank=${apps.length} 行。`);
+      setHourlyRows(hourly.slice(0, 8));
+      setStatus(`结构化 API 已刷新：KPI=${kpis.length} 项，App Rank=${apps.length} 行，Hourly=${hourly.length} 行。`);
     } catch (error) {
       setItems([]);
       setAppRows([]);
+      setHourlyRows([]);
       setStatus(error instanceof Error ? error.message : String(error));
     }
   }
@@ -37,7 +41,7 @@ export function AnalyticsStructuredKpiPanel({ c }: { c: WorkbenchController }) {
       <div className="analytics-section-head">
         <div>
           <h3>结构化 Analytics API</h3>
-          <p>优先读取 `analytics_get_kpi_summary` 与 `analytics_get_app_rank`，用于验证看板从 MetricCard 代理表达向结构化 DWS/ADS API 迁移。</p>
+          <p>读取 KPI、App Rank、Hourly Trend 三个结构化命令，验证看板从 MetricCard 代理表达向结构化 DWS/ADS API 迁移。</p>
         </div>
         <button type="button" disabled={disabled} onClick={refresh}>刷新结构化 API</button>
       </div>
@@ -52,14 +56,25 @@ export function AnalyticsStructuredKpiPanel({ c }: { c: WorkbenchController }) {
         ))}
         {!items.length && <p className="muted-row">暂无结构化 KPI。旧驾驶舱仍可继续使用既有 DWS/ADS API。</p>}
       </div>
-      <div className="analytics-table-wrap analytics-structured-preview-table">
-        <table className="analytics-table">
-          <thead><tr><th>Rank</th><th>App / User Type</th><th>Users</th><th>Evidence</th></tr></thead>
-          <tbody>
-            {appRows.map((row, index) => <tr key={`${row.label}-${index}`}><td>{index + 1}</td><td>{row.label}</td><td>{row.value}</td><td>{row.hint}</td></tr>)}
-            {!appRows.length && <tr><td colSpan={4}>暂无结构化 App Rank 预览。</td></tr>}
-          </tbody>
-        </table>
+      <div className="analytics-structured-preview-grid">
+        <div className="analytics-table-wrap analytics-structured-preview-table">
+          <table className="analytics-table">
+            <thead><tr><th>Rank</th><th>App / User Type</th><th>Users</th><th>Evidence</th></tr></thead>
+            <tbody>
+              {appRows.map((row, index) => <tr key={`${row.label}-${index}`}><td>{index + 1}</td><td>{row.label}</td><td>{row.value}</td><td>{row.hint}</td></tr>)}
+              {!appRows.length && <tr><td colSpan={4}>暂无结构化 App Rank 预览。</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <div className="analytics-table-wrap analytics-structured-preview-table">
+          <table className="analytics-table">
+            <thead><tr><th>Hour</th><th>Segment</th><th>Users</th><th>Evidence</th></tr></thead>
+            <tbody>
+              {hourlyRows.map((row, index) => <tr key={`${row.label}-${index}`}><td>{index + 1}</td><td>{row.label}</td><td>{row.value}</td><td>{row.hint}</td></tr>)}
+              {!hourlyRows.length && <tr><td colSpan={4}>暂无结构化 Hourly Trend 预览。</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </div>
     </article>
   );
