@@ -210,7 +210,8 @@ mod tests {
             assert!(sql.contains("CHAR(9)"));
             assert!(sql.contains("CHAR(10)"));
             assert!(sql.contains("CHAR(13)"));
-            assert!(sql.contains("CHAR(160)"));
+            assert!(sql.contains("CONVERT(0xC2A0 USING utf8mb4)"));
+            assert!(!sql.contains("CHAR(160)"));
             assert!(sql.contains("stat_time_text"));
             assert!(sql.contains("WARN_INVALID_STAT_TIME"));
             assert!(sql.contains("[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}"));
