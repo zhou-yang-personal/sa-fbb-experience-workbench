@@ -3,6 +3,7 @@ import type { BatchListItem, BatchTableRegistryRow, ModuleStatusRow } from '../.
 import { AnalyticsDashboard } from './AnalyticsDashboard';
 import { AnalyticsStructuredDeepDivePanel } from './AnalyticsStructuredDeepDivePanel';
 import { AnalyticsStructuredKpiPanel } from './AnalyticsStructuredKpiPanel';
+import { AnalyticsStructuredPagedPanel } from './AnalyticsStructuredPagedPanel';
 import { BatchSelector } from './BatchSelector';
 import type { WorkbenchController } from './useWorkbenchController';
 import { workbenchApi } from './workbenchApi';
@@ -108,6 +109,7 @@ export function AnalysisWorkspace({ c }: { c: WorkbenchController }) {
 
       <AnalyticsStructuredKpiPanel c={c} />
       <AnalyticsStructuredDeepDivePanel c={c} />
+      <AnalyticsStructuredPagedPanel c={c} />
       <AnalyticsDashboard c={c} />
 
       <details className="advanced-actions analytics-diagnostics">
