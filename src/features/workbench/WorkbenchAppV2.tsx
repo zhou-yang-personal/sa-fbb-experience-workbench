@@ -8,6 +8,7 @@ import { WorkbenchContextBar } from './WorkbenchContextBar';
 import { WorkbenchHeader } from './WorkbenchHeader';
 import { useWorkbenchController } from './useWorkbenchController';
 import './extra.css';
+import './AnalyticsDashboard.css';
 
 type WorkbenchSection = 'analysis' | 'import' | 'system';
 
@@ -34,11 +35,11 @@ export function WorkbenchAppV2() {
   function hint() {
     if (activeSection === 'analysis') {
       if (!hasBatch) return { title: '先选择导入批次', detail: '数据分析以 import_batch_id 为边界。可以先去“数据导入”创建批次，或在分析页下拉选择已有批次。', tone: 'warning' as const };
-      return { title: '查看当前批次看板', detail: '模块会根据批次类型、必填字段和所需聚合表判断是否可用；不可用模块会置灰。', tone: 'normal' as const };
+      return { title: '查看当前批次分析驾驶舱', detail: '当前版本已强化为大屏看板：KPI、大图、业务表格和诊断明细均按 DWS/ADS 聚合结果刷新。', tone: 'normal' as const };
     }
     if (activeSection === 'import') {
       if (!hasBatchName) return { title: '导入前先命名批次', detail: '批次名称必须是正常人能读懂的业务名称，后续所有看板先按这个批次进入。', tone: 'warning' as const };
-      return { title: c.filePath ? '完成数据导入闭环' : '先选择 CSV 文件', detail: c.filePath ? '按页面 8 步完成 RAW、Quality Gate、CLEAN/DWS/ADS 和 Module Ready。' : '使用系统弹框选择文件，不要手输路径。', tone: c.filePath ? 'normal' as const : 'warning' as const };
+      return { title: c.filePath ? '启动自动导入分析计划' : '先选择 CSV 文件', detail: c.filePath ? '点击“启动导入分析计划”，系统会自动完成 RAW、Quality Gate、CLEAN/DWS/ADS 和 Module Ready。' : '使用系统弹框选择文件，不要手输路径。', tone: c.filePath ? 'normal' as const : 'warning' as const };
     }
     return { title: '系统诊断与后台能力', detail: '数据库连接、数据可用性、ETL 任务和执行日志只作为支撑能力，不再占用主分析入口。', tone: 'normal' as const };
   }
