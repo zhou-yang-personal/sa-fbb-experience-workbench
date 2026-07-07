@@ -1,5 +1,36 @@
 # CHANGELOG-dev
 
+## 1.0.29 - 2026-07-07
+
+### Added
+
+- Added `src/features/workbench/analyticsStructuredCharts.ts` to convert structured `MetricCard[]` rows and key=value hints into chart-friendly datasets.
+- Added structured chart adapters for App Rank, Hourly Trend, Network Hotspot, User Profile and Lead Evidence.
+
+### Changed
+
+- Updated `AnalyticsDashboard.tsx` to load structured KPI/App/Hourly/Network/User/Lead data through `analyticsStructuredApi` during the cockpit refresh.
+- Made the main analytics cockpit Structured First: charts and evidence surfaces prefer structured Analytics ADS results and keep legacy `workbenchApi` dashboard commands as fallback.
+- Embedded structured evidence-table entries into Overview, Apps, Quality, Cable, Users and Leads tabs.
+- Updated cockpit copy and chart footnotes to make the DWS/ADS structured-first source explicit.
+- Synchronized version markers to `1.0.29` in `package.json`, `src-tauri/tauri.conf.json`, `WorkbenchHeader.tsx`, `mapping_catalog.rs`, README, changelog and handoff.
+
+### Blocked / Deferred
+
+- `src-tauri/Cargo.toml` version update to `1.0.29` was blocked by ChatGPT GitHub connector safety checks. Do not blindly retry the same TOML payload; update it locally or through Codex in a follow-up pass.
+- Backend pagination/filtering for structured analytics commands remains deferred.
+- Additional DWS→ADS SQL generation for non-KPI analytics tables remains deferred because previous larger SQL payloads triggered connector safety block.
+
+### Verification
+
+- GitHub connector writes succeeded for the structured chart adapter, structured-first cockpit, non-Cargo version markers and documentation updates on `dev`.
+- `npm run check`: not run in ChatGPT GitHub connector environment.
+- `npm run build`: not run in ChatGPT GitHub connector environment.
+- `cd src-tauri && cargo check`: not run in ChatGPT GitHub connector environment.
+- `cd src-tauri && cargo test -- --nocapture`: not run in ChatGPT GitHub connector environment.
+- `npm run tauri:build`: not run in ChatGPT GitHub connector environment.
+- Real MySQL / customer CSV dashboard smoke has not been executed yet.
+
 ## 1.0.28 - 2026-07-07
 
 ### Changed
@@ -105,14 +136,14 @@
 - `cd src-tauri && cargo check`: not run in ChatGPT GitHub connector environment.
 - `cd src-tauri && cargo test -- --nocapture`: not run in ChatGPT GitHub connector environment.
 - `npm run tauri:build`: not run in ChatGPT GitHub connector environment.
-- Real MySQL / customer CSV dashboard smoke has not been executed yet.
+- Real MySQL / customer CSV smoke has not been executed yet.
 
 ## 1.0.24 - 2026-07-06
 
 ### Changed
 
 - Replaced all executable timestamp NBSP normalization from `CHAR(160)` to `CONVERT(0xC2A0 USING utf8mb4)` in TCP / Game Quality Gate and RAW→CLEAN SQL.
-- Added CSS overflow guards for pipeline plan rows, failure cards and realtime pipeline logs so full SQL statements no longer stretch the Data Import page.
+- Added CSS overflow guards for pipeline plan rows, failure cards and realtime pipeline logs so full SQL statements no longer stretch the Data Import page indefinitely.
 - Updated Rust SQL-template assertions to require `CONVERT(0xC2A0 USING utf8mb4)` and reject `CHAR(160)`.
 - Synchronized `package.json` and README to `1.0.24`; Cargo/Tauri/Header version updates were blocked by ChatGPT GitHub connector safety checks and remain pending for local/Codex follow-up.
 
@@ -129,5 +160,4 @@
 - `npm run build`: not run in ChatGPT GitHub connector environment.
 - `cd src-tauri && cargo check`: not run in ChatGPT GitHub connector environment.
 - `cd src-tauri && cargo test -- --nocapture`: not run in ChatGPT GitHub connector environment.
-- `npm run tauri:build`: not run in ChatGPT GitHub connector environment.
 - Real MySQL / customer CSV smoke has not been executed yet.
