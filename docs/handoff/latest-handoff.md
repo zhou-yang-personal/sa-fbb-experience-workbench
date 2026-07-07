@@ -26,11 +26,7 @@ CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final
 - Added compact ADS materialization commands for Hourly, User, Lead and Network.
 - App Rank materialization from 1.0.32 remains registered.
 - `analyticsStructuredApi.ts` exposes App, Hourly, User, Lead and Network materialization APIs.
-- README, package and mapping catalog are synchronized to `1.0.33`.
-
-## Known blocks
-
-- `CHANGELOG-dev.md`, `src-tauri/tauri.conf.json`, `WorkbenchHeader.tsx` and `src-tauri/Cargo.toml` have had connector safety blocks in prior attempts.
+- README, package, Tauri config, Cargo, Workbench header, mapping catalog, handoff and changelog are synchronized to `1.0.33`.
 
 ## Not verified
 
