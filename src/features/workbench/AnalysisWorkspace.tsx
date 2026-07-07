@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { BatchListItem, BatchTableRegistryRow, ModuleStatusRow } from '../../shared/types';
+import { AnalyticsAdsActions } from './AnalyticsAdsActions';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
 import { AnalyticsStructuredDeepDivePanel } from './AnalyticsStructuredDeepDivePanel';
 import { AnalyticsStructuredKpiPanel } from './AnalyticsStructuredKpiPanel';
@@ -109,6 +110,7 @@ export function AnalysisWorkspace({ c }: { c: WorkbenchController }) {
 
       <AnalyticsStructuredKpiPanel c={c} />
       <AnalyticsStructuredDeepDivePanel c={c} />
+      <AnalyticsAdsActions c={c} />
       <AnalyticsStructuredPagedPanel c={c} />
       <AnalyticsDashboard c={c} />
 
