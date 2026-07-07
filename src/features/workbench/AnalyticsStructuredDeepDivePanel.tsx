@@ -1,28 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { MetricCard } from '../../shared/types';
+import { AnalyticsEvidenceTable } from './AnalyticsEvidenceTable';
 import { analyticsStructuredApi } from './analyticsStructuredApi';
 import type { WorkbenchController } from './useWorkbenchController';
-
-type SectionProps = {
-  title: string;
-  rows: MetricCard[];
-  valueLabel: string;
-  emptyText: string;
-};
-
-function PreviewSection({ title, rows, valueLabel, emptyText }: SectionProps) {
-  return (
-    <div className="analytics-table-wrap analytics-structured-preview-table">
-      <table className="analytics-table">
-        <thead><tr><th>{title}</th><th>{valueLabel}</th><th>Evidence</th></tr></thead>
-        <tbody>
-          {rows.map((row, index) => <tr key={`${title}-${row.label}-${index}`}><td>{row.label}</td><td>{row.value}</td><td>{row.hint}</td></tr>)}
-          {!rows.length && <tr><td colSpan={3}>{emptyText}</td></tr>}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 export function AnalyticsStructuredDeepDivePanel({ c }: { c: WorkbenchController }) {
   const [networkRows, setNetworkRows] = useState<MetricCard[]>([]);
@@ -40,9 +20,9 @@ export function AnalyticsStructuredDeepDivePanel({ c }: { c: WorkbenchController
         analyticsStructuredApi.userProfiles(c.effectiveSettings, c.importBatchId, c.analysisRunId).catch(() => []),
         analyticsStructuredApi.leadEvidence(c.effectiveSettings, c.importBatchId, c.analysisRunId).catch(() => []),
       ]);
-      setNetworkRows(network.slice(0, 10));
-      setUserRows(users.slice(0, 10));
-      setLeadRows(leads.slice(0, 10));
+      setNetworkRows(network);
+      setUserRows(users);
+      setLeadRows(leads);
       setStatus(`结构化深钻已刷新：Network=${network.length} 行，User=${users.length} 行，Lead=${leads.length} 行。`);
     } catch (error) {
       setNetworkRows([]);
@@ -59,15 +39,15 @@ export function AnalyticsStructuredDeepDivePanel({ c }: { c: WorkbenchController
       <div className="analytics-section-head">
         <div>
           <h3>结构化深钻 API</h3>
-          <p>读取 Network Hotspot、User Profile、Lead Evidence 三个结构化命令，继续把看板从图表展示推进到可复核的业务证据链。</p>
+          <p>读取 Network Hotspot、User Profile、Lead Evidence 三个结构化命令；所有深钻结果均进入可搜索、可导出、可查看详情的证据表。</p>
         </div>
         <button type="button" disabled={disabled} onClick={refresh}>刷新深钻 API</button>
       </div>
       <div className="analytics-context-line"><span>{status}</span></div>
-      <div className="analytics-structured-preview-grid analytics-structured-deep-grid">
-        <PreviewSection title="Network Hotspot" rows={networkRows} valueLabel="Severity" emptyText="暂无结构化 Network Hotspot 预览。" />
-        <PreviewSection title="User Profile" rows={userRows} valueLabel="Traffic GB" emptyText="暂无结构化 User Profile 预览。" />
-        <PreviewSection title="Lead Evidence" rows={leadRows} valueLabel="Demand" emptyText="暂无结构化 Lead Evidence 预览。" />
+      <div className="analytics-structured-evidence-grid analytics-structured-deep-grid">
+        <AnalyticsEvidenceTable title="Structured Network Hotspot Evidence" rows={networkRows} limit={160} />
+        <AnalyticsEvidenceTable title="Structured User Profile Evidence" rows={userRows} limit={240} />
+        <AnalyticsEvidenceTable title="Structured Lead Evidence" rows={leadRows} limit={240} />
       </div>
     </article>
   );
