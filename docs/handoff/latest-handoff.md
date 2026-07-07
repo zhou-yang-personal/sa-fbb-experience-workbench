@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.28
+1.0.29
 ```
 
 ## Source-of-truth branch
@@ -14,7 +14,7 @@ dev
 
 ## Current baseline
 
-The project includes the Phase 1-7 complete application baseline, the 1.0.23 asynchronous import pipeline workflow, the 1.0.24 NBSP/log overflow hotfix, the 1.0.25 analytics cockpit UI, the 1.0.26 analytics evidence-table enhancement, the 1.0.27 structured analytics API foundation, and the 1.0.28 structured evidence-table upgrade.
+The project includes the Phase 1-7 complete application baseline, the 1.0.23 asynchronous import pipeline workflow, the 1.0.24 NBSP/log overflow hotfix, the 1.0.25 analytics cockpit UI, the 1.0.26 analytics evidence-table enhancement, the 1.0.27 structured analytics API foundation, the 1.0.28 structured evidence-table upgrade, and the 1.0.29 structured-first cockpit integration.
 
 Core path remains:
 
@@ -27,6 +27,17 @@ CSV file selection
 → SA Lead / optional Final Lead fusion
 → Structured analytics API / analytics cockpit / evidence table / export
 ```
+
+## 1.0.29 update
+
+- Added `src/features/workbench/analyticsStructuredCharts.ts` as the structured chart dataset adapter layer.
+- `AnalyticsDashboard.tsx` now loads structured KPI, App Rank, Hourly Trend, Network Hotspot, User Profile and Lead Evidence through `analyticsStructuredApi` during refresh.
+- The main analytics cockpit is now Structured First: chart datasets and evidence surfaces prefer structured Analytics ADS results, with legacy `workbenchApi` dashboard commands retained as fallback.
+- Overview, Apps, Quality, Cable, Users and Leads tabs now expose structured evidence-table entries inside the cockpit instead of leaving structured evidence only in the panels above the dashboard.
+- The cockpit hero, tab hints and chart footnotes now explicitly say the source strategy is structured DWS/ADS first and legacy DWS/ADS fallback.
+- Version markers were synchronized to `1.0.29` in `package.json`, `src-tauri/tauri.conf.json`, `WorkbenchHeader.tsx`, `mapping_catalog.rs`, README, changelog and this handoff.
+- `src-tauri/Cargo.toml` remains at `1.0.28` because ChatGPT GitHub connector safety checks blocked the TOML update payload. Update it locally or through Codex before treating version synchronization as fully complete.
+- No dependency or lock-file changes were made.
 
 ## 1.0.28 update
 
@@ -60,7 +71,7 @@ CSV file selection
 3. Do not perform full in-memory cleaning of large CSV files.
 4. Dashboard pages must query DWS / ADS tables instead of RAW tables.
 5. Do not submit customer CSV files, database exports, local logs, build outputs or installers.
-6. Current 1.0.28 preserves the Raw First MySQL import path and moves the Data Analysis area toward structured evidence-table UX.
+6. Current 1.0.29 preserves the Raw First MySQL import path and makes the main Data Analysis cockpit consume structured Analytics API outputs first.
 
 ## Not verified
 
@@ -70,7 +81,8 @@ CSV file selection
 
 ## Latest connector-side verification
 
-- GitHub connector diff confirms structured evidence table upgrades, CSS layout updates and version/documentation updates on `dev`.
+- GitHub connector writes succeeded for `analyticsStructuredCharts.ts`, `AnalyticsDashboard.tsx`, non-Cargo version files, README, changelog and this handoff on `dev`.
+- `src-tauri/Cargo.toml` update was attempted once and blocked by ChatGPT GitHub connector safety checks; it was not retried with the same payload.
 - `npm run check`: not run in ChatGPT GitHub connector environment.
 - `npm run build`: not run in ChatGPT GitHub connector environment.
 - `cd src-tauri && cargo check`: not run in ChatGPT GitHub connector environment.
@@ -80,7 +92,8 @@ CSV file selection
 
 ## Next recommended work
 
-1. Run the full local validation pass after the fast implementation phase.
-2. Add structured chart datasets on top of the new commands and gradually retire MetricCard-only proxy charts.
-3. Continue UI polish so the structured API panels become the main cockpit source rather than a preview/evidence layer.
-4. Add pagination on structured backend commands if real customer result size exceeds current command limits.
+1. Update `src-tauri/Cargo.toml` from `1.0.28` to `1.0.29` locally or through Codex to complete version synchronization.
+2. Run the full local validation pass after the fast implementation phase.
+3. Inspect the structured cockpit in a real MySQL batch and tune chart field priority if hint keys differ from the adapter assumptions.
+4. Add backend pagination/filtering for structured analytics commands if real customer result size exceeds current command limits.
+5. Continue DWS→ADS SQL generation for App/Hourly/Network/User/Lead tables using small SQL scripts to avoid connector safety blocks.
