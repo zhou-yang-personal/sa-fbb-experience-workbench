@@ -1,8 +1,7 @@
-import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useState } from 'react';
 import type { MetricCard } from '../../shared/types';
+import { analyticsStructuredApi } from './analyticsStructuredApi';
 import type { WorkbenchController } from './useWorkbenchController';
-import { workbenchApi } from './workbenchApi';
 
 export function AnalyticsStructuredKpiPanel({ c }: { c: WorkbenchController }) {
   const [items, setItems] = useState<MetricCard[]>([]);
@@ -16,9 +15,9 @@ export function AnalyticsStructuredKpiPanel({ c }: { c: WorkbenchController }) {
     setStatus('正在读取结构化 KPI / App Rank / Hourly Trend API...');
     try {
       const [kpis, apps, hourly] = await Promise.all([
-        workbenchApi.analyticsKpis(c.effectiveSettings, c.importBatchId, c.analysisRunId),
-        invoke<MetricCard[]>('analytics_get_app_rank', { req: { settings: c.effectiveSettings, import_batch_id: c.importBatchId, analysis_run_id: c.analysisRunId } }).catch(() => []),
-        invoke<MetricCard[]>('analytics_get_hourly_trend', { req: { settings: c.effectiveSettings, import_batch_id: c.importBatchId, analysis_run_id: c.analysisRunId } }).catch(() => []),
+        analyticsStructuredApi.kpis(c.effectiveSettings, c.importBatchId, c.analysisRunId),
+        analyticsStructuredApi.appRank(c.effectiveSettings, c.importBatchId, c.analysisRunId).catch(() => []),
+        analyticsStructuredApi.hourlyTrend(c.effectiveSettings, c.importBatchId, c.analysisRunId).catch(() => []),
       ]);
       setItems(kpis);
       setAppRows(apps.slice(0, 8));
