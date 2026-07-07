@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { BatchListItem, BatchTableRegistryRow, ModuleStatusRow } from '../../shared/types';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
+import { AnalyticsStructuredKpiPanel } from './AnalyticsStructuredKpiPanel';
 import { BatchSelector } from './BatchSelector';
 import type { WorkbenchController } from './useWorkbenchController';
 import { workbenchApi } from './workbenchApi';
@@ -104,6 +105,7 @@ export function AnalysisWorkspace({ c }: { c: WorkbenchController }) {
         {resultsNotGenerated && <p className="muted-row status-failure-text">当前批次尚未完成分析结果生成，请回到数据导入，完成 CLEAN/DWS/ADS 后再查看。</p>}
       </article>
 
+      <AnalyticsStructuredKpiPanel c={c} />
       <AnalyticsDashboard c={c} />
 
       <details className="advanced-actions analytics-diagnostics">
