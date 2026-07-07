@@ -36,5 +36,5 @@ export const analyticsStructuredApi = {
   userProfiles: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, query?: StructuredAnalyticsQuery) =>
     invoke<MetricCard[]>('analytics_get_user_profiles', req(settings, importBatchId, analysisRunId, query)),
   leadEvidence: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, query?: StructuredAnalyticsQuery) =>
-    invoke<MetricCard[]>('analytics_get_lead_evidence', req(settings, importBatchId, analysisRunId, query)),
+    invoke<MetricCard[]>('analytics_get_lead_evidence_page', req(settings, importBatchId, analysisRunId, query)),
 };
