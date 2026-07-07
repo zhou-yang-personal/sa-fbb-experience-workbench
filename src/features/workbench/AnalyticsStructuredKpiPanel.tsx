@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { MetricCard } from '../../shared/types';
+import { AnalyticsEvidenceTable } from './AnalyticsEvidenceTable';
 import { analyticsStructuredApi } from './analyticsStructuredApi';
 import type { WorkbenchController } from './useWorkbenchController';
 
@@ -20,8 +21,8 @@ export function AnalyticsStructuredKpiPanel({ c }: { c: WorkbenchController }) {
         analyticsStructuredApi.hourlyTrend(c.effectiveSettings, c.importBatchId, c.analysisRunId).catch(() => []),
       ]);
       setItems(kpis);
-      setAppRows(apps.slice(0, 8));
-      setHourlyRows(hourly.slice(0, 8));
+      setAppRows(apps);
+      setHourlyRows(hourly);
       setStatus(`结构化 API 已刷新：KPI=${kpis.length} 项，App Rank=${apps.length} 行，Hourly=${hourly.length} 行。`);
     } catch (error) {
       setItems([]);
@@ -40,7 +41,7 @@ export function AnalyticsStructuredKpiPanel({ c }: { c: WorkbenchController }) {
       <div className="analytics-section-head">
         <div>
           <h3>结构化 Analytics API</h3>
-          <p>读取 KPI、App Rank、Hourly Trend 三个结构化命令，验证看板从 MetricCard 代理表达向结构化 DWS/ADS API 迁移。</p>
+          <p>读取 KPI、App Rank、Hourly Trend 三个结构化命令；App / Hourly 已升级为可搜索、可导出、可查看详情的证据表。</p>
         </div>
         <button type="button" disabled={disabled} onClick={refresh}>刷新结构化 API</button>
       </div>
@@ -55,25 +56,9 @@ export function AnalyticsStructuredKpiPanel({ c }: { c: WorkbenchController }) {
         ))}
         {!items.length && <p className="muted-row">暂无结构化 KPI。旧驾驶舱仍可继续使用既有 DWS/ADS API。</p>}
       </div>
-      <div className="analytics-structured-preview-grid">
-        <div className="analytics-table-wrap analytics-structured-preview-table">
-          <table className="analytics-table">
-            <thead><tr><th>Rank</th><th>App / User Type</th><th>Users</th><th>Evidence</th></tr></thead>
-            <tbody>
-              {appRows.map((row, index) => <tr key={`${row.label}-${index}`}><td>{index + 1}</td><td>{row.label}</td><td>{row.value}</td><td>{row.hint}</td></tr>)}
-              {!appRows.length && <tr><td colSpan={4}>暂无结构化 App Rank 预览。</td></tr>}
-            </tbody>
-          </table>
-        </div>
-        <div className="analytics-table-wrap analytics-structured-preview-table">
-          <table className="analytics-table">
-            <thead><tr><th>Hour</th><th>Segment</th><th>Users</th><th>Evidence</th></tr></thead>
-            <tbody>
-              {hourlyRows.map((row, index) => <tr key={`${row.label}-${index}`}><td>{index + 1}</td><td>{row.label}</td><td>{row.value}</td><td>{row.hint}</td></tr>)}
-              {!hourlyRows.length && <tr><td colSpan={4}>暂无结构化 Hourly Trend 预览。</td></tr>}
-            </tbody>
-          </table>
-        </div>
+      <div className="analytics-structured-evidence-grid">
+        <AnalyticsEvidenceTable title="Structured App Rank Evidence" rows={appRows} limit={160} />
+        <AnalyticsEvidenceTable title="Structured Hourly Trend Evidence" rows={hourlyRows} limit={200} />
       </div>
     </article>
   );
