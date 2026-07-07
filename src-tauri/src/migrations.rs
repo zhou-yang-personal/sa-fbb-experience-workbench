@@ -6,6 +6,7 @@ const EXT_SCHEMA: &str = include_str!("../../database/migrations/002_complete_ap
 const MAP_SCHEMA: &str = include_str!("../../database/migrations/003_mapping_schema.sql");
 const OBS_SCHEMA: &str = include_str!("../../database/migrations/004_observability_schema.sql");
 const PIPELINE_SCHEMA: &str = include_str!("../../database/migrations/005_pipeline_schema.sql");
+const ANALYTICS_SCHEMA: &str = include_str!("../../database/migrations/006_analytics_dashboard_schema.sql");
 const APP_MAPPING_SEED: &str = include_str!("../../database/seeds/001_app_mapping_seed.sql");
 const MAP_SEED: &str = include_str!("../../database/seeds/002_default_mapping_seed.sql");
 
@@ -15,8 +16,9 @@ pub fn init_database(settings: &MySqlSettings) -> Result<String, String> {
     let map_rows = sql_runner::execute_script(settings, MAP_SCHEMA)?;
     let obs_rows = sql_runner::execute_script(settings, OBS_SCHEMA)?;
     let pipeline_rows = sql_runner::execute_script(settings, PIPELINE_SCHEMA)?;
+    let analytics_rows = sql_runner::execute_script(settings, ANALYTICS_SCHEMA)?;
     let seed_rows = sql_runner::execute_script(settings, APP_MAPPING_SEED)?;
     let map_seed_rows = sql_runner::execute_script(settings, MAP_SEED)?;
     crate::mapping_catalog::ensure_import_mapping_catalog(settings)?;
-    Ok(format!("database initialized: core={core_rows}, ext={ext_rows}, map={map_rows}, obs={obs_rows}, pipeline={pipeline_rows}, seed={seed_rows}, map_seed={map_seed_rows}"))
+    Ok(format!("database initialized: core={core_rows}, ext={ext_rows}, map={map_rows}, obs={obs_rows}, pipeline={pipeline_rows}, analytics={analytics_rows}, seed={seed_rows}, map_seed={map_seed_rows}"))
 }
