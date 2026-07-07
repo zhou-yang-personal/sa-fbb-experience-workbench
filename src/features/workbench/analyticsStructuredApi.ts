@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { MetricCard, MySqlSettings } from '../../shared/types';
+import type { CommandAck, MetricCard, MySqlSettings } from '../../shared/types';
 
 export type StructuredAnalyticsQuery = {
   page?: number;
@@ -24,6 +24,10 @@ function req(settings: MySqlSettings, importBatchId: string, analysisRunId: stri
   };
 }
 
+function etlReq(settings: MySqlSettings, importBatchId: string, analysisRunId: string) {
+  return { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId } };
+}
+
 export const analyticsStructuredApi = {
   kpis: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, query?: StructuredAnalyticsQuery) =>
     invoke<MetricCard[]>('analytics_get_kpi_summary', req(settings, importBatchId, analysisRunId, query)),
@@ -37,4 +41,6 @@ export const analyticsStructuredApi = {
     invoke<MetricCard[]>('analytics_get_user_profiles', req(settings, importBatchId, analysisRunId, query)),
   leadEvidence: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, query?: StructuredAnalyticsQuery) =>
     invoke<MetricCard[]>('analytics_get_lead_evidence_page', req(settings, importBatchId, analysisRunId, query)),
+  materializeAppRank: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) =>
+    invoke<CommandAck>('analytics_materialize_app_rank', etlReq(settings, importBatchId, analysisRunId)),
 };
