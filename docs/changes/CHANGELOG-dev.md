@@ -1,5 +1,31 @@
 # CHANGELOG-dev
 
+## 1.0.25 - 2026-07-06
+
+### Added
+
+- Added `AnalyticsDashboard.tsx`, a DWS/ADS-backed analytics cockpit for the Data Analysis area.
+- Added `AnalyticsDashboard.css` for large-screen KPI cards, chart panels, tabs and sticky-header tables.
+- Added six analysis tabs: overview cockpit, app experience, network quality, Cable vs FTTH, user profile and migration upsell leads.
+
+### Changed
+
+- Replaced the default Data Analysis module-card workflow with a large-screen analytics cockpit while keeping batch selection and diagnostics.
+- Moved module readiness and batch table registry into an advanced diagnostics section instead of making it the primary analysis surface.
+- Updated `WorkbenchAppV2` analysis guidance from small module charts to the current batch analytics cockpit.
+- Reused existing DWS/ADS-backed dashboard commands for the first implementation; no RAW table scans were added.
+- Synchronized `package.json`, `tauri.conf.json`, `WorkbenchHeader.tsx`, `mapping_catalog.rs`, README, handoff and changelog to `1.0.25`; `src-tauri/Cargo.toml` update was blocked by ChatGPT GitHub connector safety checks and remains pending.
+
+### Verification
+
+- GitHub connector diff confirms the new analytics cockpit component, analytics CSS, AnalysisWorkspace integration and version/documentation updates on `dev`.
+- `npm run check`: not run in ChatGPT GitHub connector environment.
+- `npm run build`: not run in ChatGPT GitHub connector environment.
+- `cd src-tauri && cargo check`: not run in ChatGPT GitHub connector environment.
+- `cd src-tauri && cargo test -- --nocapture`: not run in ChatGPT GitHub connector environment.
+- `npm run tauri:build`: not run in ChatGPT GitHub connector environment.
+- Real MySQL / customer CSV dashboard smoke has not been executed yet.
+
 ## 1.0.24 - 2026-07-06
 
 ### Changed
@@ -55,45 +81,3 @@
 - `npm run tauri:build` passed and produced ignored local Linux bundles under `src-tauri/target`.
 - Rust tests verify Quality Gate SQL does not parse raw timestamp fields directly, includes the same invisible-character cleanup guards as CLEAN, routes by data_type, and keeps Final Lead failures as pipeline degradation.
 - Real MySQL / customer CSV smoke has not been executed yet.
-
-## 1.0.22 - 2026-07-06
-
-### Changed
-
-- Extended TCP / Game CLEAN timestamp guards to accept one- or two-digit day/month slash dates such as `20/9/2025 23:58:06` and `1/9/2025 03:05:00`.
-- Normalized tab, LF, CR and NBSP in CLEAN timestamp text to spaces instead of deleting them, then compressed repeated whitespace before guarded `STR_TO_DATE`.
-- Made `migration_lead` module readiness depend on base SA Lead results in `ads_migration_lead_user`; Final Lead readiness is reported as ready or degraded without disabling the base module.
-- Changed module-level `migration_lead` CSV export to use SA Lead summary results so Final Lead degradation does not make the module export empty by default.
-- Synchronized package, Cargo, Tauri config, README, handoff, header and mapping catalog version markers to `1.0.22`.
-
-### Fixed
-
-- Fixed valid SA timestamps with single-digit month/day being classified as `WARN_INVALID_STAT_TIME`.
-- Fixed middle tab/CR/LF in timestamp text being removed and joining date/time into an unparsable value.
-- Fixed Final Lead missing/empty rows making the whole Migration Lead module appear unavailable even when SA Lead results exist.
-
-### Verification
-
-- `npm run check` passed.
-- `npm run build` passed; Vite reported the existing large chunk warning.
-- `cd src-tauri && cargo check` passed with existing dead_code warnings.
-- `cd src-tauri && cargo test -- --nocapture` passed: 18 tests passed.
-- `npm run tauri:build` passed and produced ignored local Linux bundles under `src-tauri/target`.
-- SQL-level tests verify CLEAN templates normalize `CHAR(9)`, `CHAR(10)`, `CHAR(13)` and `CHAR(160)` to spaces, use one- or two-digit slash date guards, and do not call `STR_TO_DATE` on raw timestamp fields.
-- Real MySQL / customer CSV smoke has not been executed yet.
-
-## 1.0.21 - 2026-07-06
-
-### Changed
-
-- Kept the top-level product navigation to three entries and made Data Import the default workflow entry.
-- Reworked Data Import into an eight-step visible workflow from CSV preparation through RAW load, Quality Gate, CLEAN/DWD, DWS/ADS and Module Ready.
-- Moved Quality Gate, RAW to CLEAN, DWS/ADS and Module Ready into the Data Import main workflow while keeping system-side entries as advanced diagnostics.
-- Clean jobs now route by batch `data_type`: tcp batches run only `tcp_raw_to_clean`, game batches run only `game_raw_to_clean`, and auxiliary batch types record skipped/not-applicable instead of failing.
-- Module status text now distinguishes missing table, rows=0 result not generated, current analysis_run_id without rows, not-applicable data_type and missing fields.
-- Synchronized package, Cargo, Tauri config, README, handoff and header version markers to `1.0.21`.
-
-### Fixed
-
-- Fixed MySQL ERROR 1411 during CLEAN when `statistics_duration` / `statistical_time` contains trailing tab, CR, LF or NBSP.
-- Guarded `STR_TO_DATE` calls by first creating cleaned `stat_time_text`, then calling date parsing only for supported timestamp patterns; invalid values become `WARN_INVALID_STAT_TIME` instead of aborting the clean job.
