@@ -40,6 +40,7 @@ CSV file selection
   - `analytics_get_user_profiles`
   - `analytics_get_lead_evidence`
 - Registered the above commands in `src-tauri/src/main.rs`.
+- Added `src/features/workbench/analyticsStructuredApi.ts` to centralize structured frontend Tauri invokes.
 - Added `src/features/workbench/AnalyticsStructuredKpiPanel.tsx` for KPI / App Rank / Hourly Trend preview.
 - Added `src/features/workbench/AnalyticsStructuredDeepDivePanel.tsx` for Network Hotspot / User Profile / Lead Evidence preview.
 - `AnalysisWorkspace` now renders structured analytics panels before the legacy analytics cockpit.
@@ -60,11 +61,11 @@ CSV file selection
 - Real MySQL and TCP / Game CSV end-to-end dashboard smoke has not been executed in this connector session.
 - Customer real CSV validation has not been recorded in this document.
 - Build/test/check commands were intentionally not run in the ChatGPT GitHub connector environment.
-- `workbenchApi.ts` only exposes `analyticsKpis`; non-KPI structured panels call Tauri commands directly via `invoke` because earlier wrapper update was blocked.
+- `workbenchApi.ts` only exposes `analyticsKpis`; other structured analytics calls are centralized in `analyticsStructuredApi.ts`.
 
 ## Latest connector-side verification
 
-- GitHub connector diff confirms analytics schema, migration wiring, structured analytics commands, Tauri registration, structured analytics panels and version/documentation updates on `dev`.
+- GitHub connector diff confirms analytics schema, migration wiring, structured analytics commands, Tauri registration, structured frontend API wrapper, structured analytics panels and version/documentation updates on `dev`.
 - `npm run check`: not run in ChatGPT GitHub connector environment.
 - `npm run build`: not run in ChatGPT GitHub connector environment.
 - `cd src-tauri && cargo check`: not run in ChatGPT GitHub connector environment.
@@ -75,6 +76,6 @@ CSV file selection
 ## Next recommended work
 
 1. Run the full local validation pass after the fast implementation phase.
-2. Move non-KPI structured command wrappers from direct `invoke` calls into `workbenchApi.ts` if connector/local editing allows.
-3. Replace preview tables with full evidence tables for Network / User / Lead structured results.
-4. Add structured chart datasets on top of the new commands and gradually retire MetricCard-only proxy charts.
+2. Replace preview tables with full evidence tables for Network / User / Lead structured results.
+3. Add structured chart datasets on top of the new commands and gradually retire MetricCard-only proxy charts.
+4. Continue UI polish so the structured API panels become the main cockpit source rather than a preview area.
