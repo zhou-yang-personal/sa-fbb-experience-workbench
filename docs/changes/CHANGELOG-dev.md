@@ -1,5 +1,21 @@
 # CHANGELOG-dev
 
+## 1.0.34 - 2026-07-07
+
+### Changed
+
+- App Rank, Hourly Trend, Network Hotspot, User Profile and Lead Evidence structured read commands now prefer materialized Analytics ADS rows for the current `analysis_run_id`.
+- Each read command falls back to the prior DWS / Lead source when Analytics ADS rows are absent or the Analytics ADS table cannot be resolved.
+- Evidence hints now include `source=...` to make ADS-first versus fallback reads visible in UI tables.
+- Version markers were synchronized to `1.0.34` in package, Tauri config, Cargo, Workbench header, mapping catalog, README and handoff.
+
+### Verification
+
+- `npm run check`: not run in ChatGPT GitHub connector environment.
+- `npm run build`: not run in ChatGPT GitHub connector environment.
+- `cd src-tauri && cargo check`: not run in ChatGPT GitHub connector environment.
+- Real MySQL / customer CSV smoke has not been executed yet.
+
 ## 1.0.33 - 2026-07-07
 
 ### Added
@@ -37,24 +53,3 @@
 - Added `AnalyticsStructuredPagedPanel.tsx`.
 - Registered structured Analytics ADS tables in the batch table registry.
 - Added SQL scripts `003b` to `003f` for App, Hourly, User, Lead and Network analytics ADS materialization.
-
-## 1.0.30 - 2026-07-07
-
-### Added
-
-- Added backend query controls to `DashboardRequest`: `page`, `page_size`, `keyword`, `sort_by` and `min_value` for structured analytics commands.
-- Added paginated and filterable structured command behavior for App Rank, Hourly Trend, Network Hotspots and User Profiles.
-- Added `analytics_get_lead_evidence_page` as a small dedicated paged Lead Evidence command.
-- Registered `analytics_get_lead_evidence_page` in `src-tauri/src/main.rs` and routed frontend `analyticsStructuredApi.leadEvidence` to the paged command.
-
-### Changed
-
-- `analyticsStructuredApi.ts` now accepts optional structured query parameters and forwards them as snake_case Tauri request fields.
-- `AnalyticsStructuredKpiPanel.tsx` requests backend `pageSize=500` for App Rank and Hourly Trend evidence tables.
-
-### Verification
-
-- `npm run check`: not run in ChatGPT GitHub connector environment.
-- `npm run build`: not run in ChatGPT GitHub connector environment.
-- `cd src-tauri && cargo check`: not run in ChatGPT GitHub connector environment.
-- Real MySQL / customer CSV dashboard smoke has not been executed yet.
