@@ -1,5 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod ads_hour;
+mod ads_lead;
+mod ads_net;
+mod ads_user;
 mod analysis_commands;
 mod analytics_ads_app;
 mod analytics_app_commands;
@@ -49,6 +53,10 @@ fn main() {
             analysis_commands::analysis_get_module_metrics,
             analytics_commands::analytics_get_kpi_summary,
             analytics_ads_app::analytics_materialize_app_rank,
+            ads_hour::ads_hour,
+            ads_user::ads_user,
+            ads_lead::ads_lead,
+            ads_net::ads_net,
             analytics_app_commands::analytics_get_app_rank,
             analytics_hourly_commands::analytics_get_hourly_trend,
             analytics_network_commands::analytics_get_network_hotspots,
