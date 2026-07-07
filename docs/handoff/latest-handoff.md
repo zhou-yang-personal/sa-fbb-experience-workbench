@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.26
+1.0.27
 ```
 
 ## Source-of-truth branch
@@ -14,7 +14,7 @@ dev
 
 ## Current baseline
 
-The project includes the Phase 1-7 complete application baseline, the 1.0.23 asynchronous import pipeline workflow, the 1.0.24 NBSP/log overflow hotfix, the 1.0.25 analytics cockpit UI, and the 1.0.26 analytics evidence-table enhancement.
+The project includes the Phase 1-7 complete application baseline, the 1.0.23 asynchronous import pipeline workflow, the 1.0.24 NBSP/log overflow hotfix, the 1.0.25 analytics cockpit UI, the 1.0.26 analytics evidence-table enhancement, and the 1.0.27 structured analytics API foundation.
 
 Core path remains:
 
@@ -25,20 +25,26 @@ CSV file selection
 → RAW to CLEAN / DWD
 → DWS / ADS aggregation
 → SA Lead / optional Final Lead fusion
-→ Analytics cockpit / evidence table / export
+→ Structured analytics API / analytics cockpit / evidence table / export
 ```
 
-## 1.0.26 update
+## 1.0.27 update
 
-- Added `src/features/workbench/AnalyticsEvidenceTable.tsx`.
-- Evidence tables support keyword search, absolute-value threshold filtering, sorting, CSV export and row-level detail drawer.
-- `AnalyticsDashboard.tsx` now supports additional chart kinds: scatter, heatmap and funnel.
-- Overview adds an Insight Strip for demand entry, experience risk entry, Cable/FTTH evidence entry and lead entry.
-- App, quality, Cable vs FTTH, user and lead tabs now use evidence tables instead of static metric rows.
-- `AnalyticsDashboard.css` was extended for evidence toolbar, sticky table, row detail drawer and larger table viewport.
-- The implementation still reuses existing DWS / ADS-backed commands and does not add RAW scans, dependencies, lock changes or database schema changes.
-- `package.json`, `src-tauri/tauri.conf.json`, `mapping_catalog.rs`, README, changelog and this handoff were updated to `1.0.26`.
-- `WorkbenchHeader.tsx` and `src-tauri/Cargo.toml` version updates were blocked by ChatGPT GitHub connector safety checks and remain pending for local/Codex follow-up.
+- Added `database/migrations/006_analytics_dashboard_schema.sql` with dedicated analytics ADS tables for KPI summary, app rank, hourly trend, network hotspot, user profile and lead evidence.
+- Wired `006_analytics_dashboard_schema.sql` into `src-tauri/src/migrations.rs`.
+- Added structured analytics backend commands:
+  - `analytics_get_kpi_summary`
+  - `analytics_get_app_rank`
+  - `analytics_get_hourly_trend`
+  - `analytics_get_network_hotspots`
+  - `analytics_get_user_profiles`
+  - `analytics_get_lead_evidence`
+- Registered the above commands in `src-tauri/src/main.rs`.
+- Added `src/features/workbench/AnalyticsStructuredKpiPanel.tsx` for KPI / App Rank / Hourly Trend preview.
+- Added `src/features/workbench/AnalyticsStructuredDeepDivePanel.tsx` for Network Hotspot / User Profile / Lead Evidence preview.
+- `AnalysisWorkspace` now renders structured analytics panels before the legacy analytics cockpit.
+- All new analytics command reads stay on DWS / ADS tables and do not scan RAW.
+- Version markers were synchronized to `1.0.27` in `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `WorkbenchHeader.tsx`, `mapping_catalog.rs`, README, changelog and this handoff.
 
 ## Important rules
 
@@ -47,18 +53,18 @@ CSV file selection
 3. Do not perform full in-memory cleaning of large CSV files.
 4. Dashboard pages must query DWS / ADS tables instead of RAW tables.
 5. Do not submit customer CSV files, database exports, local logs, build outputs or installers.
-6. Current 1.0.26 preserves the Raw First MySQL import path and strengthens the Data Analysis product surface using existing DWS / ADS APIs.
+6. Current 1.0.27 preserves the Raw First MySQL import path and moves the Data Analysis area toward structured DWS/ADS APIs.
 
 ## Not verified
 
-- Real MySQL and TCP / Game CSV end-to-end dashboard smoke must be checked from the latest delivery report.
+- Real MySQL and TCP / Game CSV end-to-end dashboard smoke has not been executed in this connector session.
 - Customer real CSV validation has not been recorded in this document.
-- Lead query/export and batch switching non-contamination must be checked with the 1.0.18 checklist when a MySQL test schema and sample CSVs are available.
-- Full version synchronization is incomplete because `WorkbenchHeader.tsx` and `src-tauri/Cargo.toml` were blocked by the connector safety layer.
+- Build/test/check commands were intentionally not run in the ChatGPT GitHub connector environment.
+- `workbenchApi.ts` only exposes `analyticsKpis`; non-KPI structured panels call Tauri commands directly via `invoke` because earlier wrapper update was blocked.
 
 ## Latest connector-side verification
 
-- GitHub connector diff confirms the evidence table component, enriched analytics dashboard, analytics CSS and documentation/version updates on `dev`.
+- GitHub connector diff confirms analytics schema, migration wiring, structured analytics commands, Tauri registration, structured analytics panels and version/documentation updates on `dev`.
 - `npm run check`: not run in ChatGPT GitHub connector environment.
 - `npm run build`: not run in ChatGPT GitHub connector environment.
 - `cd src-tauri && cargo check`: not run in ChatGPT GitHub connector environment.
@@ -68,6 +74,7 @@ CSV file selection
 
 ## Next recommended work
 
-1. Locally update blocked `src-tauri/Cargo.toml` and `WorkbenchHeader.tsx` version markers to `1.0.26`.
-2. Continue fast development with structured chart APIs and dedicated ADS tables for KPI summary, app rank, hourly trend, network hotspot, user profile and lead evidence.
-3. Final validation can run later in one pass: `npm run check`, `npm run build`, `cd src-tauri && cargo check`, `cd src-tauri && cargo test -- --nocapture`, and `npm run tauri:build`.
+1. Run the full local validation pass after the fast implementation phase.
+2. Move non-KPI structured command wrappers from direct `invoke` calls into `workbenchApi.ts` if connector/local editing allows.
+3. Replace preview tables with full evidence tables for Network / User / Lead structured results.
+4. Add structured chart datasets on top of the new commands and gradually retire MetricCard-only proxy charts.
