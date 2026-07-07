@@ -117,6 +117,42 @@ pub const TABLE_DEFS: &[TableDef] = &[
         layer: "ads",
         data_type: "mixed",
     },
+    TableDef {
+        logical: "ads_dashboard_kpi_summary",
+        base: "ads_dashboard_kpi_summary",
+        layer: "ads",
+        data_type: "mixed",
+    },
+    TableDef {
+        logical: "ads_app_experience_rank",
+        base: "ads_app_experience_rank",
+        layer: "ads",
+        data_type: "mixed",
+    },
+    TableDef {
+        logical: "ads_hourly_experience_trend",
+        base: "ads_hourly_experience_trend",
+        layer: "ads",
+        data_type: "mixed",
+    },
+    TableDef {
+        logical: "ads_network_hotspot_rank",
+        base: "ads_network_hotspot_rank",
+        layer: "ads",
+        data_type: "mixed",
+    },
+    TableDef {
+        logical: "ads_user_experience_profile",
+        base: "ads_user_experience_profile",
+        layer: "ads",
+        data_type: "mixed",
+    },
+    TableDef {
+        logical: "ads_lead_evidence_detail",
+        base: "ads_lead_evidence_detail",
+        layer: "ads",
+        data_type: "mixed",
+    },
 ];
 
 pub fn ensure_registry_tables(conn: &mut mysql::PooledConn) -> Result<(), String> {
@@ -266,18 +302,33 @@ pub fn resolve_table(
 ) -> Result<String, String> {
     let mut conn = db::conn(settings)?;
     ensure_registry_tables(&mut conn)?;
-    let found: Option<String> = conn.exec_first("SELECT physical_table_name FROM meta_batch_table_registry WHERE import_batch_id=? AND base_table_name=? LIMIT 1", (import_batch_id, base_table))
-        .map_err(|err| format!("failed to resolve batch table {base_table}: {err}"))?;
-    Ok(found.unwrap_or_else(|| physical_for_base(import_batch_id, base_table)))
+    let existing: Option<String> = conn
+        .exec_first(
+            "SELECT physical_table_name FROM meta_batch_table_registry WHERE import_batch_id=? AND base_table_name=? LIMIT 1",
+            (import_batch_id, base_table),
+        )
+        .map_err(|err| format!("failed to resolve physical table for {base_table}: {err}"))?;
+    if let Some(table) = existing {
+        return Ok(table);
+    }
+    let Some(def) = def_by_base(base_table) else {
+        return Err(format!("unknown batch table base: {base_table}"));
+    };
+    let physical = physical_name(base_table, import_batch_id);
+    ensure_one_table(&mut conn, &def, &physical)?;
+    upsert_registry(&mut conn, &def, import_batch_id, &physical, 0, "created")?;
+    Ok(physical)
 }
 
-pub fn analysis_run_batch(
-    settings: &MySqlSettings,
-    analysis_run_id: &str,
-) -> Result<Option<String>, String> {
-    let mut conn = db::conn(settings)?;
-    conn.exec_first("SELECT import_batch_id FROM meta_analysis_run WHERE analysis_run_id=? ORDER BY started_at DESC LIMIT 1", (analysis_run_id,))
-        .map_err(|err| format!("failed to resolve analysis run batch: {err}"))
+pub fn sanitize_identifier(identifier: &str) -> Result<String, String> {
+    if identifier.is_empty()
+        || !identifier
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    {
+        return Err(format!("unsafe table identifier: {identifier}"));
+    }
+    Ok(identifier.to_string())
 }
 
 pub fn bind_batch_tables(
@@ -285,169 +336,32 @@ pub fn bind_batch_tables(
     import_batch_id: &str,
     sql: &str,
 ) -> Result<String, String> {
-    ensure_batch_tables(settings, import_batch_id)?;
     let mut result = sql.to_string();
-    let mut defs = TABLE_DEFS.to_vec();
-    defs.sort_by(|a, b| b.base.len().cmp(&a.base.len()));
-    for def in defs {
+    for def in TABLE_DEFS {
         let physical = resolve_table(settings, import_batch_id, def.base)?;
-        result = replace_table_name(&result, def.base, &physical);
+        result = result.replace(&format!(":{}", def.base), &format!("`{physical}`"));
     }
+    result = result.replace(
+        ":import_batch_id",
+        &format!("'{}'", escape_sql_literal(import_batch_id)),
+    );
     Ok(result)
 }
 
-fn replace_table_name(sql: &str, base: &str, physical: &str) -> String {
-    let mut out = String::with_capacity(sql.len());
-    let chars: Vec<char> = sql.chars().collect();
-    let mut i = 0;
-    let mut table_expected = false;
-    while i < chars.len() {
-        let ch = chars[i];
-        if ch == '\'' || ch == '"' {
-            let quote = ch;
-            out.push(ch);
-            i += 1;
-            while i < chars.len() {
-                out.push(chars[i]);
-                if chars[i] == quote {
-                    if i + 1 < chars.len() && chars[i + 1] == quote {
-                        out.push(chars[i + 1]);
-                        i += 2;
-                        continue;
-                    }
-                    i += 1;
-                    break;
-                }
-                i += 1;
-            }
-            continue;
-        }
-        if ch == '`' {
-            let mut ident = String::new();
-            i += 1;
-            while i < chars.len() && chars[i] != '`' {
-                ident.push(chars[i]);
-                i += 1;
-            }
-            if i < chars.len() && chars[i] == '`' {
-                i += 1;
-            }
-            if ident == base {
-                out.push('`');
-                out.push_str(physical);
-                out.push('`');
-            } else {
-                out.push('`');
-                out.push_str(&ident);
-                out.push('`');
-            }
-            table_expected = false;
-            continue;
-        }
-        if is_identifier_start(ch) {
-            let start = i;
-            i += 1;
-            while i < chars.len() && is_identifier_part(chars[i]) {
-                i += 1;
-            }
-            let token: String = chars[start..i].iter().collect();
-            let keyword = token.to_ascii_uppercase();
-            let qualifies_column = i < chars.len() && chars[i] == '.';
-            if (table_expected || qualifies_column) && token == base {
-                out.push('`');
-                out.push_str(physical);
-                out.push('`');
-                table_expected = false;
-            } else {
-                out.push_str(&token);
-                table_expected = matches!(keyword.as_str(), "FROM" | "JOIN" | "INTO" | "UPDATE");
-            }
-            continue;
-        }
-        out.push(ch);
-        i += 1;
-    }
-    out
-}
-
-pub fn table_counts_for_diagnostics(
-    settings: &MySqlSettings,
-    import_batch_id: &str,
-) -> Result<Vec<MetricCard>, String> {
-    ensure_batch_tables(settings, import_batch_id)?;
-    refresh_registry_counts(settings, import_batch_id)
-}
-
 fn count_table_rows(conn: &mut mysql::PooledConn, table: &str) -> Result<u64, String> {
-    let table = sanitize_identifier(table)?;
-    let sql = format!("SELECT COUNT(*) FROM `{table}`");
-    conn.query_first::<u64, _>(sql)
-        .map_err(|err| format!("failed to count rows for {table}: {err}"))
-        .map(|value| value.unwrap_or(0))
-}
-
-pub fn table_exists(conn: &mut mysql::PooledConn, table: &str) -> Result<bool, String> {
-    let table = sanitize_identifier(table)?;
-    let found: Option<u8> = conn.exec_first(
-        "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ? LIMIT 1",
-        (&table,),
-    ).map_err(|err| format!("failed to check table {table}: {err}"))?;
-    Ok(found.is_some())
-}
-
-pub fn table_columns(conn: &mut mysql::PooledConn, table: &str) -> Result<Vec<String>, String> {
-    let table = sanitize_identifier(table)?;
-    conn.exec_map(
-        "SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ?",
-        (&table,),
-        |column: String| column,
-    ).map_err(|err| format!("failed to query columns for {table}: {err}"))
-}
-
-pub fn sanitize_identifier(value: &str) -> Result<String, String> {
-    if value
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-    {
-        Ok(value.to_string())
-    } else {
-        Err(format!(
-            "unsafe SQL identifier: {}",
-            escape_sql_literal(value)
-        ))
-    }
-}
-
-pub fn base_to_physical_map(import_batch_id: &str) -> HashMap<&'static str, String> {
-    TABLE_DEFS
-        .iter()
-        .map(|def| (def.base, physical_name(def.base, import_batch_id)))
-        .collect()
-}
-
-fn is_identifier_start(ch: char) -> bool {
-    ch.is_ascii_alphabetic() || ch == '_'
-}
-
-fn is_identifier_part(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_'
+    let safe = sanitize_identifier(table)?;
+    conn.query_first::<u64, _>(format!("SELECT COUNT(*) FROM `{safe}`"))
+        .map_err(|err| format!("failed to count rows for {safe}: {err}"))?
+        .ok_or_else(|| format!("count query returned no row for {safe}"))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::replace_table_name;
+    use super::{batch_short_id, physical_for_base};
 
     #[test]
-    fn replaces_identifier_positions_only() {
-        let sql = "DELETE FROM dwd_tcp_detail_clean WHERE dwd_tcp_detail_clean.import_batch_id='B1' AND app_name='dwd_tcp_detail_clean'; INSERT INTO `dwd_tcp_detail_clean` SELECT * FROM dwd_tcp_detail_clean_backup JOIN dwd_tcp_detail_clean ON 1=1";
-        let actual =
-            replace_table_name(sql, "dwd_tcp_detail_clean", "dwd_tcp_detail_clean__batch1");
-        assert!(actual.contains("DELETE FROM `dwd_tcp_detail_clean__batch1`"));
-        assert!(actual.contains("WHERE `dwd_tcp_detail_clean__batch1`.import_batch_id"));
-        assert!(actual.contains("INSERT INTO `dwd_tcp_detail_clean__batch1`"));
-        assert!(actual.contains("JOIN `dwd_tcp_detail_clean__batch1`"));
-        assert!(actual.contains("app_name='dwd_tcp_detail_clean'"));
-        assert!(actual.contains("dwd_tcp_detail_clean_backup"));
-        assert!(!actual.contains("dwd_tcp_detail_clean__batch1__batch1"));
+    fn batch_short_id_keeps_tail_and_strips_symbols() {
+        assert_eq!(batch_short_id("BATCH_20260705_VIDEO_PEAK"), "260705videopeak");
+        assert_eq!(physical_for_base("BATCH_20260705_VIDEO_PEAK", "raw_tcp_detail_import"), "raw_tcp_detail_import__260705videopeak");
     }
 }
