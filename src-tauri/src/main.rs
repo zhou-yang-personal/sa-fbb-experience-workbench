@@ -4,6 +4,9 @@ mod analysis_commands;
 mod analytics_app_commands;
 mod analytics_commands;
 mod analytics_hourly_commands;
+mod analytics_lead_commands;
+mod analytics_network_commands;
+mod analytics_user_commands;
 mod batch_tables;
 mod config_commands;
 mod dashboard_commands;
@@ -45,6 +48,9 @@ fn main() {
             analytics_commands::analytics_get_kpi_summary,
             analytics_app_commands::analytics_get_app_rank,
             analytics_hourly_commands::analytics_get_hourly_trend,
+            analytics_network_commands::analytics_get_network_hotspots,
+            analytics_user_commands::analytics_get_user_profiles,
+            analytics_lead_commands::analytics_get_lead_evidence,
             import_commands::import_probe_csv,
             import_commands::import_create_batch,
             import_commands::import_current_file_atomic,
