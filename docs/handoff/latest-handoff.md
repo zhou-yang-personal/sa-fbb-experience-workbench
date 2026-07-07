@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.31
+1.0.33
 ```
 
 ## Source-of-truth branch
@@ -14,48 +14,33 @@ dev
 
 ## Current baseline
 
-The project keeps the Raw First MySQL pipeline:
+Raw First MySQL pipeline is preserved:
 
 ```text
-CSV file selection
-→ MySQL RAW import
-→ RAW Quality Gate
-→ RAW to CLEAN / DWD
-→ DWS / ADS aggregation
-→ SA Lead / optional Final Lead fusion
-→ Structured analytics API / analytics cockpit / evidence table / export
+CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
 
-## 1.0.31 update
+## 1.0.33 update
 
-- Added `AnalyticsStructuredPagedPanel.tsx`.
-- `AnalysisWorkspace.tsx` renders the paged structured panel before the main analytics cockpit.
-- The new panel exposes backend page, pageSize, keyword, sort and minValue controls for App, Hourly, Network, User and Lead evidence.
-- `batch_tables.rs` now registers the structured Analytics ADS tables from migration 006 as per-batch ADS tables.
-- Added SQL materialization scripts:
-  - `003b_analytics_app_rank.sql`
-  - `003c_analytics_hourly_trend.sql`
-  - `003d_analytics_user_profile.sql`
-  - `003e_analytics_lead_evidence.sql`
-  - `003f_analytics_network_hotspot.sql`
-- `README.md`, `package.json` and `mapping_catalog.rs` are synchronized to `1.0.31`.
+- Added `AnalyticsAdsActions.tsx` and rendered it in `AnalysisWorkspace.tsx`.
+- Added compact ADS materialization commands for Hourly, User, Lead and Network.
+- App Rank materialization from 1.0.32 remains registered.
+- `analyticsStructuredApi.ts` exposes App, Hourly, User, Lead and Network materialization APIs.
+- README, package and mapping catalog are synchronized to `1.0.33`.
 
-## Known connector blocks
+## Known blocks
 
-- The Rust command to run the new 003b-003f SQL scripts was blocked by connector safety checks and is not wired yet.
-- `CHANGELOG-dev.md` update to 1.0.31 was blocked.
-- `src-tauri/tauri.conf.json`, `WorkbenchHeader.tsx` and `src-tauri/Cargo.toml` are not fully synchronized because prior connector writes were blocked.
+- `CHANGELOG-dev.md`, `src-tauri/tauri.conf.json`, `WorkbenchHeader.tsx` and `src-tauri/Cargo.toml` have had connector safety blocks in prior attempts.
 
 ## Not verified
 
 - `npm run check`: not run in ChatGPT GitHub connector environment.
 - `npm run build`: not run in ChatGPT GitHub connector environment.
 - `cd src-tauri && cargo check`: not run in ChatGPT GitHub connector environment.
-- Real MySQL / customer CSV dashboard smoke has not been executed yet.
+- Real MySQL / customer CSV smoke: not run.
 
 ## Next work
 
-1. Run local TypeScript and Rust checks.
-2. Wire a safe Rust command for the 003b-003f materialization SQL.
-3. Move structured commands from DWS fallback reads to materialized Analytics ADS reads after SQL smoke is confirmed.
-4. Align blocked version files locally if connector continues to block them.
+1. Run local TS/Rust checks.
+2. Smoke test ADS materialization commands on a real batch.
+3. After SQL smoke, prefer materialized Analytics ADS reads where appropriate.
