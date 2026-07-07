@@ -9,22 +9,23 @@
 - Registered `analytics_get_kpi_summary` in Tauri `main.rs`.
 - Added frontend API wrapper `workbenchApi.analyticsKpis`.
 - Added compact `003a_analytics_kpi_summary.sql` as the first small SQL script for analytics KPI generation.
+- Added `AnalyticsStructuredKpiPanel.tsx` and surfaced the structured KPI command in the Data Analysis workspace.
 
 ### Changed
 
 - Continued the dashboard hardening direction from MetricCard-only cockpit toward structured DWS/ADS-backed analytics APIs.
 - Kept all new analytics reads on DWS/ADS physical tables; no RAW table scans were introduced.
-- README, handoff and changelog now document the 1.0.27 structured analytics foundation.
+- README and changelog now document the 1.0.27 structured analytics foundation.
 
 ### Blocked / Deferred
 
 - `database/sql/dws_to_ads/003_analytics_enhanced_dashboards.sql` and later split App/Hourly/User/Lead SQL scripts triggered ChatGPT GitHub connector safety block, so only the KPI script was added.
 - Larger Rust command expansion for app rank, hourly trend, user profile and lead evidence also triggered safety block and was deferred.
-- `migrations.rs`, `package.json`, `tauri.conf.json`, `WorkbenchHeader.tsx` and `Cargo.toml` version/init updates were blocked by connector safety checks and remain pending for local/Codex follow-up.
+- `migrations.rs`, `package.json`, `tauri.conf.json`, `WorkbenchHeader.tsx`, `Cargo.toml` and latest handoff updates were blocked by connector safety checks and remain pending for local/Codex follow-up.
 
 ### Verification
 
-- GitHub connector diff confirms schema, KPI SQL, analytics KPI command, Tauri registration, frontend API wrapper and documentation updates on `dev`.
+- GitHub connector diff confirms schema, KPI SQL, analytics KPI command, Tauri registration, frontend API wrapper, structured KPI panel and documentation updates on `dev`.
 - `npm run check`: not run in ChatGPT GitHub connector environment.
 - `npm run build`: not run in ChatGPT GitHub connector environment.
 - `cd src-tauri && cargo check`: not run in ChatGPT GitHub connector environment.
@@ -82,3 +83,28 @@
 - `cd src-tauri && cargo test -- --nocapture`: not run in ChatGPT GitHub connector environment.
 - `npm run tauri:build`: not run in ChatGPT GitHub connector environment.
 - Real MySQL / customer CSV dashboard smoke has not been executed yet.
+
+## 1.0.24 - 2026-07-06
+
+### Changed
+
+- Replaced all executable timestamp NBSP normalization from `CHAR(160)` to `CONVERT(0xC2A0 USING utf8mb4)` in TCP / Game Quality Gate and RAW→CLEAN SQL.
+- Added CSS overflow guards for pipeline plan rows, failure cards and realtime pipeline logs so full SQL statements no longer stretch the Data Import page.
+- Updated Rust SQL-template assertions to require `CONVERT(0xC2A0 USING utf8mb4)` and reject `CHAR(160)`.
+- Synchronized `package.json` and README to `1.0.24`; Cargo/Tauri/Header version updates were blocked by ChatGPT GitHub connector safety checks and remain pending for local/Codex follow-up.
+
+### Fixed
+
+- Fixed MySQL `ERROR 3854 Cannot convert string '\xA0' from binary to utf8mb4` in Quality Gate by removing `CHAR(160)` from timestamp cleaning expressions.
+- Prevented long pipeline error text and realtime logs from expanding the import page indefinitely.
+
+### Verification
+
+- Repository search found no remaining `CHAR(160)` occurrences after this change.
+- GitHub connector diff confirms the SQL, Rust assertion, CSS and `package.json` changes on `dev`.
+- `npm run check`: not run in ChatGPT GitHub connector environment.
+- `npm run build`: not run in ChatGPT GitHub connector environment.
+- `cd src-tauri && cargo check`: not run in ChatGPT GitHub connector environment.
+- `cd src-tauri && cargo test -- --nocapture`: not run in ChatGPT GitHub connector environment.
+- `npm run tauri:build`: not run in ChatGPT GitHub connector environment.
+- Real MySQL / customer CSV smoke has not been executed yet.
