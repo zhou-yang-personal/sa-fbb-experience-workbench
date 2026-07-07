@@ -5,6 +5,7 @@ mod analytics_app_commands;
 mod analytics_commands;
 mod analytics_hourly_commands;
 mod analytics_lead_commands;
+mod analytics_lead_page_commands;
 mod analytics_network_commands;
 mod analytics_user_commands;
 mod batch_tables;
@@ -51,6 +52,7 @@ fn main() {
             analytics_network_commands::analytics_get_network_hotspots,
             analytics_user_commands::analytics_get_user_profiles,
             analytics_lead_commands::analytics_get_lead_evidence,
+            analytics_lead_page_commands::analytics_get_lead_evidence_page,
             import_commands::import_probe_csv,
             import_commands::import_create_batch,
             import_commands::import_current_file_atomic,
