@@ -1,5 +1,25 @@
 # CHANGELOG-dev
 
+## 1.0.28 - 2026-07-07
+
+### Changed
+
+- Upgraded structured App Rank and Hourly Trend from compact preview tables to full `AnalyticsEvidenceTable` surfaces.
+- Upgraded structured Network Hotspot, User Profile and Lead Evidence from compact preview tables to full `AnalyticsEvidenceTable` surfaces.
+- Kept structured KPI cards in `AnalyticsStructuredKpiPanel`, while making all non-KPI structured results searchable, sortable, threshold-filterable, CSV-exportable and inspectable through row detail drawers.
+- Expanded `AnalyticsDashboard.css` with structured evidence grid layouts for wide-screen two-column and three-column evidence-table panels.
+- Synchronized version markers to `1.0.28` in `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `WorkbenchHeader.tsx`, `mapping_catalog.rs`, README and changelog.
+
+### Verification
+
+- GitHub connector diff confirms structured evidence table upgrades, CSS layout updates and version/documentation updates on `dev`.
+- `npm run check`: not run in ChatGPT GitHub connector environment.
+- `npm run build`: not run in ChatGPT GitHub connector environment.
+- `cd src-tauri && cargo check`: not run in ChatGPT GitHub connector environment.
+- `cd src-tauri && cargo test -- --nocapture`: not run in ChatGPT GitHub connector environment.
+- `npm run tauri:build`: not run in ChatGPT GitHub connector environment.
+- Real MySQL / customer CSV dashboard smoke has not been executed yet.
+
 ## 1.0.27 - 2026-07-06
 
 ### Added
