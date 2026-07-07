@@ -203,6 +203,52 @@ pub struct DashboardRequest {
     pub settings: MySqlSettings,
     pub import_batch_id: String,
     pub analysis_run_id: Option<String>,
+    pub page: Option<u64>,
+    pub page_size: Option<u64>,
+    pub keyword: Option<String>,
+    pub sort_by: Option<String>,
+    pub min_value: Option<f64>,
+}
+
+impl DashboardRequest {
+    pub fn run_id(&self) -> String {
+        self.analysis_run_id
+            .clone()
+            .unwrap_or_else(|| "RUN_DEFAULT".to_string())
+    }
+
+    pub fn page(&self) -> u64 {
+        self.page.unwrap_or(1).max(1)
+    }
+
+    pub fn page_size(&self, default_size: u64, max_size: u64) -> u64 {
+        self.page_size.unwrap_or(default_size).max(1).min(max_size)
+    }
+
+    pub fn offset(&self, default_size: u64, max_size: u64) -> u64 {
+        (self.page().saturating_sub(1)).saturating_mul(self.page_size(default_size, max_size))
+    }
+
+    pub fn keyword_like(&self) -> Option<String> {
+        let keyword = self.keyword.as_deref()?.trim();
+        if keyword.is_empty() {
+            None
+        } else {
+            Some(format!("%{}%", keyword.replace('%', "\\%").replace('_', "\\_")))
+        }
+    }
+
+    pub fn min_value(&self) -> f64 {
+        self.min_value.unwrap_or(0.0).max(0.0)
+    }
+
+    pub fn sort_by(&self) -> String {
+        self.sort_by
+            .as_deref()
+            .unwrap_or("default")
+            .trim()
+            .to_lowercase()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
