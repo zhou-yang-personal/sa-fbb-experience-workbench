@@ -4,8 +4,8 @@ use crate::db;
 use crate::models::{MetricCard, MySqlSettings};
 use crate::sql_runner;
 
-pub const APP_VERSION: &str = "1.0.32";
-pub const MAPPING_SEED_VERSION: &str = "1.0.32";
+pub const APP_VERSION: &str = "1.0.33";
+pub const MAPPING_SEED_VERSION: &str = "1.0.33";
 
 const MAP_SEED: &str = include_str!("../../database/seeds/002_default_mapping_seed.sql");
 
@@ -142,7 +142,7 @@ fn get_config(conn: &mut mysql::PooledConn, key: &str) -> Result<Option<String>,
         "SELECT config_value FROM meta_app_config WHERE config_key=?",
         (key,),
     )
-    .map_err(|err| format!("failed to query app config {key}: {err}"))
+    .map_err(|err| format!("failed to query app config {key}"))
 }
 
 #[cfg(test)]
@@ -163,9 +163,7 @@ mod tests {
 
     #[test]
     fn critical_aliases_track_universal_video_contract() {
-        assert_eq!(MAPPING_SEED_VERSION, "1.0.32");
-        assert!(CRITICAL_ALIASES
-            .iter()
-            .any(|item| *item == ("tcp", "user_account", "subscriber_account")));
+        assert_eq!(MAPPING_SEED_VERSION, "1.0.33");
+        assert!(CRITICAL_ALIASES.iter().any(|item| *item == ("tcp", "user_account", "subscriber_account")));
     }
 }
