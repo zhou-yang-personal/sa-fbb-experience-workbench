@@ -6,26 +6,30 @@
 
 - Added `database/migrations/006_analytics_dashboard_schema.sql` with dedicated analytics ADS tables for KPI summary, app rank, hourly trend, network hotspot, user profile and lead evidence.
 - Added `src-tauri/src/analytics_commands.rs` with the first structured analytics backend command: `analytics_get_kpi_summary`.
-- Registered `analytics_get_kpi_summary` in Tauri `main.rs`.
+- Added `src-tauri/src/analytics_app_commands.rs` with `analytics_get_app_rank`.
+- Added `src-tauri/src/analytics_hourly_commands.rs` with `analytics_get_hourly_trend`.
+- Registered the KPI, App Rank and Hourly Trend analytics commands in Tauri `main.rs`.
 - Added frontend API wrapper `workbenchApi.analyticsKpis`.
 - Added compact `003a_analytics_kpi_summary.sql` as the first small SQL script for analytics KPI generation.
-- Added `AnalyticsStructuredKpiPanel.tsx` and surfaced the structured KPI command in the Data Analysis workspace.
+- Added `AnalyticsStructuredKpiPanel.tsx` and surfaced structured KPI / App Rank / Hourly Trend previews in the Data Analysis workspace.
 
 ### Changed
 
 - Continued the dashboard hardening direction from MetricCard-only cockpit toward structured DWS/ADS-backed analytics APIs.
 - Kept all new analytics reads on DWS/ADS physical tables; no RAW table scans were introduced.
+- Updated analytics CSS with structured preview grid and compact table panels.
 - README and changelog now document the 1.0.27 structured analytics foundation.
 
 ### Blocked / Deferred
 
 - `database/sql/dws_to_ads/003_analytics_enhanced_dashboards.sql` and later split App/Hourly/User/Lead SQL scripts triggered ChatGPT GitHub connector safety block, so only the KPI script was added.
-- Larger Rust command expansion for app rank, hourly trend, user profile and lead evidence also triggered safety block and was deferred.
+- `workbenchApi.ts` wrapper update for App Rank was blocked; the structured preview panel calls `analytics_get_app_rank` and `analytics_get_hourly_trend` directly through Tauri `invoke`.
+- Larger Rust command expansion for user profile and lead evidence was deferred.
 - `migrations.rs`, `package.json`, `tauri.conf.json`, `WorkbenchHeader.tsx`, `Cargo.toml` and latest handoff updates were blocked by connector safety checks and remain pending for local/Codex follow-up.
 
 ### Verification
 
-- GitHub connector diff confirms schema, KPI SQL, analytics KPI command, Tauri registration, frontend API wrapper, structured KPI panel and documentation updates on `dev`.
+- GitHub connector diff confirms schema, KPI SQL, analytics KPI/App/Hourly commands, Tauri registration, frontend structured preview panel and documentation updates on `dev`.
 - `npm run check`: not run in ChatGPT GitHub connector environment.
 - `npm run build`: not run in ChatGPT GitHub connector environment.
 - `cd src-tauri && cargo check`: not run in ChatGPT GitHub connector environment.
