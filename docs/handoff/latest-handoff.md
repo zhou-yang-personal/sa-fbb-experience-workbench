@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.33
+1.0.34
 ```
 
 ## Source-of-truth branch
@@ -20,13 +20,12 @@ Raw First MySQL pipeline is preserved:
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
 
-## 1.0.33 update
+## 1.0.34 update
 
-- Added `AnalyticsAdsActions.tsx` and rendered it in `AnalysisWorkspace.tsx`.
-- Added compact ADS materialization commands for Hourly, User, Lead and Network.
-- App Rank materialization from 1.0.32 remains registered.
-- `analyticsStructuredApi.ts` exposes App, Hourly, User, Lead and Network materialization APIs.
-- README, package, Tauri config, Cargo, Workbench header, mapping catalog, handoff and changelog are synchronized to `1.0.33`.
+- App / Hourly / Network / User / Lead structured analytics read commands now prefer materialized Analytics ADS tables when the current `analysis_run_id` has rows.
+- If Analytics ADS tables are absent or empty, the commands fall back to the previous DWS / Lead query paths.
+- Evidence hints now include `source=...` so the UI can distinguish ADS-first reads from fallback reads.
+- README, package, Tauri config, Cargo, Workbench header and mapping catalog are synchronized to `1.0.34`.
 
 ## Not verified
 
@@ -39,4 +38,4 @@ CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final
 
 1. Run local TS/Rust checks.
 2. Smoke test ADS materialization commands on a real batch.
-3. After SQL smoke, prefer materialized Analytics ADS reads where appropriate.
+3. Confirm the ADS-first commands return ADS rows after materialization and fallback rows before materialization.
