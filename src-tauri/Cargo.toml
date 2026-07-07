@@ -1,6 +1,6 @@
 [package]
 name = "sa-fbb-experience-workbench"
-version = "1.0.27"
+version = "1.0.28"
 description = "Local SA FBB experience analytics workbench"
 authors = ["zhou-yang-personal"]
 edition = "2021"
