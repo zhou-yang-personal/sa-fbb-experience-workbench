@@ -33,7 +33,7 @@ WITH params AS (
     NULLIF(TRIM(r.user_account), '') AS account_key,
     NULLIF(TRIM(r.user_mac), '') AS mac_key,
     NULLIF(TRIM(r.local_ip_address), '') AS ip_key,
-    NULLIF(TRIM(REGEXP_REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(r.statistical_time, ''), CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' '), CHAR(160), ' '), '[[:space:]]+', ' ')), '') AS stat_time_text
+    NULLIF(TRIM(REGEXP_REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(r.statistical_time, ''), CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' '), CONVERT(0xC2A0 USING utf8mb4), ' '), '[[:space:]]+', ' ')), '') AS stat_time_text
   FROM raw_game_detail_import r
   JOIN params p ON p.import_batch_id = r.import_batch_id
 ), parsed AS (
