@@ -49,10 +49,13 @@ CSV 文件选择
 ## 4. 1.0.27 收口重点
 
 - 新增 `database/migrations/006_analytics_dashboard_schema.sql`，定义看板专用 ADS 表：KPI Summary、App Rank、Hourly Trend、Network Hotspot、User Profile、Lead Evidence。
-- 新增 `src-tauri/src/analytics_commands.rs`，先落地结构化 KPI 查询命令 `analytics_get_kpi_summary`，直接查询 DWS/ADS 物理表，不扫描 RAW。
-- `main.rs` 注册 `analytics_get_kpi_summary`，`workbenchApi.ts` 暴露 `analyticsKpis` 前端 API。
-- 复杂 App Rank / Hourly / User / Lead SQL 与 Rust 扩展在 ChatGPT GitHub connector 中触发 safety block，本轮停止大段写入，保留小步开发结果。
-- `README.md`、handoff、changelog 记录 1.0.27；`package.json`、`tauri.conf.json`、`WorkbenchHeader.tsx`、`Cargo.toml` 等版本文件写入被 safety block 拦截，需本地或 Codex 补齐。
+- `src-tauri/src/migrations.rs` 已接入 `006_analytics_dashboard_schema.sql`，数据库初始化会创建 analytics ADS schema。
+- 新增结构化 Analytics 后端命令：`analytics_get_kpi_summary`、`analytics_get_app_rank`、`analytics_get_hourly_trend`、`analytics_get_network_hotspots`、`analytics_get_user_profiles`、`analytics_get_lead_evidence`。
+- `src-tauri/src/main.rs` 已注册上述结构化命令，且所有新增命令只查询 DWS / ADS 物理表，不扫描 RAW。
+- 新增 `AnalyticsStructuredKpiPanel.tsx`，在分析页展示 KPI / App Rank / Hourly Trend 结构化预览。
+- 新增 `AnalyticsStructuredDeepDivePanel.tsx`，在分析页展示 Network Hotspot / User Profile / Lead Evidence 结构化深钻预览。
+- 版本标记已同步到 `package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`WorkbenchHeader.tsx`、`mapping_catalog.rs`、README、handoff、changelog。
+- `workbenchApi.ts` 目前只封装 `analyticsKpis`；非 KPI 结构化面板直接使用 Tauri `invoke`，后续可继续统一封装。
 
 ## 5. 1.0.26 收口重点
 
@@ -94,4 +97,4 @@ cd src-tauri && cargo check
 
 ## 9. 当前状态
 
-1.0.27 在 1.0.26 大屏驾驶舱和证据表基础上开始落地结构化 ADS / API 能力。当前已新增 ADS schema 和 KPI 查询命令，但部分复杂 SQL / Rust 扩展和版本文件同步被 connector safety block 拦截，后续应交给 Codex 或本地继续补齐。编译验证和 smoke 结果以最终统一验证为准；真实 MySQL / customer CSV smoke 如未执行，不得视为通过。
+1.0.27 在 1.0.26 大屏驾驶舱和证据表基础上继续落地结构化 ADS / API 能力。当前已具备 KPI、App Rank、Hourly Trend、Network Hotspot、User Profile、Lead Evidence 六类结构化命令和前端预览入口。编译验证和 smoke 结果以最终统一验证为准；真实 MySQL / customer CSV smoke 如未执行，不得视为通过。
