@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod analysis_commands;
+mod analytics_app_commands;
 mod analytics_commands;
 mod batch_tables;
 mod config_commands;
@@ -41,6 +42,7 @@ fn main() {
             analysis_commands::analysis_export_module_csv,
             analysis_commands::analysis_get_module_metrics,
             analytics_commands::analytics_get_kpi_summary,
+            analytics_app_commands::analytics_get_app_rank,
             import_commands::import_probe_csv,
             import_commands::import_create_batch,
             import_commands::import_current_file_atomic,
