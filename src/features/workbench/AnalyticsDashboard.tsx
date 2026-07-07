@@ -2,6 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as echarts from 'echarts';
 import type { DashboardOverview, MetricCard } from '../../shared/types';
 import { AnalyticsEvidenceTable } from './AnalyticsEvidenceTable';
+import { analyticsStructuredApi } from './analyticsStructuredApi';
+import {
+  buildStructuredAppChartRows,
+  buildStructuredHourlyChartRows,
+  buildStructuredLeadFunnelRows,
+  buildStructuredNetworkChartRows,
+  buildStructuredUserChartRows,
+} from './analyticsStructuredCharts';
 import { workbenchApi } from './workbenchApi';
 import type { WorkbenchController } from './useWorkbenchController';
 
@@ -21,6 +29,15 @@ type MetricDataset = {
   leads: MetricCard[];
 };
 
+type StructuredDataset = {
+  kpis: MetricCard[];
+  appRank: MetricCard[];
+  hourlyTrend: MetricCard[];
+  networkHotspots: MetricCard[];
+  userProfiles: MetricCard[];
+  leadEvidence: MetricCard[];
+};
+
 const emptyDataset: MetricDataset = {
   overview: [],
   appCategory: [],
@@ -34,13 +51,22 @@ const emptyDataset: MetricDataset = {
   leads: [],
 };
 
+const emptyStructuredDataset: StructuredDataset = {
+  kpis: [],
+  appRank: [],
+  hourlyTrend: [],
+  networkHotspots: [],
+  userProfiles: [],
+  leadEvidence: [],
+};
+
 const tabs: Array<{ id: AnalyticsTab; label: string; hint: string }> = [
-  { id: 'overview', label: '总览驾驶舱', hint: 'KPI / 流量 / 体验风险 / Lead' },
-  { id: 'apps', label: '应用体验', hint: 'Top App / 视频 / 游戏' },
-  { id: 'quality', label: '网络质量', hint: 'RTT / PLR / MOS / VMOS' },
-  { id: 'cable', label: 'Cable vs FTTH', hint: '接入差异 / 小时趋势' },
-  { id: 'users', label: '用户画像', hint: '用户需求 / 体验证据' },
-  { id: 'leads', label: '迁转升套机会', hint: 'Lead Funnel / action mix' },
+  { id: 'overview', label: '总览驾驶舱', hint: 'Structured KPI / 流量 / Lead' },
+  { id: 'apps', label: '应用体验', hint: 'Structured App Rank / 视频 / 游戏' },
+  { id: 'quality', label: '网络质量', hint: 'Hourly Trend / Hotspot / QoE' },
+  { id: 'cable', label: 'Cable vs FTTH', hint: '小时趋势 / 接入差异' },
+  { id: 'users', label: '用户画像', hint: 'User Profile / 体验证据' },
+  { id: 'leads', label: '迁转升套机会', hint: 'Lead Evidence / Funnel' },
 ];
 
 function toNumber(value: string | number | undefined) {
@@ -77,11 +103,11 @@ function metricByName(metrics: MetricCard[], names: string[]) {
 function buildKpis(data: MetricDataset) {
   const all = [...data.overview, ...data.appCategory, ...data.experience, ...data.cableFiber, ...data.leads, ...data.users];
   const primary = [
-    { label: 'Users', metric: metricByName(all, ['user', 'active_users', 'total_users']) },
+    { label: 'Users', metric: metricByName(all, ['user', 'active_users', 'total_users', 'user_cnt']) },
     { label: 'Traffic', metric: metricByName(all, ['traffic', 'download', 'gb']) },
     { label: 'Experience', metric: metricByName(all, ['vmos', 'mos', 'quality']) },
-    { label: 'Cable gap', metric: metricByName(data.cableFiber, ['diff', 'gap', 'rtt', 'loss']) },
-    { label: 'Lead users', metric: metricByName(data.leads, ['lead', 'action', 'a1']) },
+    { label: 'Cable gap', metric: metricByName([...data.cableFiber, ...data.cableHourly], ['diff', 'gap', 'rtt', 'loss', 'cable']) },
+    { label: 'Lead users', metric: metricByName(data.leads, ['lead', 'action', 'a1', 'user_cnt']) },
     { label: 'Top app', metric: data.appCategory[0] },
   ];
   return primary.map((item) => ({ label: item.label, value: item.metric?.value ?? '-', hint: item.metric?.label ?? '等待刷新' }));
@@ -89,14 +115,14 @@ function buildKpis(data: MetricDataset) {
 
 function buildInsights(data: MetricDataset) {
   const topApp = topRows(data.appCategory, 1)[0];
-  const topQuality = topRows([...data.experience, ...data.networkQuality], 1)[0];
-  const topCable = topRows(data.cableFiber, 1)[0];
+  const topQuality = topRows([...data.experience, ...data.networkQuality, ...data.cableHourly], 1)[0];
+  const topCable = topRows([...data.cableFiber, ...data.cableHourly], 1)[0];
   const topLead = topRows(data.leads, 1)[0];
   return [
-    { label: '业务需求入口', value: topApp ? `${topApp.label} · ${topApp.value}` : '暂无应用排名', hint: '优先用高流量/高用户应用解释用户需求。' },
-    { label: '体验风险入口', value: topQuality ? `${topQuality.label} · ${topQuality.value}` : '暂无质量指标', hint: '用于判断速率、时延、丢包、VMOS/MOS 风险。' },
+    { label: '业务需求入口', value: topApp ? `${topApp.label} · ${topApp.value}` : '暂无应用排名', hint: '优先用结构化 App Rank 解释用户真实应用需求。' },
+    { label: '体验风险入口', value: topQuality ? `${topQuality.label} · ${topQuality.value}` : '暂无质量指标', hint: '优先用 Hourly Trend / Hotspot 判断速率、时延、丢包、VMOS/MOS 风险。' },
     { label: '转光证据入口', value: topCable ? `${topCable.label} · ${topCable.value}` : '暂无 Cable/FTTH 差异', hint: '用于判断 Cable 与 FTTH 的可解释体验差异。' },
-    { label: '机会名单入口', value: topLead ? `${topLead.label} · ${topLead.value}` : '暂无 Lead 汇总', hint: '体验差不等于升套，需结合需求和问题侧。' },
+    { label: '机会名单入口', value: topLead ? `${topLead.label} · ${topLead.value}` : '暂无 Lead 汇总', hint: '体验差不等于升套，需结合需求、迁转动力和问题侧。' },
   ];
 }
 
@@ -200,7 +226,7 @@ function AnalyticsChart({ title, description, kind, metrics, height = 380 }: { t
     <article className="analytics-card analytics-chart-card">
       <div className="analytics-chart" style={{ height }} ref={ref} />
       <div className="analytics-card-footnote">
-        <span>Source: DWS / ADS commands</span>
+        <span>Source: Structured DWS/ADS first · legacy DWS/ADS fallback</span>
         <span>Rows: {metrics.length}</span>
       </div>
     </article>
@@ -223,37 +249,84 @@ function InsightStrip({ items }: { items: Array<{ label: string; value: string; 
   );
 }
 
+function preferredRows(primary: MetricCard[], fallback: MetricCard[]) {
+  return primary.length ? primary : fallback;
+}
+
+function structuredCount(data: StructuredDataset) {
+  return data.kpis.length + data.appRank.length + data.hourlyTrend.length + data.networkHotspots.length + data.userProfiles.length + data.leadEvidence.length;
+}
+
 export function AnalyticsDashboard({ c }: { c: WorkbenchController }) {
   const [activeTab, setActiveTab] = useState<AnalyticsTab>('overview');
   const [data, setData] = useState<MetricDataset>(emptyDataset);
+  const [structuredData, setStructuredData] = useState<StructuredDataset>(emptyStructuredDataset);
   const [message, setMessage] = useState('点击“刷新分析驾驶舱”加载当前批次聚合结果。');
   const disabled = !c.importBatchId.trim() || !c.analysisRunId.trim();
 
   async function refreshAll() {
     await c.runAction('analytics_dashboard_refresh_all', async () => {
-      const [overviewResult, appCategory, experience, networkQuality, video, game, cableFiber, cableHourly, users, leads] = await Promise.all([
-        workbenchApi.overview(c.effectiveSettings, c.importBatchId, c.analysisRunId),
-        workbenchApi.appCategory(c.effectiveSettings, c.importBatchId, c.analysisRunId),
-        workbenchApi.experience(c.effectiveSettings, c.importBatchId, c.analysisRunId),
-        workbenchApi.networkQuality(c.effectiveSettings, c.importBatchId, c.analysisRunId),
-        workbenchApi.videoDetail(c.effectiveSettings, c.importBatchId, c.analysisRunId).catch(() => []),
-        workbenchApi.gameExperience(c.effectiveSettings, c.importBatchId, c.analysisRunId).catch(() => []),
-        workbenchApi.cableFiber(c.effectiveSettings, c.importBatchId, c.analysisRunId),
-        workbenchApi.cableFiberHourly(c.effectiveSettings, c.importBatchId, c.analysisRunId).catch(() => []),
-        workbenchApi.userProfile(c.effectiveSettings, c.importBatchId, c.analysisRunId).catch(() => []),
-        workbenchApi.leadSummary(c.effectiveSettings, c.importBatchId, c.analysisRunId).catch(() => []),
+      const settings = c.effectiveSettings;
+      const importBatchId = c.importBatchId;
+      const analysisRunId = c.analysisRunId;
+      const [overviewResult, appCategory, experience, networkQuality, video, game, cableFiber, cableHourly, users, leads, structuredKpis, structuredAppRank, structuredHourlyTrend, structuredNetworkHotspots, structuredUserProfiles, structuredLeadEvidence] = await Promise.all([
+        workbenchApi.overview(settings, importBatchId, analysisRunId),
+        workbenchApi.appCategory(settings, importBatchId, analysisRunId),
+        workbenchApi.experience(settings, importBatchId, analysisRunId),
+        workbenchApi.networkQuality(settings, importBatchId, analysisRunId),
+        workbenchApi.videoDetail(settings, importBatchId, analysisRunId).catch(() => []),
+        workbenchApi.gameExperience(settings, importBatchId, analysisRunId).catch(() => []),
+        workbenchApi.cableFiber(settings, importBatchId, analysisRunId),
+        workbenchApi.cableFiberHourly(settings, importBatchId, analysisRunId).catch(() => []),
+        workbenchApi.userProfile(settings, importBatchId, analysisRunId).catch(() => []),
+        workbenchApi.leadSummary(settings, importBatchId, analysisRunId).catch(() => []),
+        analyticsStructuredApi.kpis(settings, importBatchId, analysisRunId).catch(() => []),
+        analyticsStructuredApi.appRank(settings, importBatchId, analysisRunId).catch(() => []),
+        analyticsStructuredApi.hourlyTrend(settings, importBatchId, analysisRunId).catch(() => []),
+        analyticsStructuredApi.networkHotspots(settings, importBatchId, analysisRunId).catch(() => []),
+        analyticsStructuredApi.userProfiles(settings, importBatchId, analysisRunId).catch(() => []),
+        analyticsStructuredApi.leadEvidence(settings, importBatchId, analysisRunId).catch(() => []),
       ]);
       const overview = (overviewResult as DashboardOverview).metrics ?? [];
-      c.setOverview(overviewResult as DashboardOverview);
+      const structured: StructuredDataset = {
+        kpis: structuredKpis,
+        appRank: structuredAppRank,
+        hourlyTrend: structuredHourlyTrend,
+        networkHotspots: structuredNetworkHotspots,
+        userProfiles: structuredUserProfiles,
+        leadEvidence: structuredLeadEvidence,
+      };
+      const structuredAppRows = buildStructuredAppChartRows(structuredAppRank);
+      const structuredHourlyRows = buildStructuredHourlyChartRows(structuredHourlyTrend);
+      const structuredNetworkRows = buildStructuredNetworkChartRows(structuredNetworkHotspots);
+      const structuredUserRows = buildStructuredUserChartRows(structuredUserProfiles);
+      const structuredLeadRows = buildStructuredLeadFunnelRows(structuredLeadEvidence);
+      const preferredData: MetricDataset = {
+        overview: preferredRows(structuredKpis, overview),
+        appCategory: preferredRows(structuredAppRows, appCategory),
+        experience,
+        networkQuality: preferredRows(structuredNetworkRows, networkQuality),
+        video: preferredRows(structuredAppRows, video),
+        game,
+        cableFiber,
+        cableHourly: preferredRows(structuredHourlyRows, cableHourly),
+        users: preferredRows(structuredUserRows, users),
+        leads: preferredRows(structuredLeadRows, leads),
+      };
+      c.setOverview({
+        ...(overviewResult as DashboardOverview),
+        metrics: preferredData.overview,
+      });
       c.setDashboardCharts([
-        { title: 'App Category Rank', kind: 'bar', metrics: appCategory },
-        { title: 'Experience Quality', kind: 'radar', metrics: experience },
-        { title: 'Cable vs FTTH', kind: 'bar', metrics: cableFiber },
-        { title: 'Lead Mix', kind: 'bar', metrics: leads },
+        { title: 'Structured App Rank', kind: 'bar', metrics: preferredData.appCategory },
+        { title: 'Structured Quality / Hotspot', kind: 'radar', metrics: [...preferredData.experience, ...preferredData.networkQuality, ...preferredData.cableHourly] },
+        { title: 'Cable vs FTTH', kind: 'bar', metrics: preferredData.cableFiber },
+        { title: 'Structured Lead Evidence', kind: 'bar', metrics: preferredData.leads },
       ]);
-      setData({ overview, appCategory, experience, networkQuality, video, game, cableFiber, cableHourly, users, leads });
-      setMessage(`已刷新：overview=${overview.length}, apps=${appCategory.length}, quality=${experience.length}, cable=${cableFiber.length}, users=${users.length}, leads=${leads.length}`);
-      return { overview, appCategory, experience, networkQuality, video, game, cableFiber, cableHourly, users, leads };
+      setStructuredData(structured);
+      setData(preferredData);
+      setMessage(`已刷新：structured=${structuredCount(structured)}, overview=${preferredData.overview.length}, apps=${preferredData.appCategory.length}, quality=${preferredData.experience.length + preferredData.networkQuality.length}, cableHourly=${preferredData.cableHourly.length}, users=${preferredData.users.length}, leads=${preferredData.leads.length}`);
+      return { preferredData, structured };
     });
   }
 
@@ -263,18 +336,27 @@ export function AnalyticsDashboard({ c }: { c: WorkbenchController }) {
 
   const kpis = useMemo(() => buildKpis(data), [data]);
   const insights = useMemo(() => buildInsights(data), [data]);
+  const structuredAppChartRows = useMemo(() => buildStructuredAppChartRows(structuredData.appRank), [structuredData.appRank]);
+  const structuredHourlyChartRows = useMemo(() => buildStructuredHourlyChartRows(structuredData.hourlyTrend), [structuredData.hourlyTrend]);
+  const structuredNetworkChartRows = useMemo(() => buildStructuredNetworkChartRows(structuredData.networkHotspots), [structuredData.networkHotspots]);
+  const structuredUserChartRows = useMemo(() => buildStructuredUserChartRows(structuredData.userProfiles), [structuredData.userProfiles]);
+  const structuredLeadChartRows = useMemo(() => buildStructuredLeadFunnelRows(structuredData.leadEvidence), [structuredData.leadEvidence]);
   const videoOrApps = data.video.length ? data.video : data.appCategory;
   const gameOrApps = data.game.length ? data.game : data.appCategory;
-  const qualityRows = [...data.experience, ...data.networkQuality];
-  const appRows = [...data.appCategory, ...data.video, ...data.game];
+  const qualityRows = preferredRows([...structuredHourlyChartRows, ...structuredNetworkChartRows], [...data.experience, ...data.networkQuality]);
+  const appRows = preferredRows(structuredAppChartRows, [...data.appCategory, ...data.video, ...data.game]);
+  const hourlyOrCableRows = preferredRows(structuredHourlyChartRows, data.cableHourly.length ? data.cableHourly : data.cableFiber);
+  const networkEvidenceRows = preferredRows(structuredData.networkHotspots, data.networkQuality);
+  const userEvidenceRows = preferredRows(structuredData.userProfiles, data.users);
+  const leadEvidenceRows = preferredRows(structuredData.leadEvidence, data.leads);
 
   return (
     <section className="analytics-dashboard">
       <header className="analytics-hero">
         <div>
-          <p className="eyebrow">Analytics cockpit · DWS / ADS only</p>
+          <p className="eyebrow">Analytics cockpit · Structured DWS / ADS first</p>
           <h2>数据分析驾驶舱</h2>
-          <p>围绕当前批次构建大图、大表和业务诊断路径：总览、应用、体验质量、Cable vs FTTH、用户画像和迁转机会。</p>
+          <p>围绕当前批次构建大图、大表和业务诊断路径。当前驾驶舱优先消费结构化 Analytics API，旧 dashboard commands 作为兼容 fallback。</p>
         </div>
         <div className="analytics-hero-actions">
           <button type="button" disabled={disabled} onClick={refreshAll}>刷新分析驾驶舱</button>
@@ -286,6 +368,7 @@ export function AnalyticsDashboard({ c }: { c: WorkbenchController }) {
         <span>Batch: {c.batchDisplayName || c.importBatchId || '-'}</span>
         <span>Run: {c.analysisRunId || '-'}</span>
         <span>Data: {c.dataType.toUpperCase()}</span>
+        <span>Structured rows: {structuredCount(structuredData)}</span>
         <span>{message}</span>
       </div>
 
@@ -298,56 +381,57 @@ export function AnalyticsDashboard({ c }: { c: WorkbenchController }) {
 
       {activeTab === 'overview' && (
         <div className="analytics-layout">
-          <AnalyticsChart title="Traffic / users by app category" description="Top app categories ranked by current metric value." kind="bar" metrics={data.appCategory} height={440} />
-          <AnalyticsChart title="Lead / action mix" description="Opportunity distribution from SA Lead or Final Lead summary." kind="donut" metrics={data.leads} height={440} />
-          <AnalyticsChart title="Experience risk summary" description="RTT / PLR / MOS / VMOS aggregate indicators." kind="radar" metrics={qualityRows} height={420} />
-          <AnalyticsChart title="Demand vs quality scatter" description="Proxy scatter for demand scale and experience pressure." kind="scatter" metrics={[...data.appCategory, ...qualityRows]} height={420} />
-          <AnalyticsEvidenceTable title="Top application categories" rows={data.appCategory} />
+          <AnalyticsChart title="Structured app demand rank" description="ADS App Rank preferred; legacy app category command as fallback." kind="bar" metrics={data.appCategory} height={440} />
+          <AnalyticsChart title="Structured lead / action mix" description="ADS Lead Evidence preferred; legacy Lead Summary as fallback." kind="donut" metrics={data.leads} height={440} />
+          <AnalyticsChart title="Structured quality risk summary" description="Hourly Trend and Network Hotspot preferred for QoE risk." kind="radar" metrics={qualityRows} height={420} />
+          <AnalyticsChart title="Demand vs quality scatter" description="Structured app demand and QoE pressure proxy." kind="scatter" metrics={[...data.appCategory, ...qualityRows]} height={420} />
+          <AnalyticsEvidenceTable title="Structured KPI Evidence" rows={preferredRows(structuredData.kpis, data.overview)} />
         </div>
       )}
 
       {activeTab === 'apps' && (
         <div className="analytics-layout">
-          <AnalyticsChart title="Top apps / categories by demand" description="Traffic, users or duration depending on backend metric." kind="bar" metrics={data.appCategory} height={440} />
+          <AnalyticsChart title="Top apps / categories by demand" description="Structured App Rank transformed from ADS hint fields." kind="bar" metrics={data.appCategory} height={440} />
           <AnalyticsChart title="App demand heatmap" description="Demand / quality / access proxy matrix for top app rows." kind="heatmap" metrics={appRows} height={420} />
           <AnalyticsChart title="Video experience rank" description="VMOS, effective rate, connection delay and video QoE proxy metrics." kind="bar" metrics={videoOrApps} height={420} />
           <AnalyticsChart title="Game experience rank" description="MOS, latency, jitter, loss and game-hour proxy metrics." kind="scatter" metrics={gameOrApps} height={420} />
-          <AnalyticsEvidenceTable title="Application evidence table" rows={appRows} limit={120} />
+          <AnalyticsEvidenceTable title="Structured App Rank Evidence" rows={preferredRows(structuredData.appRank, appRows)} limit={160} />
         </div>
       )}
 
       {activeTab === 'quality' && (
         <div className="analytics-layout">
-          <AnalyticsChart title="Network quality radar" description="RTT, loss, VMOS/MOS and Wi-Fi delay dimensions." kind="radar" metrics={qualityRows} height={440} />
-          <AnalyticsChart title="Quality dimensions ranking" description="Largest quality dimensions by absolute metric value." kind="bar" metrics={qualityRows} height={420} />
+          <AnalyticsChart title="Structured network quality radar" description="Hourly Trend + Network Hotspot dimensions." kind="radar" metrics={qualityRows} height={440} />
+          <AnalyticsChart title="Network hotspot ranking" description="Structured network hotspot ADS table preferred." kind="bar" metrics={preferredRows(structuredNetworkChartRows, data.networkQuality)} height={420} />
           <AnalyticsChart title="Quality issue scatter" description="Proxy distribution of high-value quality dimensions." kind="scatter" metrics={qualityRows} height={420} />
-          <AnalyticsEvidenceTable title="Quality metric evidence table" rows={qualityRows} limit={120} />
+          <AnalyticsEvidenceTable title="Structured Hourly Trend Evidence" rows={preferredRows(structuredData.hourlyTrend, hourlyOrCableRows)} limit={160} />
+          <AnalyticsEvidenceTable title="Structured Network Hotspot Evidence" rows={networkEvidenceRows} limit={160} />
         </div>
       )}
 
       {activeTab === 'cable' && (
         <div className="analytics-layout">
           <AnalyticsChart title="Cable vs FTTH metric gap" description="Aggregated metric differences by access type." kind="bar" metrics={data.cableFiber} height={460} />
-          <AnalyticsChart title="Hourly Cable / FTTH trend proxy" description="Hourly comparison from ADS cable-fiber detail where available." kind="line" metrics={data.cableHourly.length ? data.cableHourly : data.cableFiber} height={420} />
-          <AnalyticsChart title="Access gap heatmap" description="Hour / metric proxy matrix for Cable vs FTTH gap." kind="heatmap" metrics={[...data.cableFiber, ...data.cableHourly]} height={420} />
-          <AnalyticsEvidenceTable title="Cable vs FTTH evidence table" rows={[...data.cableFiber, ...data.cableHourly]} limit={160} />
+          <AnalyticsChart title="Structured hourly Cable / FTTH trend" description="ADS Hourly Trend preferred; legacy hourly compare as fallback." kind="line" metrics={hourlyOrCableRows} height={420} />
+          <AnalyticsChart title="Access gap heatmap" description="Hour / metric proxy matrix for Cable vs FTTH gap." kind="heatmap" metrics={[...data.cableFiber, ...hourlyOrCableRows]} height={420} />
+          <AnalyticsEvidenceTable title="Structured Hourly Trend Evidence" rows={preferredRows(structuredData.hourlyTrend, [...data.cableFiber, ...data.cableHourly])} limit={180} />
         </div>
       )}
 
       {activeTab === 'users' && (
         <div className="analytics-layout">
-          <AnalyticsChart title="User profile demand ranking" description="Top users by traffic, game hours or experience exposure." kind="bar" metrics={data.users} height={460} />
-          <AnalyticsChart title="User demand vs QoE proxy" description="User-level proxy scatter for demand and experience risk." kind="scatter" metrics={data.users} height={420} />
-          <AnalyticsEvidenceTable title="User profile evidence table" rows={data.users} limit={200} />
+          <AnalyticsChart title="Structured user profile demand ranking" description="ADS User Profile transformed into chart rows." kind="bar" metrics={preferredRows(structuredUserChartRows, data.users)} height={460} />
+          <AnalyticsChart title="User demand vs QoE proxy" description="User-level proxy scatter for demand and experience risk." kind="scatter" metrics={preferredRows(structuredUserChartRows, data.users)} height={420} />
+          <AnalyticsEvidenceTable title="Structured User Profile Evidence" rows={userEvidenceRows} limit={220} />
         </div>
       )}
 
       {activeTab === 'leads' && (
         <div className="analytics-layout">
-          <AnalyticsChart title="Lead funnel / final action mix" description="Lead type or final action distribution." kind="funnel" metrics={data.leads} height={460} />
-          <AnalyticsChart title="Lead mix donut" description="Part-to-whole view of current opportunity buckets." kind="donut" metrics={data.leads} height={420} />
-          <AnalyticsChart title="Lead evidence scatter" description={`Top lead bucket value scale: ${compact(topRows(data.leads, 1)[0]?.numeric ?? 0)}`} kind="scatter" metrics={data.leads} height={420} />
-          <AnalyticsEvidenceTable title="Lead evidence summary" rows={data.leads} limit={160} />
+          <AnalyticsChart title="Structured lead funnel" description="Lead type or final action distribution from ADS Lead Evidence." kind="funnel" metrics={preferredRows(structuredLeadChartRows, data.leads)} height={460} />
+          <AnalyticsChart title="Lead mix donut" description="Part-to-whole view of current opportunity buckets." kind="donut" metrics={preferredRows(structuredLeadChartRows, data.leads)} height={420} />
+          <AnalyticsChart title="Lead evidence scatter" description={`Top lead bucket value scale: ${compact(topRows(preferredRows(structuredLeadChartRows, data.leads), 1)[0]?.numeric ?? 0)}`} kind="scatter" metrics={preferredRows(structuredLeadChartRows, data.leads)} height={420} />
+          <AnalyticsEvidenceTable title="Structured Lead Evidence" rows={leadEvidenceRows} limit={200} />
         </div>
       )}
     </section>
