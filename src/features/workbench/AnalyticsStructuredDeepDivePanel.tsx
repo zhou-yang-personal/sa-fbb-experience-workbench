@@ -1,6 +1,6 @@
-import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useState } from 'react';
 import type { MetricCard } from '../../shared/types';
+import { analyticsStructuredApi } from './analyticsStructuredApi';
 import type { WorkbenchController } from './useWorkbenchController';
 
 type SectionProps = {
@@ -34,12 +34,11 @@ export function AnalyticsStructuredDeepDivePanel({ c }: { c: WorkbenchController
   async function refresh() {
     if (disabled) return;
     setStatus('正在读取 Network / User / Lead 结构化 API...');
-    const req = { settings: c.effectiveSettings, import_batch_id: c.importBatchId, analysis_run_id: c.analysisRunId };
     try {
       const [network, users, leads] = await Promise.all([
-        invoke<MetricCard[]>('analytics_get_network_hotspots', { req }).catch(() => []),
-        invoke<MetricCard[]>('analytics_get_user_profiles', { req }).catch(() => []),
-        invoke<MetricCard[]>('analytics_get_lead_evidence', { req }).catch(() => []),
+        analyticsStructuredApi.networkHotspots(c.effectiveSettings, c.importBatchId, c.analysisRunId).catch(() => []),
+        analyticsStructuredApi.userProfiles(c.effectiveSettings, c.importBatchId, c.analysisRunId).catch(() => []),
+        analyticsStructuredApi.leadEvidence(c.effectiveSettings, c.importBatchId, c.analysisRunId).catch(() => []),
       ]);
       setNetworkRows(network.slice(0, 10));
       setUserRows(users.slice(0, 10));
