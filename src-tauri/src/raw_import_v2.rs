@@ -131,7 +131,7 @@ pub fn start_raw_load(req: RawLoadRequest) -> Result<String, String> {
     if mode == "streaming_insert" || mode == "insert" || mode == "fallback" {
         streaming_insert(req)
     } else {
-        mapped_load_data_or_fallback(req)
+        mapped_load_data(req)
     }
 }
 
@@ -178,31 +178,50 @@ fn raw_spec(req: &RawLoadRequest) -> Result<RawSpec, String> {
     }
 }
 
-fn mapped_load_data_or_fallback(req: RawLoadRequest) -> Result<String, String> {
+fn mapped_load_data(req: RawLoadRequest) -> Result<String, String> {
     let spec = raw_spec(&req)?;
     let mut conn = db::conn(&req.settings)?;
     let aliases = load_header_aliases(&mut conn, &req.data_type);
-    let header_check = header_order_matches(&req.file_path, spec.columns, &aliases)?;
-    if !header_check {
-        let _ = conn.exec_drop(
-            "UPDATE meta_import_batch SET message='LOAD DATA column order mismatch; switched to streaming mapped insert' WHERE import_batch_id=?",
-            (&req.import_batch_id,),
-        );
-        drop(conn);
-        return streaming_insert(req);
-    }
-    load_data(req, spec)
+    drop(conn);
+    let headers = read_headers(&req.file_path)?;
+    load_data(req, spec, &headers, &aliases)
 }
 
-fn load_data(req: RawLoadRequest, spec: RawSpec) -> Result<String, String> {
+fn load_data(
+    req: RawLoadRequest,
+    spec: RawSpec,
+    headers: &StringRecord,
+    aliases: &HeaderAliases,
+) -> Result<String, String> {
     let mut conn = db::conn(&req.settings)?;
     let file_name = source_file_name(&req.file_path);
     let path = escape_sql_literal(&req.file_path.replace('\\', "/"));
     let batch_id = escape_sql_literal(&req.import_batch_id);
     let source_name = escape_sql_literal(&file_name);
-    let columns = spec.columns.join(", ");
+    let header_index = header_index(headers);
+    let input_variables = (0..headers.len())
+        .map(|index| format!("@csv_{index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let assignments = spec
+        .columns
+        .iter()
+        .filter_map(|column| {
+            source_index_for_column(column, &header_index, aliases)
+                .map(|index| format!("`{column}`=NULLIF(TRIM(@csv_{index}), '')"))
+        })
+        .collect::<Vec<_>>();
+    if assignments.is_empty() {
+        return Err("no CSV columns can be mapped to the selected RAW schema".to_string());
+    }
     conn.exec_drop("UPDATE meta_import_batch SET status='running', started_at=NOW(), total_rows=NULL, imported_rows=0, message='raw mapped load_data started' WHERE import_batch_id=?", (&req.import_batch_id,)).map_err(|err| format!("failed to mark batch running: {err}"))?;
-    let sql = format!("LOAD DATA LOCAL INFILE '{path}' INTO TABLE `{}` CHARACTER SET utf8mb4 FIELDS TERMINATED BY ',' ENCLOSED BY '\"' LINES TERMINATED BY '\n' IGNORE 1 LINES ({columns}) SET import_batch_id='{batch_id}', source_file_name='{source_name}', source_line_no=NULL", spec.table);
+    conn.query_drop(format!("TRUNCATE TABLE `{}`", spec.table))
+        .map_err(|err| format!("failed to reset RAW batch table before LOAD DATA: {err}"))?;
+    let sql = format!(
+        "LOAD DATA LOCAL INFILE '{path}' INTO TABLE `{}` CHARACTER SET utf8mb4 FIELDS TERMINATED BY ',' ENCLOSED BY '\"' LINES TERMINATED BY '\n' IGNORE 1 LINES ({input_variables}) SET import_batch_id='{batch_id}', source_file_name='{source_name}', source_line_no=NULL, {}",
+        spec.table,
+        assignments.join(", ")
+    );
     match conn.query_drop(sql) {
         Ok(_) => {
             let rows = conn.affected_rows();
@@ -232,6 +251,8 @@ fn streaming_insert(req: RawLoadRequest) -> Result<String, String> {
     let aliases = load_header_aliases(&mut conn, &req.data_type);
     let file_name = source_file_name(&req.file_path);
     conn.exec_drop("UPDATE meta_import_batch SET status='running', started_at=NOW(), total_rows=NULL, imported_rows=0, message='mapped streaming insert started' WHERE import_batch_id=?", (&req.import_batch_id,)).map_err(|err| format!("failed to mark batch running: {err}"))?;
+    conn.query_drop(format!("TRUNCATE TABLE `{}`", spec.table))
+        .map_err(|err| format!("failed to reset RAW batch table before streaming insert: {err}"))?;
 
     let mut reader = csv::ReaderBuilder::new()
         .flexible(true)
@@ -310,31 +331,15 @@ fn load_header_aliases(conn: &mut mysql::PooledConn, data_type: &str) -> HeaderA
     aliases
 }
 
-fn header_order_matches(
-    file_path: &str,
-    columns: &[&str],
-    aliases: &HeaderAliases,
-) -> Result<bool, String> {
+fn read_headers(file_path: &str) -> Result<StringRecord, String> {
     let mut reader = csv::ReaderBuilder::new()
         .flexible(true)
         .from_path(file_path)
-        .map_err(|err| format!("failed to open CSV for header check: {err}"))?;
-    let headers = reader
+        .map_err(|err| format!("failed to open CSV for LOAD DATA mapping: {err}"))?;
+    reader
         .headers()
-        .map_err(|err| format!("failed to read CSV headers for header check: {err}"))?
-        .clone();
-    if headers.len() < columns.len() {
-        return Ok(false);
-    }
-    for (index, column) in columns.iter().enumerate() {
-        let Some(header) = headers.get(index) else {
-            return Ok(false);
-        };
-        if !header_matches_column(header, column, aliases) {
-            return Ok(false);
-        }
-    }
-    Ok(true)
+        .map_err(|err| format!("failed to read CSV headers for LOAD DATA mapping: {err}"))
+        .cloned()
 }
 
 fn header_index(headers: &StringRecord) -> HashMap<String, usize> {
@@ -387,14 +392,19 @@ fn value_for_column<'a>(
     None
 }
 
-fn header_matches_column(header: &str, column: &str, aliases: &HeaderAliases) -> bool {
-    let header = normalize_header(header);
-    let column = normalize_header(column);
-    header == column
-        || aliases
-            .get(&column)
-            .map(|items| items.iter().any(|alias| alias == &header))
-            .unwrap_or(false)
+fn source_index_for_column(
+    column: &str,
+    header_index: &HashMap<String, usize>,
+    aliases: &HeaderAliases,
+) -> Option<usize> {
+    let normalized = normalize_header(column);
+    header_index.get(&normalized).copied().or_else(|| {
+        aliases.get(&normalized).and_then(|items| {
+            items
+                .iter()
+                .find_map(|alias| header_index.get(alias).copied())
+        })
+    })
 }
 
 fn source_file_name(file_path: &str) -> String {
@@ -465,7 +475,7 @@ fn mark_failed(conn: &mut mysql::PooledConn, batch_id: &str, message: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{value_for_column, HeaderAliases};
+    use super::{source_index_for_column, value_for_column, HeaderAliases};
     use csv::StringRecord;
     use std::collections::HashMap;
 
@@ -483,6 +493,30 @@ mod tests {
         assert_eq!(
             value_for_column("user_type", &header_index, &aliases, &row),
             None
+        );
+    }
+
+    #[test]
+    fn load_data_mapping_resolves_reordered_alias_headers() {
+        let headers = StringRecord::from(vec!["Application", "Subscriber Account"]);
+        let header_index: HashMap<String, usize> = headers
+            .iter()
+            .enumerate()
+            .map(|(index, header)| (crate::header_normalizer::normalize_header(header), index))
+            .collect();
+        let mut aliases: HeaderAliases = HashMap::new();
+        aliases.insert(
+            "user_account".to_string(),
+            vec!["subscriber_account".to_string()],
+        );
+
+        assert_eq!(
+            source_index_for_column("user_account", &header_index, &aliases),
+            Some(1)
+        );
+        assert_eq!(
+            source_index_for_column("application", &header_index, &aliases),
+            Some(0)
         );
     }
 }

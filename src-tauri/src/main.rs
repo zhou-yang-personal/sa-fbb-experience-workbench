@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod access_rule_commands;
 mod ads_hour;
 mod ads_lead;
 mod ads_net;
@@ -45,6 +46,15 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             dashboard_commands::db_test_connection,
             dashboard_commands::db_initialize,
+            access_rule_commands::access_rule_list_sets,
+            access_rule_commands::access_rule_get_or_create_draft,
+            access_rule_commands::access_rule_list,
+            access_rule_commands::access_rule_upsert,
+            access_rule_commands::access_rule_delete,
+            access_rule_commands::access_rule_validate,
+            access_rule_commands::access_rule_publish,
+            access_rule_commands::access_rule_apply_to_batch,
+            access_rule_commands::access_rule_preview,
             analysis_commands::import_list_batches,
             analysis_commands::analysis_prepare_batch_tables,
             analysis_commands::batch_get_table_registry,

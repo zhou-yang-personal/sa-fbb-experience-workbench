@@ -233,3 +233,61 @@ export interface MigrationLeadSummary {
   avgMigrationMotiveScore: number;
   recommendedAction: string;
 }
+
+export interface AccessRuleSetRow {
+  rule_set_id: string;
+  version: number;
+  rule_set_name: string;
+  status: 'draft' | 'published' | 'archived' | string;
+  rule_count: number;
+  published_at?: string;
+  updated_at: string;
+}
+
+export interface AccessIpRangeRow {
+  rule_id: string;
+  rule_set_id: string;
+  rule_name: string;
+  cidr?: string;
+  start_ip: string;
+  end_ip: string;
+  access_type: 'CABLE' | 'FTTH' | 'OTHER' | string;
+  priority: number;
+  enabled: boolean;
+  notes?: string;
+  updated_at: string;
+}
+
+export interface AccessRuleInput {
+  ruleSetId: string;
+  ruleId?: string;
+  ruleName: string;
+  cidr?: string;
+  startIp?: string;
+  endIp?: string;
+  accessType: 'CABLE' | 'FTTH' | 'OTHER';
+  priority?: number;
+  enabled?: boolean;
+  notes?: string;
+}
+
+export interface AccessRuleValidationResult {
+  valid: boolean;
+  rule_count: number;
+  enabled_rule_count: number;
+  conflict_count: number;
+  invalid_rule_count: number;
+  message: string;
+}
+
+export interface AccessRulePreviewResult {
+  sample_ip_count: number;
+  classified_ip_count: number;
+  cable_ip_count: number;
+  ftth_ip_count: number;
+  other_ip_count: number;
+  unmatched_ip_count: number;
+  coverage_pct: number;
+  sample_limit: number;
+  message: string;
+}

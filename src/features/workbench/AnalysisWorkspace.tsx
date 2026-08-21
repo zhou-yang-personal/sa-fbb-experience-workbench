@@ -9,7 +9,9 @@ import { BatchSelector } from './BatchSelector';
 import type { WorkbenchController } from './useWorkbenchController';
 import { workbenchApi } from './workbenchApi';
 
-export function AnalysisWorkspace({ c }: { c: WorkbenchController }) {
+type AnalyticsView = 'overview' | 'apps' | 'quality' | 'cable' | 'users' | 'leads';
+
+export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; activeView: AnalyticsView }) {
   const [batches, setBatches] = useState<BatchListItem[]>([]);
   const [tableRegistry, setTableRegistry] = useState<BatchTableRegistryRow[]>([]);
   const [moduleStatus, setModuleStatus] = useState<ModuleStatusRow[]>([]);
@@ -108,14 +110,14 @@ export function AnalysisWorkspace({ c }: { c: WorkbenchController }) {
         {resultsNotGenerated && <p className="muted-row status-failure-text">当前批次尚未完成分析结果生成，请回到数据导入，完成 CLEAN/DWS/ADS 后再查看。</p>}
       </article>
 
-      <AnalyticsStructuredKpiPanel c={c} />
-      <AnalyticsStructuredDeepDivePanel c={c} />
-      <AnalyticsAdsActions c={c} />
-      <AnalyticsStructuredPagedPanel c={c} />
-      <AnalyticsDashboard c={c} />
+      <AnalyticsDashboard c={c} activeView={activeView} />
 
       <details className="advanced-actions analytics-diagnostics">
-        <summary>诊断：模块可用性 / Batch 表注册</summary>
+        <summary>高级分析与诊断</summary>
+        <AnalyticsStructuredKpiPanel c={c} />
+        <AnalyticsStructuredDeepDivePanel c={c} />
+        <AnalyticsAdsActions c={c} />
+        <AnalyticsStructuredPagedPanel c={c} />
         <div className="table-like module-readiness-table">
           <div className="table-row module-readiness-row table-head"><span>模块</span><span>Rows</span><span>状态</span></div>
           {moduleStatus.map((item) => (

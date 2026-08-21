@@ -1,5 +1,37 @@
 # CHANGELOG-dev
 
+## 1.0.35 - 2026-08-21
+
+### Added
+
+- Versioned Cable / FTTH / Other IPv4 range rules with draft editing, validation, preview, atomic publishing and batch binding.
+- DWS tables at actual App and user-App grain, plus topology-grain network hotspot evidence.
+- Six task-oriented analysis dashboards and an evidence drawer.
+
+### Changed
+
+- Access classification now uses published IP rules first and CSV source fields only as fallback; DWD preserves rule provenance and confidence.
+- Automatic import analysis now blocks on fatal Quality Gate errors, retains non-fatal warnings, and materializes structured App, hourly, network, user and lead ADS outputs.
+- Lead logic explicitly separates A0 identity-insufficient and A2 repair-first users from A1 candidates requiring CRM, coverage and reachability checks.
+- Product navigation, visual hierarchy, filtering, chart fallbacks and configuration workflow were redesigned.
+- Reordered CSV headers no longer force the 1 GB+ path into batched INSERT; `LOAD DATA` now maps source positions to RAW columns with MySQL user variables.
+- Version markers were synchronized to `1.0.35`.
+
+### Fixed
+
+- Corrected Rust closure syntax that prevented the backend from parsing.
+- Corrected RAW/DWD/DWS SQL table placeholders so jobs target the current batch's physical tables.
+- Replaced category-only App ranking and synthetic network labels with real App and BRAS / OLT / PON evidence.
+- Aligned the per-batch physical table suffix implementation with its tested 15-character contract.
+
+### Verification
+
+- `npm run check`: passed.
+- `npm run build`: passed with a non-blocking Vite chunk-size warning.
+- `cd src-tauri && cargo check`: passed with existing warnings.
+- `cd src-tauri && cargo test --offline`: passed, 26 tests.
+- Real MySQL and 1 GB+ CSV benchmark: not run.
+
 ## 1.0.34 - 2026-07-07
 
 ### Changed

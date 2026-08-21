@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { BatchListItem, BatchTableRegistryRow, CommandAck, CsvProbeResult, DashboardOverview, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, ImportPipelineLogRow, ImportPipelineStartResult, ImportPipelineStatus, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
+import type { AccessIpRangeRow, AccessRuleInput, AccessRulePreviewResult, AccessRuleSetRow, AccessRuleValidationResult, BatchListItem, BatchTableRegistryRow, CommandAck, CsvProbeResult, DashboardOverview, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, ImportPipelineLogRow, ImportPipelineStartResult, ImportPipelineStatus, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
 
 function normalizeFilter(value?: string) {
   const normalized = value?.trim();
@@ -21,6 +21,27 @@ function leadQueryRequest(settings: MySqlSettings, analysisRunId: string, params
 export const workbenchApi = {
   testDb: (settings: MySqlSettings) => invoke<CommandAck>('db_test_connection', { settings }),
   initDb: (settings: MySqlSettings) => invoke<CommandAck>('db_initialize', { settings }),
+  accessRuleSets: (settings: MySqlSettings) => invoke<AccessRuleSetRow[]>('access_rule_list_sets', { settings }),
+  accessRuleDraft: (settings: MySqlSettings) => invoke<AccessRuleSetRow>('access_rule_get_or_create_draft', { settings }),
+  accessRules: (settings: MySqlSettings, ruleSetId: string) => invoke<AccessIpRangeRow[]>('access_rule_list', { settings, ruleSetId }),
+  saveAccessRule: (settings: MySqlSettings, input: AccessRuleInput) => invoke<AccessIpRangeRow>('access_rule_upsert', { req: {
+    settings,
+    rule_set_id: input.ruleSetId,
+    rule_id: input.ruleId,
+    rule_name: input.ruleName,
+    cidr: input.cidr?.trim() || undefined,
+    start_ip: input.startIp?.trim() || undefined,
+    end_ip: input.endIp?.trim() || undefined,
+    access_type: input.accessType,
+    priority: input.priority ?? 100,
+    enabled: input.enabled ?? true,
+    notes: input.notes?.trim() || undefined,
+  } }),
+  deleteAccessRule: (settings: MySqlSettings, ruleSetId: string, ruleId: string) => invoke<CommandAck>('access_rule_delete', { req: { settings, rule_set_id: ruleSetId, rule_id: ruleId } }),
+  validateAccessRules: (settings: MySqlSettings, ruleSetId: string) => invoke<AccessRuleValidationResult>('access_rule_validate', { settings, ruleSetId }),
+  publishAccessRules: (settings: MySqlSettings, ruleSetId: string) => invoke<AccessRuleSetRow>('access_rule_publish', { req: { settings, rule_set_id: ruleSetId } }),
+  applyAccessRulesToBatch: (settings: MySqlSettings, ruleSetId: string, importBatchId: string) => invoke<CommandAck>('access_rule_apply_to_batch', { req: { settings, rule_set_id: ruleSetId, import_batch_id: importBatchId } }),
+  previewAccessRules: (settings: MySqlSettings, ruleSetId: string, importBatchId: string, sampleLimit = 50_000) => invoke<AccessRulePreviewResult>('access_rule_preview', { req: { settings, rule_set_id: ruleSetId, import_batch_id: importBatchId, sample_limit: sampleLimit } }),
   listBatches: (settings: MySqlSettings, dataType?: string) => invoke<BatchListItem[]>('import_list_batches', { settings, dataType }),
   prepareBatchTables: (settings: MySqlSettings, importBatchId: string) => invoke<MetricCard[]>('analysis_prepare_batch_tables', { settings, importBatchId }),
   batchTableRegistry: (settings: MySqlSettings, importBatchId: string) => invoke<BatchTableRegistryRow[]>('batch_get_table_registry', { settings, importBatchId }),

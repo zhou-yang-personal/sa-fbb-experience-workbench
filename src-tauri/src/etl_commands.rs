@@ -256,10 +256,7 @@ pub fn etl_start_aggregate_job(req: EtlRequest) -> Result<CommandAck, String> {
         .analysis_run_id
         .unwrap_or_else(|| format!("RUN_{}", Uuid::new_v4().simple()));
     let dws_bound = sql_runner::bind_batch_params(USER_DAILY_SQL, &req.import_batch_id, None);
-    let ads_bound =
-        sql_runner::bind_batch_params(LEADS_SQL, &req.import_batch_id, Some(&analysis_run_id));
     let dws_sql = batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &dws_bound)?;
-    let ads_sql = batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &ads_bound)?;
     let dwd_tcp =
         batch_tables::resolve_table(&req.settings, &req.import_batch_id, "dwd_tcp_detail_clean")?;
     let dwd_game =
@@ -268,11 +265,6 @@ pub fn etl_start_aggregate_job(req: EtlRequest) -> Result<CommandAck, String> {
         &req.settings,
         &req.import_batch_id,
         "dws_user_daily_profile",
-    )?;
-    let ads_lead = batch_tables::resolve_table(
-        &req.settings,
-        &req.import_batch_id,
-        "ads_migration_lead_user",
     )?;
     let mut conn = db::conn(&req.settings)?;
     let _ = conn.exec_drop(
@@ -283,29 +275,13 @@ pub fn etl_start_aggregate_job(req: EtlRequest) -> Result<CommandAck, String> {
         &req.settings,
         &req.import_batch_id,
         "base_aggregate",
-        vec![
-            JobStep {
-                step_name: "user_daily_profile",
-                source_table: Box::leak(format!("{dwd_tcp},{dwd_game}").into_boxed_str()),
-                target_table: Box::leak(dws_user.into_boxed_str()),
-                sql_template: "001_user_daily_profile.sql",
-                sql: dws_sql,
-            },
-            JobStep {
-                step_name: "migration_leads",
-                source_table: Box::leak(
-                    batch_tables::resolve_table(
-                        &req.settings,
-                        &req.import_batch_id,
-                        "dws_user_daily_profile",
-                    )?
-                    .into_boxed_str(),
-                ),
-                target_table: Box::leak(ads_lead.into_boxed_str()),
-                sql_template: "001_migration_leads.sql",
-                sql: ads_sql,
-            },
-        ],
+        vec![JobStep {
+            step_name: "user_daily_profile",
+            source_table: Box::leak(format!("{dwd_tcp},{dwd_game}").into_boxed_str()),
+            target_table: Box::leak(dws_user.into_boxed_str()),
+            sql_template: "001_user_daily_profile.sql",
+            sql: dws_sql,
+        }],
     )?;
     let _ = conn.exec_drop(
         "UPDATE meta_analysis_run SET status='success', finished_at=NOW(), message=? WHERE analysis_run_id=?",
@@ -313,4 +289,31 @@ pub fn etl_start_aggregate_job(req: EtlRequest) -> Result<CommandAck, String> {
     );
     let _ = batch_tables::refresh_registry_counts(&req.settings, &req.import_batch_id);
     Ok(ack(format!("analysis_run_id={analysis_run_id}; {message}")))
+}
+
+pub fn refresh_migration_leads(
+    settings: &MySqlSettings,
+    import_batch_id: &str,
+    analysis_run_id: &str,
+) -> Result<String, String> {
+    let bound = sql_runner::bind_batch_params(LEADS_SQL, import_batch_id, Some(analysis_run_id));
+    let sql = batch_tables::bind_batch_tables(settings, import_batch_id, &bound)?;
+    let dws_user =
+        batch_tables::resolve_table(settings, import_batch_id, "dws_user_daily_profile")?;
+    let dws_bottleneck =
+        batch_tables::resolve_table(settings, import_batch_id, "dws_user_experience_bottleneck")?;
+    let ads_lead =
+        batch_tables::resolve_table(settings, import_batch_id, "ads_migration_lead_user")?;
+    job_runner::run_job(
+        settings,
+        import_batch_id,
+        "migration_lead_scoring",
+        vec![JobStep {
+            step_name: "migration_leads_after_bottleneck",
+            source_table: Box::leak(format!("{dws_user},{dws_bottleneck}").into_boxed_str()),
+            target_table: Box::leak(ads_lead.into_boxed_str()),
+            sql_template: "001_migration_leads.sql",
+            sql,
+        }],
+    )
 }

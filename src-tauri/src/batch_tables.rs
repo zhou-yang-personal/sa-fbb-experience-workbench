@@ -22,6 +22,8 @@ pub const TABLE_DEFS: &[TableDef] = &[
     TableDef { logical: "dwd_game", base: "dwd_game_detail_clean", layer: "clean", data_type: "game" },
     TableDef { logical: "dws_user_daily", base: "dws_user_daily_profile", layer: "dws", data_type: "mixed" },
     TableDef { logical: "dws_app_category", base: "dws_app_category_daily", layer: "dws", data_type: "mixed" },
+    TableDef { logical: "dws_app_daily", base: "dws_app_daily", layer: "dws", data_type: "mixed" },
+    TableDef { logical: "dws_app_user", base: "dws_app_user_summary", layer: "dws", data_type: "mixed" },
     TableDef { logical: "dws_access_hourly", base: "dws_access_type_hourly_compare", layer: "dws", data_type: "mixed" },
     TableDef { logical: "dws_bottleneck", base: "dws_user_experience_bottleneck", layer: "dws", data_type: "mixed" },
     TableDef { logical: "ads_overview", base: "ads_dashboard_overview", layer: "ads", data_type: "mixed" },
@@ -48,7 +50,7 @@ pub fn ensure_registry_tables(conn: &mut mysql::PooledConn) -> Result<(), String
 
 pub fn batch_short_id(import_batch_id: &str) -> String {
     let normalized: String = import_batch_id.chars().filter(|ch| ch.is_ascii_alphanumeric()).map(|ch| ch.to_ascii_lowercase()).collect();
-    let tail = if normalized.len() > 16 { &normalized[normalized.len() - 16..] } else { normalized.as_str() };
+    let tail = if normalized.len() > 15 { &normalized[normalized.len() - 15..] } else { normalized.as_str() };
     if tail.is_empty() { "manualbatch".to_string() } else { tail.to_string() }
 }
 
@@ -104,7 +106,11 @@ fn ensure_one_table(conn: &mut mysql::PooledConn, def: &TableDef, physical: &str
     let base = sanitize_identifier(def.base)?;
     let table = sanitize_identifier(physical)?;
     conn.query_drop(format!("CREATE TABLE IF NOT EXISTS `{table}` LIKE `{base}`"))
-        .map_err(|err| format!("failed to create per-batch table {table} from {base}: {err}"))
+        .map_err(|err| format!("failed to create per-batch table {table} from {base}: {err}"))?;
+    if def.base == "dwd_tcp_detail_clean" || def.base == "dwd_game_detail_clean" {
+        crate::migrations::ensure_access_columns_for_table(conn, &table)?;
+    }
+    Ok(())
 }
 
 fn upsert_registry(conn: &mut mysql::PooledConn, def: &TableDef, import_batch_id: &str, physical: &str, rows: u64, status: &str) -> Result<(), String> {

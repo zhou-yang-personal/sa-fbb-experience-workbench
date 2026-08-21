@@ -58,9 +58,16 @@ pub fn create_batch_internal(
     let file_size = std::fs::metadata(file_path).map(|m| m.len()).ok();
     let mut conn = db::conn(settings)?;
     ensure_batch_display_name_column(&mut conn, &settings.database)?;
+    crate::migrations::ensure_access_schema(settings)?;
+    let active_rule_set: Option<(String, i64)> = conn
+        .query_first("SELECT rule_set_id, version FROM meta_access_rule_set WHERE status='published' ORDER BY published_at DESC, version DESC LIMIT 1")
+        .map_err(|err| format!("failed to resolve published access rule set: {err}"))?;
+    let (access_rule_set_id, access_rule_set_version) = active_rule_set
+        .map(|(id, version)| (Some(id), Some(version)))
+        .unwrap_or((None, None));
     conn.exec_drop(
-        "INSERT INTO meta_import_batch (import_batch_id, batch_display_name, data_type, source_file_name, source_file_path, source_file_size_bytes, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')",
-        (&import_batch_id, &batch_display_name, data_type, &source_file_name, file_path, file_size),
+        "INSERT INTO meta_import_batch (import_batch_id, batch_display_name, data_type, source_file_name, source_file_path, source_file_size_bytes, access_rule_set_id, access_rule_set_version, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
+        (&import_batch_id, &batch_display_name, data_type, &source_file_name, file_path, file_size, access_rule_set_id, access_rule_set_version),
     ).map_err(|err| format!("failed to create import batch: {err}"))?;
     Ok(ImportBatchResult {
         import_batch_id,

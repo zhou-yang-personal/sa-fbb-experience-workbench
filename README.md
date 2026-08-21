@@ -5,7 +5,7 @@ SA FBB Experience Workbench 是一个本地 EXE 数据分析工作台，用于�
 当前版本：
 
 ```text
-1.0.34
+1.0.35
 ```
 
 ## 1. 核心目标
@@ -46,30 +46,38 @@ CSV 文件选择
 6. Phase 6：CRM、FTTH 覆盖、可触达状态融合，生成最终营销动作。
 7. Phase 7：导出、handoff、changelog、交付检查入口。
 
-## 4. 1.0.34 收口重点
+## 4. 1.0.35 收口重点
+
+- 新增版本化 IPv4 网段配置，支持 Cable / FTTH / Other 草稿编辑、重叠校验、批次抽样预览、发布和批次绑定。
+- RAW → DWD 接入类型按“已发布 IP 规则优先、源字段回退、未匹配标记”分类，并保留规则版本和证据来源。
+- 分析入口重组为经营总览、应用体验、网络问题定位、Cable vs FTTH、用户洞察和迁转机会六类任务看板。
+- App、网络拓扑和 Lead 看板改为真实业务粒度；A0 身份不足与 A2 先修障不会被表述为可直接营销名单。
+- 批次 SQL 统一绑定物理表；乱序 CSV 表头通过 MySQL 用户变量映射后仍走 `LOAD DATA LOCAL INFILE`，看板只读 DWS / ADS。
+
+## 5. 1.0.34 收口重点
 
 - App / Hourly / Network / User / Lead 五类结构化查询命令已支持 materialized Analytics ADS 优先读取。
 - 如果目标 `analysis_run_id` 暂无物化 ADS 数据，或老库缺少 Analytics ADS base 表，查询会安全回退到原 DWS / Lead 表路径。
 - Evidence hint 中增加 `source=...`，便于区分当前结果来自物化 ADS 还是 fallback 聚合表。
 - 本轮继续保持前端只通过 Tauri command 访问后端，不直连 MySQL，不扫描 RAW。
 
-## 5. 1.0.33 收口重点
+## 6. 1.0.33 收口重点
 
 - 新增 `AnalyticsAdsActions.tsx`，在 Analysis Workspace 中提供结构化 ADS 物化操作入口。
 - App / Hourly / Network / User / Lead 五类结构化 ADS 物化命令均已注册到 Tauri。
 - `analyticsStructuredApi.ts` 已暴露五类物化 API，前端动作面板可触发对应命令。
 
-## 6. 1.0.32 收口重点
+## 7. 1.0.32 收口重点
 
 - 修复 `batch_tables.rs` 中被上一轮覆盖掉的公共 helper：`analysis_run_batch`、`table_exists`、`table_columns`，避免 Lead 查询和模块状态检查编译失败。
 - 新增并注册 `analytics_materialize_app_rank` 命令，可执行 `003b_analytics_app_rank.sql`，把 App Rank 从 DWS 物化到结构化 Analytics ADS 表。
 
-## 7. 1.0.31 收口重点
+## 8. 1.0.31 收口重点
 
 - 新增 `AnalyticsStructuredPagedPanel.tsx`，把 1.0.30 后端分页/过滤能力暴露为独立可操作面板。
 - `AnalysisWorkspace.tsx` 已接入分页结构化面板，用户可对 App、Hourly、Network、User、Lead 五类证据做后端分页、关键词、排序和阈值查询。
 
-## 8. 技术栈
+## 9. 技术栈
 
 ```text
 Frontend: React + TypeScript + Vite
@@ -81,7 +89,7 @@ CSV Import: LOAD DATA LOCAL INFILE + streaming INSERT fallback
 Package manager: npm
 ```
 
-## 9. 开发命令
+## 10. 开发命令
 
 ```bash
 npm install
@@ -92,6 +100,6 @@ npm run tauri:build
 cd src-tauri && cargo check
 ```
 
-## 10. 当前状态
+## 11. 当前状态
 
-1.0.34 在 1.0.33 结构化 ADS 物化入口基础上，完成五类结构化读命令的 ADS-first / fallback-safe 查询路径。编译验证和 smoke 结果以最终统一验证为准；真实 MySQL / customer CSV smoke 如未执行，不得视为通过。
+1.0.35 已完成看板信息架构、真实 App / 网络拓扑聚合、版本化 IP 接入规则和 Lead 风险分层的代码级收口。前端与 Rust 编译验证结果见最新 handoff；真实 MySQL 与 1 GB+ customer CSV 基准测试未执行前，不得声称生产性能已验证。

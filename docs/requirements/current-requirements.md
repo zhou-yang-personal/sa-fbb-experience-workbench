@@ -10,9 +10,12 @@
 2. 提供 TCP / Game 两类 CSV 数据导入入口。
 3. 提供 import batch、导入任务、质量检查、ETL 任务状态管理。
 4. 通过 MySQL SQL 完成 RAW → CLEAN/DWD → DWS/ADS。
-5. 提供总览、体验质量、Cable vs FTTH、迁转升套机会四类核心页面骨架。
+5. 提供经营总览、应用体验、网络问题定位、Cable vs FTTH、用户洞察、迁转升套机会六类任务看板。
 6. 输出用户级 Lead Type 和推荐套餐字段。
 7. 保留后续 CRM、FTTH 覆盖、可触达状态 JOIN 的扩展点。
+8. 提供版本化 IPv4 网段配置，用于优先识别 Cable / FTTH；必须支持草稿、重叠校验、抽样预览、发布、批次绑定和规则证据追溯。
+9. App 看板必须使用真实 App 粒度，网络热点必须保留 BRAS / OLT / PON，图表必须能回到聚合证据。
+10. A0 身份不足和 A2 网络严重异常用户不得表述为可直接营销名单；A1 仍需 CRM、覆盖和可触达资格校验。
 
 ## 3. 明确不做
 
@@ -29,3 +32,4 @@
 - 前端存在导入、ETL、看板、Lead 分层的入口骨架。
 - Tauri command 已提供后续接入 MySQL / CSV / ETL 的接口名称。
 - SQL 模板不使用 `SET @var`，优先使用 CTE 参数块。
+- 乱序但可映射的 CSV 表头仍应走 `LOAD DATA LOCAL INFILE`；1 GB+ 性能必须以目标硬件真实基准测试为准。

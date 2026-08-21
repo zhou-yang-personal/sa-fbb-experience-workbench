@@ -26,6 +26,36 @@ CSV 文件选择
 4. 看板不得直接扫 RAW 明细大表，必须查询 DWS / ADS 聚合结果。
 5. 当前 SA 数据只能形成“应用体验驱动的迁转升套机会”，正式营销名单需要后续 JOIN CRM、套餐、FTTH 覆盖、合约、欠费、黑名单和可触达状态。
 
+### 1.1 1.0.35 产品决策面
+
+主分析入口按用户决策任务组织，而不是按 ETL 表组织：
+
+```text
+经营与体验总览
+├─ 应用体验：真实 App → 受影响用户 → 体验与网络证据
+├─ 网络问题定位：BRAS / OLT / PON → 问题侧 → 建议行动
+├─ Cable vs FTTH：同日期小时、同单位、同分母对比
+├─ 用户洞察：需求、使用、体验和接入识别证据
+└─ 迁转升套机会：A0 身份不足 / A2 先修障 / A1 待资格校验
+```
+
+所有图表必须显示单位或分母，点击后可查看证据字段。少于 8 个时间点时，趋势图降级为柱图，避免暗示不存在的趋势。
+
+### 1.2 接入类型识别
+
+Cable / FTTH 识别采用可追溯的版本规则：
+
+```text
+已发布 IPv4 网段规则
+→ 绑定 import_batch_id 和规则版本
+→ RAW → DWD 时用 INET_ATON(local_ip_address) 匹配
+→ 命中规则：IP_RULE / HIGH
+→ 未命中但源字段可识别：SOURCE_FIELD / MEDIUM
+→ 均不可识别：UNKNOWN / UNMATCHED / LOW
+```
+
+规则支持 CIDR 或起止 IPv4、启停、优先级、重叠阻断、最多 100,000 个不同 IP 的有界预览及原子发布。规则应用不修改 RAW；应用到历史批次后必须重跑 CLEAN / DWS / ADS。
+
 ## 2. 参考基线与差异
 
 整体工程框架参考 `latam-fbb-desktop` 的桌面端本地分析架构：
@@ -82,6 +112,8 @@ Package: Windows EXE / MSI
 3. **ECharts** 更适合本项目需要的 Treemap、环形图、堆叠柱、小时折线、TopN 横向柱和深色大屏风格。
 4. **MySQL 8.0** 作为本地计算与存储主引擎，承接几千万行 RAW、清洗 SQL、聚合表和看板查询。
 5. **LOAD DATA LOCAL INFILE** 作为大 CSV 主导入能力，应用层不做大文件内存清洗。
+
+1.0.35 的导入器先读取表头并生成 `@csv_N → RAW target column` 映射，因此列顺序变化不会再自动降级为批量 INSERT。只有显式关闭 `local_infile` 或选择 fallback 模式时才走有界的 500 行 streaming INSERT。
 
 ## 4. 前端模块架构
 

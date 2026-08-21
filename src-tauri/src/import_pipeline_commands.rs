@@ -495,7 +495,12 @@ fn run_pipeline_job(
                     };
                     crate::etl_commands::etl_start_aggregate_job(req.clone())?;
                     crate::phase_commands::etl_run_complete_aggregates(req.clone())?;
-                    crate::phase_commands::ads_run_complete_dashboards(req)?;
+                    crate::phase_commands::ads_run_complete_dashboards(req.clone())?;
+                    crate::analytics_ads_app::analytics_materialize_app_rank(req.clone())?;
+                    crate::ads_hour::ads_hour(req.clone())?;
+                    crate::ads_net::ads_net(req.clone())?;
+                    crate::ads_user::ads_user(req.clone())?;
+                    crate::ads_lead::ads_lead(req)?;
                     Ok(Some(format!(
                         "DWS/ADS ready: analysis_run_id={analysis_run_id}"
                     )))
@@ -512,6 +517,11 @@ fn run_pipeline_job(
                         .as_ref()
                         .ok_or_else(|| "missing import_batch_id before final fusion".to_string())?;
                     crate::phase_commands::leads_run_final_fusion(EtlRequest {
+                        settings: settings.clone(),
+                        import_batch_id: batch.clone(),
+                        analysis_run_id: Some(analysis_run_id.clone()),
+                    })?;
+                    crate::ads_lead::ads_lead(EtlRequest {
                         settings: settings.clone(),
                         import_batch_id: batch.clone(),
                         analysis_run_id: Some(analysis_run_id.clone()),
@@ -669,7 +679,7 @@ pub fn import_pipeline_start(
     let task_req = req.clone();
     let task_pipeline_run_id = pipeline_run_id.clone();
     let task_analysis_run_id = analysis_run_id.clone();
-    tauri::async_runtime::spawn(async move {
+    tauri::async_runtime::spawn_blocking(move || {
         run_pipeline_job(task_req, task_pipeline_run_id, task_analysis_run_id);
     });
     Ok(ImportPipelineStartResult {

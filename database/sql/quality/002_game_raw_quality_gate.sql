@@ -7,7 +7,7 @@ WITH params AS (SELECT :import_batch_id AS import_batch_id), batch AS (
   SELECT
     r.*,
     NULLIF(TRIM(REGEXP_REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(r.statistical_time, ''), CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' '), CONVERT(0xC2A0 USING utf8mb4), ' '), '[[:space:]]+', ' ')), '') AS stat_time_text
-  FROM raw_game_detail_import r
+  FROM :raw_game_detail_import r
   JOIN params p ON p.import_batch_id = r.import_batch_id
 ), raw_parsed AS (
   SELECT
@@ -45,7 +45,7 @@ WITH params AS (SELECT :import_batch_id AS import_batch_id), batch AS (
          COALESCE(SUM(CASE WHEN data_quality_flag = 'WARN_INVALID_STAT_TIME' THEN 1 ELSE 0 END), 0) AS warn_invalid_stat_time_rows,
          COALESCE(SUM(CASE WHEN data_quality_flag = 'WARN_UNKNOWN_ACCESS_TYPE' THEN 1 ELSE 0 END), 0) AS warn_unknown_access_type_rows,
          COALESCE(SUM(CASE WHEN data_quality_flag = 'OK' THEN 1 ELSE 0 END), 0) AS ok_rows
-  FROM dwd_game_detail_clean WHERE import_batch_id = (SELECT import_batch_id FROM params)
+  FROM :dwd_game_detail_clean WHERE import_batch_id = (SELECT import_batch_id FROM params)
 )
 SELECT import_batch_id, 'raw_quality', 'game_row_count', 'row_cnt', row_cnt, NULL,
        CASE WHEN row_cnt = 0 THEN 'error' ELSE 'info' END,

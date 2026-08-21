@@ -113,11 +113,29 @@ pub fn quality_run_gate(req: EtlRequest) -> Result<CommandAck, String> {
             .collect::<Result<Vec<_>, String>>()?
     };
     let message = job_runner::run_job(&req.settings, &req.import_batch_id, "quality_gate", steps)?;
+    let mut conn = db::conn(&req.settings)?;
+    let failed_checks: i64 = conn
+        .exec_first(
+            "SELECT CAST(COUNT(*) AS SIGNED) FROM meta_quality_check_result WHERE import_batch_id=? AND passed=0 AND severity='error'",
+            (&req.import_batch_id,),
+        )
+        .map_err(|err| format!("failed to inspect quality gate outcome: {err}"))?
+        .unwrap_or(0);
+    if failed_checks > 0 {
+        return Err(format!(
+            "Quality Gate rejected batch {}: {failed_checks} fatal checks failed; inspect quality_get_failed_results before retrying",
+            req.import_batch_id
+        ));
+    }
     Ok(ack(message))
 }
 
 #[tauri::command]
 pub fn etl_run_complete_aggregates(req: EtlRequest) -> Result<CommandAck, String> {
+    let analysis_run_id = req
+        .analysis_run_id
+        .clone()
+        .unwrap_or_else(|| "RUN_DEFAULT".to_string());
     let bound = sql_runner::bind_batch_params(COMPLETE_DWS_SQL, &req.import_batch_id, None);
     let sql = batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &bound)?;
     let dwd_tcp =
@@ -134,6 +152,10 @@ pub fn etl_run_complete_aggregates(req: EtlRequest) -> Result<CommandAck, String
         &req.import_batch_id,
         "dws_app_category_daily",
     )?;
+    let dws_app_daily =
+        batch_tables::resolve_table(&req.settings, &req.import_batch_id, "dws_app_daily")?;
+    let dws_app_user =
+        batch_tables::resolve_table(&req.settings, &req.import_batch_id, "dws_app_user_summary")?;
     let dws_access = batch_tables::resolve_table(
         &req.settings,
         &req.import_batch_id,
@@ -152,13 +174,19 @@ pub fn etl_run_complete_aggregates(req: EtlRequest) -> Result<CommandAck, String
             step_name: "complete_dws_aggregates",
             source_table: Box::leak(format!("{dwd_tcp},{dwd_game},{dws_user}").into_boxed_str()),
             target_table: Box::leak(
-                format!("{dws_app},{dws_access},{dws_bottleneck}").into_boxed_str(),
+                format!("{dws_app},{dws_app_daily},{dws_app_user},{dws_access},{dws_bottleneck}")
+                    .into_boxed_str(),
             ),
             sql_template: "002_complete_aggregates.sql",
             sql,
         }],
     )?;
-    Ok(ack(message))
+    let lead_message = crate::etl_commands::refresh_migration_leads(
+        &req.settings,
+        &req.import_batch_id,
+        &analysis_run_id,
+    )?;
+    Ok(ack(format!("{message}; {lead_message}")))
 }
 
 #[tauri::command]

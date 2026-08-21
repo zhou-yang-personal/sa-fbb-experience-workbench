@@ -1,14 +1,20 @@
 -- RAW Game → DWD Game clean baseline
 
-DELETE FROM dwd_game_detail_clean WHERE import_batch_id = :import_batch_id;
+DELETE FROM :dwd_game_detail_clean WHERE import_batch_id = :import_batch_id;
 
-INSERT INTO dwd_game_detail_clean (
+INSERT INTO :dwd_game_detail_clean (
   import_batch_id,
   user_key,
   key_confidence,
   user_account,
   user_mac,
+  source_user_type,
   user_type,
+  local_ip_address,
+  access_type_source,
+  access_type_confidence,
+  access_rule_id,
+  access_rule_set_version,
   app_name,
   app_category,
   stat_time,
@@ -34,7 +40,7 @@ WITH params AS (
     NULLIF(TRIM(r.user_mac), '') AS mac_key,
     NULLIF(TRIM(r.local_ip_address), '') AS ip_key,
     NULLIF(TRIM(REGEXP_REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(r.statistical_time, ''), CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' '), CONVERT(0xC2A0 USING utf8mb4), ' '), '[[:space:]]+', ' ')), '') AS stat_time_text
-  FROM raw_game_detail_import r
+  FROM :raw_game_detail_import r
   JOIN params p ON p.import_batch_id = r.import_batch_id
 ), parsed AS (
   SELECT
@@ -45,7 +51,13 @@ WITH params AS (
       WHEN r.stat_time_text REGEXP '^[0-9]{1,2}/[0-9]{1,2}/[0-9]{4} [0-9]{2}:[0-9]{2}$' THEN STR_TO_DATE(r.stat_time_text, '%d/%m/%Y %H:%i')
       WHEN r.stat_time_text REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}$' THEN STR_TO_DATE(r.stat_time_text, '%Y-%m-%d %H:%i')
       ELSE NULL
-    END AS parsed_stat_time
+    END AS parsed_stat_time,
+    CASE
+      WHEN UPPER(TRIM(COALESCE(r.user_type, ''))) LIKE '%FTTH%' OR UPPER(TRIM(COALESCE(r.user_type, ''))) LIKE '%FIBER%' THEN 'FTTH'
+      WHEN UPPER(TRIM(COALESCE(r.user_type, ''))) LIKE '%CABLE%' OR UPPER(TRIM(COALESCE(r.wan_type, ''))) LIKE '%CABLE%' THEN 'CABLE'
+      ELSE 'UNKNOWN'
+    END AS source_user_type,
+    INET_ATON(r.ip_key) AS ip_num
   FROM raw_normalized r
 ), normalized AS (
   SELECT
@@ -65,11 +77,13 @@ WITH params AS (
     END AS key_confidence,
     r.account_key AS user_account,
     r.mac_key AS user_mac,
-    CASE
-      WHEN UPPER(TRIM(COALESCE(r.user_type, ''))) LIKE '%FTTH%' OR UPPER(TRIM(COALESCE(r.user_type, ''))) LIKE '%FIBER%' THEN 'FTTH'
-      WHEN UPPER(TRIM(COALESCE(r.user_type, ''))) LIKE '%CABLE%' OR UPPER(TRIM(COALESCE(r.wan_type, ''))) LIKE '%CABLE%' THEN 'CABLE'
-      ELSE 'UNKNOWN'
-    END AS user_type,
+    r.source_user_type,
+    COALESCE(ar.access_type, r.source_user_type, 'UNKNOWN') AS user_type,
+    r.ip_key AS local_ip_address,
+    CASE WHEN ar.rule_id IS NOT NULL THEN 'IP_RULE' WHEN r.source_user_type <> 'UNKNOWN' THEN 'SOURCE_FIELD' ELSE 'UNMATCHED' END AS access_type_source,
+    CASE WHEN ar.rule_id IS NOT NULL THEN 'HIGH' WHEN r.source_user_type <> 'UNKNOWN' THEN 'MEDIUM' ELSE 'LOW' END AS access_type_confidence,
+    ar.rule_id AS access_rule_id,
+    b.access_rule_set_version,
     COALESCE(NULLIF(TRIM(m.standard_app_name), ''), NULLIF(TRIM(r.application_protocol), ''), 'UNKNOWN_APP') AS app_name,
     COALESCE(NULLIF(TRIM(m.app_category), ''), 'game') AS app_category,
     r.parsed_stat_time AS stat_time,
@@ -95,6 +109,8 @@ WITH params AS (
     NULLIF(TRIM(r.pon), '') AS pon
   FROM parsed r
   LEFT JOIN dim_app_mapping m ON m.raw_app_name = r.application_protocol
+  LEFT JOIN meta_import_batch b ON b.import_batch_id = r.import_batch_id
+  LEFT JOIN dim_access_ip_range ar ON ar.rule_set_id = b.access_rule_set_id AND ar.enabled = 1 AND r.ip_num BETWEEN ar.start_ip_num AND ar.end_ip_num
 )
 SELECT
   import_batch_id,
@@ -102,7 +118,13 @@ SELECT
   key_confidence,
   user_account,
   user_mac,
+  source_user_type,
   user_type,
+  local_ip_address,
+  access_type_source,
+  access_type_confidence,
+  access_rule_id,
+  access_rule_set_version,
   app_name,
   app_category,
   stat_time,
