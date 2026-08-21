@@ -1,5 +1,21 @@
 # CHANGELOG-dev
 
+## 1.0.36 - 2026-08-21
+
+### Added
+
+- Added GitHub Actions automation for Windows MSI, NSIS EXE and portable EXE builds.
+- Branch builds upload 30-day workflow artifacts; version tags automatically create GitHub Releases with public binaries.
+
+### Changed
+
+- Version markers were synchronized to `1.0.36`.
+
+### Verification
+
+- Local workflow syntax and repository status checks completed.
+- Remote Actions and downloadable release assets require the pushed workflow run to complete.
+
 ## 1.0.35 - 2026-08-21
 
 ### Added

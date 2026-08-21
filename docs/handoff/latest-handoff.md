@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.35
+1.0.36
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,13 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.36 update
+
+- Added `.github/workflows/build-desktop.yml` for Windows MSI, NSIS EXE and portable EXE builds.
+- Pushes to `dev` and `codex/**` publish 30-day Actions artifacts; `v*` tags additionally publish GitHub Releases.
+- CI runs frontend type-check, Rust tests and the Tauri production build before publishing files.
+- Version markers are synchronized to `1.0.36`.
 
 ## 1.0.35 update
 
