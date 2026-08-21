@@ -36,7 +36,44 @@ pub fn import_create_batch(req: CreateBatchRequest) -> Result<ImportBatchResult,
         &req.data_type,
         &req.file_path,
         req.batch_display_name.as_deref(),
+        req.access_rule_set_id.as_deref(),
     )
+}
+
+fn requires_access_rule_selection(data_type: &str) -> bool {
+    matches!(
+        data_type.trim().to_ascii_lowercase().as_str(),
+        "tcp" | "game"
+    )
+}
+
+fn resolve_access_rule_set(
+    conn: &mut mysql::PooledConn,
+    data_type: &str,
+    selected_rule_set_id: Option<&str>,
+) -> Result<(Option<String>, Option<i64>), String> {
+    let selected = selected_rule_set_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if requires_access_rule_selection(data_type) && selected.is_none() {
+        return Err(
+            "TCP/Game import requires an explicitly selected published IP access rule version"
+                .to_string(),
+        );
+    }
+    let Some(rule_set_id) = selected else {
+        return Ok((None, None));
+    };
+    let version: Option<i64> = conn
+        .exec_first(
+            "SELECT CAST(version AS SIGNED) FROM meta_access_rule_set WHERE rule_set_id=? AND status='published'",
+            (rule_set_id,),
+        )
+        .map_err(|err| format!("failed to validate selected access rule set: {err}"))?;
+    let version = version.ok_or_else(|| {
+        format!("selected access rule set is missing or not published: {rule_set_id}")
+    })?;
+    Ok((Some(rule_set_id.to_string()), Some(version)))
 }
 
 pub fn create_batch_internal(
@@ -44,6 +81,7 @@ pub fn create_batch_internal(
     data_type: &str,
     file_path: &str,
     batch_display_name: Option<&str>,
+    access_rule_set_id: Option<&str>,
 ) -> Result<ImportBatchResult, String> {
     let import_batch_id = format!("BATCH_{}", Uuid::new_v4().simple());
     let source_file_name = std::path::Path::new(file_path)
@@ -59,12 +97,8 @@ pub fn create_batch_internal(
     let mut conn = db::conn(settings)?;
     ensure_batch_display_name_column(&mut conn, &settings.database)?;
     crate::migrations::ensure_access_schema(settings)?;
-    let active_rule_set: Option<(String, i64)> = conn
-        .query_first("SELECT rule_set_id, version FROM meta_access_rule_set WHERE status='published' ORDER BY published_at DESC, version DESC LIMIT 1")
-        .map_err(|err| format!("failed to resolve published access rule set: {err}"))?;
-    let (access_rule_set_id, access_rule_set_version) = active_rule_set
-        .map(|(id, version)| (Some(id), Some(version)))
-        .unwrap_or((None, None));
+    let (access_rule_set_id, access_rule_set_version) =
+        resolve_access_rule_set(&mut conn, data_type, access_rule_set_id)?;
     conn.exec_drop(
         "INSERT INTO meta_import_batch (import_batch_id, batch_display_name, data_type, source_file_name, source_file_path, source_file_size_bytes, access_rule_set_id, access_rule_set_version, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
         (&import_batch_id, &batch_display_name, data_type, &source_file_name, file_path, file_size, access_rule_set_id, access_rule_set_version),
@@ -151,6 +185,7 @@ pub fn import_current_file_atomic(
         &req.data_type,
         &req.file_path,
         Some(&req.batch_display_name),
+        req.access_rule_set_id.as_deref(),
     )?;
     let validation_rows = crate::mapping_validation_commands::validate_mapping_to_db(
         &req.settings,
@@ -207,6 +242,20 @@ pub fn import_current_file_atomic(
         profile,
         message: "atomic import finished".to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::requires_access_rule_selection;
+
+    #[test]
+    fn tcp_and_game_require_explicit_access_rules() {
+        assert!(requires_access_rule_selection("tcp"));
+        assert!(requires_access_rule_selection("GAME"));
+        assert!(!requires_access_rule_selection("crm"));
+        assert!(!requires_access_rule_selection("coverage"));
+        assert!(!requires_access_rule_selection("reachability"));
+    }
 }
 
 fn mark_batch_failed(

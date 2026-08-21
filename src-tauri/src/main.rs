@@ -43,6 +43,7 @@ mod sql_runner;
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             dashboard_commands::db_test_connection,
             dashboard_commands::db_initialize,

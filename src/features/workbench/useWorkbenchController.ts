@@ -58,7 +58,7 @@ export type WorkbenchController = {
   lastActionMessage: string;
   runAction: (label: string, action: () => Promise<unknown>) => Promise<unknown>;
   loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<MetricCard[]>;
-  createBatch: () => Promise<ImportBatchResult | null>;
+  createBatch: (accessRuleSetId?: string) => Promise<ImportBatchResult | null>;
   clearPersistedContext: () => void;
   setOverview: Dispatch<SetStateAction<DashboardOverview | null>>;
 };
@@ -254,8 +254,8 @@ export function useWorkbenchController(): WorkbenchController {
     return Array.isArray(result) ? (result as MetricCard[]) : [];
   }
 
-  async function createBatch() {
-    const result = await runAction('import_create_batch', () => workbenchApi.createBatch(effectiveSettings, dataType, filePath, batchDisplayName));
+  async function createBatch(accessRuleSetId?: string) {
+    const result = await runAction('import_create_batch', () => workbenchApi.createBatch(effectiveSettings, dataType, filePath, batchDisplayName, accessRuleSetId));
     if (result && typeof result === 'object' && 'import_batch_id' in result) {
       const next = result as ImportBatchResult;
       setBatch(next);

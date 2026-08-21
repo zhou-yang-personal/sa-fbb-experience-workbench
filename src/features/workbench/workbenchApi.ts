@@ -52,16 +52,16 @@ export const workbenchApi = {
   seedConfig: (settings: MySqlSettings) => invoke<CommandAck>('config_seed_defaults', { settings }),
   checkImportCatalog: (settings: MySqlSettings) => invoke<MetricCard[]>('config_check_import_catalog', { settings }),
   probeCsv: (path: string) => invoke<CsvProbeResult>('import_probe_csv', { path }),
-  createBatch: (settings: MySqlSettings, dataType: string, filePath: string, batchDisplayName?: string) =>
-    invoke<ImportBatchResult>('import_create_batch', { req: { settings, data_type: dataType, file_path: filePath, batch_display_name: batchDisplayName?.trim() || undefined } }),
+  createBatch: (settings: MySqlSettings, dataType: string, filePath: string, batchDisplayName?: string, accessRuleSetId?: string) =>
+    invoke<ImportBatchResult>('import_create_batch', { req: { settings, data_type: dataType, file_path: filePath, batch_display_name: batchDisplayName?.trim() || undefined, access_rule_set_id: accessRuleSetId?.trim() || undefined } }),
   validateMapping: (settings: MySqlSettings, importBatchId: string, dataType: string, filePath: string) =>
     invoke<CommandAck>('import_validate_mapping', { settings, importBatchId, dataType, filePath }),
   loadRaw: (settings: MySqlSettings, importBatchId: string, dataType: string, filePath: string, mode: string) =>
     invoke<CommandAck>('import_start_raw_load', { req: { settings, import_batch_id: importBatchId, data_type: dataType, file_path: filePath, mode } }),
-  importCurrentFile: (settings: MySqlSettings, dataType: string, filePath: string, batchDisplayName: string, mode: string) =>
-    invoke<ImportCurrentFileResult>('import_current_file_atomic', { req: { settings, data_type: dataType, file_path: filePath, batch_display_name: batchDisplayName, mode } }),
-  pipelineStart: (settings: MySqlSettings, dataType: string, filePath: string, batchDisplayName: string, importMode: string, analysisRunId?: string) =>
-    invoke<ImportPipelineStartResult>('import_pipeline_start', { req: { settings, data_type: dataType, file_path: filePath, batch_display_name: batchDisplayName, import_mode: importMode, analysis_run_id: analysisRunId } }),
+  importCurrentFile: (settings: MySqlSettings, dataType: string, filePath: string, batchDisplayName: string, mode: string, accessRuleSetId?: string) =>
+    invoke<ImportCurrentFileResult>('import_current_file_atomic', { req: { settings, data_type: dataType, file_path: filePath, batch_display_name: batchDisplayName, mode, access_rule_set_id: accessRuleSetId?.trim() || undefined } }),
+  pipelineStart: (settings: MySqlSettings, dataType: string, filePath: string, batchDisplayName: string, importMode: string, analysisRunId?: string, accessRuleSetId?: string) =>
+    invoke<ImportPipelineStartResult>('import_pipeline_start', { req: { settings, data_type: dataType, file_path: filePath, batch_display_name: batchDisplayName, import_mode: importMode, analysis_run_id: analysisRunId, access_rule_set_id: accessRuleSetId?.trim() || undefined } }),
   pipelineStatus: (settings: MySqlSettings, pipelineRunId: string) =>
     invoke<ImportPipelineStatus>('import_pipeline_get_status', { req: { settings, pipeline_run_id: pipelineRunId } }),
   pipelineLogs: (settings: MySqlSettings, pipelineRunId: string, afterSequence?: number) =>

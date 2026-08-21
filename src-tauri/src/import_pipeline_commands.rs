@@ -431,6 +431,7 @@ fn run_pipeline_job(
                             file_path: req.file_path.clone(),
                             batch_display_name: req.batch_display_name.clone(),
                             mode: req.import_mode.clone(),
+                            access_rule_set_id: req.access_rule_set_id.clone(),
                         },
                     )?;
                     import_batch_id = Some(result.batch.import_batch_id.clone());

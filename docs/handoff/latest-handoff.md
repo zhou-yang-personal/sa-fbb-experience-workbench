@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.36
+1.0.37
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,13 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.37 update
+
+- Registered the Tauri Dialog plugin and default dialog permission so the packaged Windows app can open the CSV picker.
+- Added visible file-dialog failure feedback instead of leaving rejected dialog invocations silent.
+- TCP / Game imports now require an explicit published IP rule-set selection and per-import confirmation; the backend validates and binds that exact version instead of selecting the latest version automatically.
+- Version markers are synchronized to `1.0.37`.
 
 ## 1.0.36 update
 
@@ -43,7 +50,8 @@ CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final
 - `npm run check`: passed on 2026-08-21.
 - `npm run build`: passed on 2026-08-21; Vite reports a non-blocking JavaScript chunk-size warning.
 - `cd src-tauri && cargo check`: passed on 2026-08-21 with existing dead-code/unused warnings.
-- `cd src-tauri && cargo test --offline`: passed, 26 tests.
+- `cd src-tauri && cargo test --offline`: passed, 27 tests.
+- Packaged Windows CSV picker interaction and a real MySQL import with manually selected rules remain to be smoke-tested from the 1.0.37 Windows artifact.
 - Real MySQL / customer CSV smoke: not run; no MySQL service or representative 1 GB+ fixture was available.
 
 ## Performance assessment

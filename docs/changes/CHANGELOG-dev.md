@@ -1,5 +1,26 @@
 # CHANGELOG-dev
 
+## 1.0.37 - 2026-08-21
+
+### Fixed
+
+- Registered the Tauri Dialog plugin and `dialog:default` capability so the packaged Windows app opens the native CSV file picker.
+- File-picker invocation failures now surface in the action feedback and execution log.
+
+### Changed
+
+- TCP / Game imports no longer silently bind the latest published IP rule version.
+- Every TCP / Game import requires manual selection and confirmation of a published IP rule version; the selected ID is validated and bound by the Rust backend.
+- Version markers were synchronized to `1.0.37`.
+
+### Verification
+
+- `npm run check`: passed.
+- `npm run build`: passed with the existing non-blocking Vite chunk-size warning.
+- `cd src-tauri && cargo check --offline`: passed with existing warnings.
+- `cd src-tauri && cargo test --offline`: passed, 27 tests.
+- Packaged Windows native-dialog interaction and real MySQL import remain to be verified by the GitHub Actions artifact smoke test.
+
 ## 1.0.36 - 2026-08-21
 
 ### Added

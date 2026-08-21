@@ -98,6 +98,22 @@
 .file-picker-card strong { color: #e8eefc; }
 .import-form-grid { grid-template-columns: 1.4fr 0.8fr 1fr; }
 .import-form-grid label, .batch-context-form label { display: grid; gap: 6px; color: #94a3b8; font-size: 12px; }
+.access-rule-confirmation-card { display: grid; gap: 14px; margin-top: 12px; padding: 16px; border: 1px solid #fedf89; border-radius: 12px; background: #fffaeb; }
+.access-rule-confirmation-card.is-ready { border-color: #abefc6; background: #ecfdf3; }
+.access-rule-confirmation-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.access-rule-confirmation-head span,
+.access-rule-confirmation-head small { display: block; color: #667085; }
+.access-rule-confirmation-head strong { display: block; margin: 4px 0; color: #172033; }
+.access-rule-confirmation-grid { display: grid; grid-template-columns: minmax(280px, .8fr) minmax(360px, 1.2fr); gap: 14px; align-items: end; }
+.access-rule-confirmation-grid > label { display: grid; gap: 6px; color: #475467; font-size: 12px; font-weight: 650; }
+.access-rule-confirmation-check { display: flex !important; min-height: 42px; padding: 10px 12px; align-items: center; grid-template-columns: auto 1fr; border: 1px solid #d0d5dd; border-radius: 9px; background: #fff; }
+.access-rule-confirmation-check input { width: 16px; height: 16px; margin: 0; flex: 0 0 auto; }
+.access-rule-confirmation-check span { color: #344054; line-height: 1.4; }
+
+@media (max-width: 980px) {
+  .access-rule-confirmation-head { display: grid; }
+  .access-rule-confirmation-grid { grid-template-columns: 1fr; }
+}
 .batch-context-form { grid-template-columns: 1.4fr 1.2fr 1fr 0.9fr; }
 .analysis-module-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
 .analysis-module-card { display: grid; gap: 6px; align-content: start; min-height: 128px; text-align: left; border: 1px solid rgba(148, 163, 184, 0.18); background: rgba(15, 23, 42, 0.46); }

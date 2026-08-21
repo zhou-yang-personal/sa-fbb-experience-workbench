@@ -80,6 +80,7 @@ pub struct CreateBatchRequest {
     pub data_type: String,
     pub file_path: String,
     pub batch_display_name: Option<String>,
+    pub access_rule_set_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -98,6 +99,7 @@ pub struct ImportCurrentFileRequest {
     pub file_path: String,
     pub batch_display_name: String,
     pub mode: Option<String>,
+    pub access_rule_set_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -118,6 +120,7 @@ pub struct ImportPipelineStartRequest {
     pub batch_display_name: String,
     pub import_mode: Option<String>,
     pub analysis_run_id: Option<String>,
+    pub access_rule_set_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -234,7 +237,10 @@ impl DashboardRequest {
         if keyword.is_empty() {
             None
         } else {
-            Some(format!("%{}%", keyword.replace('%', "\\%").replace('_', "\\_")))
+            Some(format!(
+                "%{}%",
+                keyword.replace('%', "\\%").replace('_', "\\_")
+            ))
         }
     }
 

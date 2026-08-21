@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ActionState, BatchTableRegistryRow, CsvProbeResult, ImportBatchResult, ImportDataType, ImportPipelineLogRow, ImportPipelineStatus, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
+import type { AccessRuleSetRow, ActionState, BatchTableRegistryRow, CsvProbeResult, ImportBatchResult, ImportDataType, ImportPipelineLogRow, ImportPipelineStatus, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
 import { ActionButton } from './ActionButton';
 import { selectCsvFile } from './fileDialogs';
 import { mappingApi } from './mappingApi';
@@ -22,12 +22,13 @@ type Props = {
   setBatchDisplayName: (value: string) => void;
   batch: ImportBatchResult | null;
   setBatch: (value: ImportBatchResult | null) => void;
-  createBatch: () => Promise<ImportBatchResult | null>;
+  createBatch: (accessRuleSetId?: string) => Promise<ImportBatchResult | null>;
   runAction: (label: string, action: () => Promise<unknown>) => Promise<unknown>;
   loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<MetricCard[]>;
   actionStates: Record<string, ActionState>;
   analysisRunId: string;
   onOpenAnalysis?: () => void;
+  onOpenAccessRules?: () => void;
 };
 
 function parseHint(hint: string) {
@@ -84,7 +85,13 @@ export function ImportPanel(props: Props) {
   const [pipelineStatus, setPipelineStatus] = useState<ImportPipelineStatus | null>(null);
   const [pipelineLogs, setPipelineLogs] = useState<ImportPipelineLogRow[]>([]);
   const [pipelineRunId, setPipelineRunId] = useState('');
+  const [publishedRuleSets, setPublishedRuleSets] = useState<AccessRuleSetRow[]>([]);
+  const [selectedRuleSetId, setSelectedRuleSetId] = useState('');
+  const [accessRuleConfirmed, setAccessRuleConfirmed] = useState(false);
+  const [accessRuleMessage, setAccessRuleMessage] = useState('TCP / Game 导入前必须手动选择并确认一个已发布 IP 规则版本。');
   const lastLogSeqRef = useRef(0);
+  const requiresAccessRules = dataType === 'tcp' || dataType === 'game';
+  const selectedRuleSet = publishedRuleSets.find((item) => item.rule_set_id === selectedRuleSetId);
 
   const mappingCounts = useMemo(() => {
     const counts = { required: 0, optional: 0, exact: 0, alias: 0, missingRequired: 0, missingOptional: 0 };
@@ -109,10 +116,53 @@ export function ImportPanel(props: Props) {
     ? mappingSummary.map((item) => `${item.label}: ${item.value}`).join(' · ')
     : '未跑映射汇总';
   const missingTotal = mappingCounts.missingRequired + mappingCounts.missingOptional;
-  const canImport = Boolean(filePath.trim()) && Boolean(batchDisplayName.trim());
+  const accessRuleReady = !requiresAccessRules || (Boolean(selectedRuleSetId) && accessRuleConfirmed);
+  const canImport = Boolean(filePath.trim()) && Boolean(batchDisplayName.trim()) && accessRuleReady;
   const analysisRunId = props.analysisRunId.trim() || 'RUN_DEFAULT';
   const pipelineRunning = pipelineStatus?.status === 'running' || pipelineStatus?.status === 'pending';
   const pipelineDone = ['success', 'degraded', 'failed', 'canceled'].includes(String(pipelineStatus?.status ?? '').toLowerCase());
+  const importBlockReason = !filePath
+    ? '请先选择 CSV 文件'
+    : !batchDisplayName.trim()
+      ? '请先设置批次名称'
+      : requiresAccessRules && !selectedRuleSetId
+        ? '请先选择本次导入使用的已发布 IP 规则版本'
+        : requiresAccessRules && !accessRuleConfirmed
+          ? '请勾选确认本次导入的 IP 规则版本'
+          : undefined;
+
+  async function refreshPublishedRuleSets() {
+    if (!requiresAccessRules) {
+      setPublishedRuleSets([]);
+      setAccessRuleMessage('当前数据类型不参与 Cable / FTTH IP 规则匹配。');
+      return;
+    }
+    setAccessRuleMessage('正在加载已发布 IP 规则版本…');
+    try {
+      const sets = await workbenchApi.accessRuleSets(settings);
+      const published = sets.filter((item) => item.status === 'published');
+      setPublishedRuleSets(published);
+      if (selectedRuleSetId && !published.some((item) => item.rule_set_id === selectedRuleSetId)) {
+        setSelectedRuleSetId('');
+        setAccessRuleConfirmed(false);
+      }
+      setAccessRuleMessage(published.length
+        ? `找到 ${published.length} 个已发布版本；每次导入都必须手动选择并确认。`
+        : '没有已发布规则。请先进入接入识别配置，新增、验证并发布 IP 网段规则。');
+    } catch (error) {
+      setPublishedRuleSets([]);
+      setSelectedRuleSetId('');
+      setAccessRuleConfirmed(false);
+      setAccessRuleMessage(`IP 规则加载失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  function requiredAccessRuleSetId() {
+    if (!requiresAccessRules) return undefined;
+    if (!selectedRuleSetId) throw new Error('请先选择本次导入使用的已发布 IP 规则版本。');
+    if (!accessRuleConfirmed) throw new Error('请勾选确认本次导入的 IP 规则版本。');
+    return selectedRuleSetId;
+  }
 
   function formatMs(ms?: number) {
     const safe = Number(ms ?? 0);
@@ -164,9 +214,10 @@ export function ImportPanel(props: Props) {
     await runAction('import_pipeline_start', async () => {
       if (!filePath.trim()) throw new Error('请先通过文件选择框选择 CSV 文件。');
       if (!batchDisplayName.trim()) throw new Error('请先为本次导入设置批次名称。');
+      const accessRuleSetId = requiredAccessRuleSetId();
       setPipelineLogs([]);
       lastLogSeqRef.current = 0;
-      const started = await workbenchApi.pipelineStart(settings, dataType, filePath, batchDisplayName, importMode, analysisRunId);
+      const started = await workbenchApi.pipelineStart(settings, dataType, filePath, batchDisplayName, importMode, analysisRunId, accessRuleSetId);
       setPipelineRunId(started.pipeline_run_id);
       setPipelineStatus({
         pipeline_run_id: started.pipeline_run_id,
@@ -180,10 +231,15 @@ export function ImportPanel(props: Props) {
         message: '后台执行计划已启动，前台将每秒刷新。',
         steps: [],
       });
-      setStatusMessage(`后台执行计划已启动：${started.pipeline_run_id}`);
+      setAccessRuleConfirmed(false);
+      setStatusMessage(`后台执行计划已启动：${started.pipeline_run_id}${selectedRuleSet ? `；已绑定 IP 规则 v${selectedRuleSet.version}` : ''}`);
       return started;
     });
   }
+
+  useEffect(() => {
+    void refreshPublishedRuleSets();
+  }, [requiresAccessRules, settings.host, settings.port, settings.database, settings.user, settings.secret]);
 
   useEffect(() => {
     if (!pipelineRunId) return;
@@ -207,12 +263,27 @@ export function ImportPanel(props: Props) {
   }, [pipelineRunId, pipelineStatus?.status, settings]);
 
   async function chooseFile() {
-    const selected = await selectCsvFile();
-    if (selected) {
-      setFilePath(selected);
-      if (!batchDisplayName.trim()) setBatchDisplayName(defaultBatchName(dataType, selected));
-      setStatusMessage(`已选择文件：${fileName(selected)}`);
+    const result = await runAction('select_csv_file', () => selectCsvFile());
+    if (result === null) {
+      setStatusMessage('无法打开系统文件选择器，请查看执行日志中的具体错误。');
+      return;
     }
+    const selected = typeof result === 'string' ? result : '';
+    if (!selected) {
+      setStatusMessage('文件选择已取消。');
+      return;
+    }
+    setFilePath(selected);
+    setAccessRuleConfirmed(false);
+    if (!batchDisplayName.trim()) setBatchDisplayName(defaultBatchName(dataType, selected));
+    setStatusMessage(`已选择文件：${fileName(selected)}；请确认本次导入的 IP 规则版本。`);
+  }
+
+  async function createSelectedBatch() {
+    const accessRuleSetId = requiredAccessRuleSetId();
+    const result = await createBatch(accessRuleSetId);
+    if (result) setAccessRuleConfirmed(false);
+    return result;
   }
 
   async function refreshMappingSummary(batchId = importBatchId) {
@@ -289,6 +360,7 @@ export function ImportPanel(props: Props) {
     await runAction('import_current_file', async () => {
       if (!filePath.trim()) throw new Error('请先通过文件选择框选择 CSV 文件。');
       if (!batchDisplayName.trim()) throw new Error('请先为本次导入设置一个正常人可读的批次名称。');
+      const accessRuleSetId = requiredAccessRuleSetId();
       const health = await workbenchApi.checkImportCatalog(settings);
       setCatalogHealth(health);
       const stale = health.some((item) => item.label === 'stale_catalog' && item.value === 'yes');
@@ -297,13 +369,14 @@ export function ImportPanel(props: Props) {
         const repaired = await workbenchApi.checkImportCatalog(settings);
         setCatalogHealth(repaired);
       }
-      const result = await workbenchApi.importCurrentFile(settings, dataType, filePath, batchDisplayName, importMode);
+      const result = await workbenchApi.importCurrentFile(settings, dataType, filePath, batchDisplayName, importMode, accessRuleSetId);
       setBatch(result.batch);
       setImportBatchId(result.batch.import_batch_id);
       setMappingSummary(result.mapping_summary);
       setMappingResults(result.mapping_results);
       setRawStatus(result.raw_status);
       setProfileMetrics(result.profile);
+      setAccessRuleConfirmed(false);
       setStatusMessage(`导入完成：${batchDisplayName} / ${result.batch.import_batch_id}`);
       return result;
     });
@@ -401,7 +474,7 @@ export function ImportPanel(props: Props) {
       <div className="step-card-head">
         <div>
           <h2>数据导入：导入新数据</h2>
-          <p className="hero-text">导入前必须确认批次名称。后续所有看板都以该批次为分析边界。</p>
+          <p className="hero-text">导入前必须确认批次名称；TCP / Game 还必须手动选择并确认本次使用的 IP 规则版本。</p>
         </div>
         <span className="step-badge">Import</span>
       </div>
@@ -421,6 +494,7 @@ export function ImportPanel(props: Props) {
             <select value={dataType} onChange={(e) => {
               const next = e.target.value as ImportDataType;
               setDataType(next);
+              setAccessRuleConfirmed(false);
               if (filePath && !batchDisplayName.trim()) setBatchDisplayName(defaultBatchName(next, filePath));
             }}>
               <option value="tcp">TCP / Universal Video</option><option value="game">Game</option><option value="crm">CRM Users</option><option value="coverage">FTTH Coverage</option><option value="reachability">Reachability</option>
@@ -441,8 +515,39 @@ export function ImportPanel(props: Props) {
           </div>
           <button type="button" disabled={pipelineRunning} onClick={chooseFile}>选择 CSV 文件</button>
         </section>
+        {requiresAccessRules && (
+          <section className={`access-rule-confirmation-card ${accessRuleReady ? 'is-ready' : ''}`}>
+            <div className="access-rule-confirmation-head">
+              <div>
+                <span>本次导入的接入识别规则</span>
+                <strong>{selectedRuleSet ? `v${selectedRuleSet.version} · ${selectedRuleSet.rule_set_name}` : '尚未选择'}</strong>
+                <small>{accessRuleMessage}</small>
+              </div>
+              <div className="action-row">
+                <button type="button" disabled={pipelineRunning} onClick={() => { void refreshPublishedRuleSets(); }}>刷新版本</button>
+                <button type="button" disabled={pipelineRunning} onClick={props.onOpenAccessRules}>配置 IP 网段</button>
+              </div>
+            </div>
+            <div className="access-rule-confirmation-grid">
+              <label>
+                已发布规则版本
+                <select value={selectedRuleSetId} disabled={pipelineRunning} onChange={(event) => {
+                  setSelectedRuleSetId(event.target.value);
+                  setAccessRuleConfirmed(false);
+                }}>
+                  <option value="">请选择，不自动使用最新版本</option>
+                  {publishedRuleSets.map((item) => <option key={item.rule_set_id} value={item.rule_set_id}>v{item.version} · {item.rule_set_name} · {item.rule_count} 条</option>)}
+                </select>
+              </label>
+              <label className="access-rule-confirmation-check">
+                <input type="checkbox" disabled={!selectedRuleSetId || pipelineRunning} checked={accessRuleConfirmed} onChange={(event) => setAccessRuleConfirmed(event.target.checked)} />
+                <span>我已检查该版本的 Cable / FTTH 网段，并确认用于本次 CSV 导入</span>
+              </label>
+            </div>
+          </section>
+        )}
         <div className="primary-action-row">
-          <ActionButton actionKey="import_pipeline_start" actionStates={actionStates} primary label={pipelineRunning ? '执行计划运行中' : '启动导入分析计划'} disabled={!canImport || pipelineRunning} onClick={startPipeline} title={!filePath ? '请先选择 CSV 文件' : !batchDisplayName ? '请先设置批次名称' : undefined} />
+          <ActionButton actionKey="import_pipeline_start" actionStates={actionStates} primary label={pipelineRunning ? '执行计划运行中' : '启动导入分析计划'} disabled={!canImport || pipelineRunning} onClick={startPipeline} title={importBlockReason} />
           <button type="button" disabled={!pipelineRunId} onClick={() => { void refreshPipeline(); }}>刷新状态</button>
           {['success', 'degraded'].includes(String(pipelineStatus?.status ?? '').toLowerCase()) && <button type="button" onClick={props.onOpenAnalysis}>进入数据分析</button>}
         </div>
@@ -510,6 +615,7 @@ export function ImportPanel(props: Props) {
           <select value={dataType} onChange={(e) => {
             const next = e.target.value as ImportDataType;
             setDataType(next);
+            setAccessRuleConfirmed(false);
             if (filePath && !batchDisplayName.trim()) setBatchDisplayName(defaultBatchName(next, filePath));
           }}>
             <option value="tcp">TCP / Universal Video</option><option value="game">Game</option><option value="crm">CRM Users</option><option value="coverage">FTTH Coverage</option><option value="reachability">Reachability</option>
@@ -532,7 +638,7 @@ export function ImportPanel(props: Props) {
       </section>
       <div className="action-row">
         <ActionButton actionKey="import_probe_csv" actionStates={actionStates} label="Probe CSV" disabled={!filePath} onClick={probeCurrentFile} />
-        <ActionButton actionKey="import_create_batch" actionStates={actionStates} label="创建批次" disabled={!filePath || !batchDisplayName.trim()} onClick={createBatch} />
+        <ActionButton actionKey="import_create_batch" actionStates={actionStates} label="创建批次" disabled={!canImport} onClick={createSelectedBatch} title={importBlockReason} />
       </div>
       {csvProbe && (
         <div className="table-like" style={{ marginTop: 12 }}>
@@ -553,7 +659,7 @@ export function ImportPanel(props: Props) {
       <section className="panel form-panel">
         <h3>4. RAW 入库</h3>
       <div className="primary-action-row">
-        <ActionButton actionKey="import_current_file" actionStates={actionStates} primary label="导入当前文件" disabled={!canImport} onClick={importCurrentFile} title={!filePath ? '请先选择 CSV 文件' : !batchDisplayName ? '请先设置批次名称' : undefined} />
+        <ActionButton actionKey="import_current_file" actionStates={actionStates} primary label="导入当前文件" disabled={!canImport} onClick={importCurrentFile} title={importBlockReason} />
       </div>
       <div className="action-row">
         <ActionButton actionKey="import_get_batch_status" actionStates={actionStates} label="刷新 RAW 状态" disabled={!importBatchId} onClick={() => refreshRawStatus()} />
@@ -590,10 +696,10 @@ export function ImportPanel(props: Props) {
       </details>
       <details className="advanced-actions">
         <summary>高级操作：逐步执行 / 排错</summary>
-        <input value={filePath} onChange={(e) => setFilePath(e.target.value)} placeholder="高级：CSV absolute path" />
+        <input value={filePath} onChange={(e) => { setFilePath(e.target.value); setAccessRuleConfirmed(false); }} placeholder="高级：CSV absolute path" />
         <div className="action-row">
           <ActionButton actionKey="import_probe_csv" actionStates={actionStates} label="Probe" disabled={!filePath} onClick={() => runAction('import_probe_csv', () => workbenchApi.probeCsv(filePath))} />
-          <ActionButton actionKey="import_create_batch" actionStates={actionStates} label="创建批次" disabled={!filePath || !batchDisplayName.trim()} onClick={createBatch} />
+          <ActionButton actionKey="import_create_batch" actionStates={actionStates} label="创建批次" disabled={!canImport} onClick={createSelectedBatch} title={importBlockReason} />
           <ActionButton actionKey="import_validate_mapping" actionStates={actionStates} label="映射校验" disabled={!importBatchId || !filePath} onClick={validateMapping} />
           <ActionButton actionKey="import_get_mapping_summary" actionStates={actionStates} label="映射汇总" disabled={!importBatchId} onClick={() => refreshMappingSummary()} />
           <ActionButton actionKey="import_get_mapping_results" actionStates={actionStates} label="映射结果" disabled={!importBatchId} onClick={() => refreshMappingResults()} />
