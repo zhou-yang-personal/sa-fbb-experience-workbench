@@ -21,6 +21,35 @@ export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; a
     const result = await workbenchApi.listBatches(c.settings);
     setBatches(result);
     setStatusMessage(result.length ? `已加载 ${result.length} 个批次。` : '当前没有可用批次。');
+    return result;
+  }
+
+  async function deleteBatches(batchIds: string[]) {
+    let deleted = 0;
+    const failures: string[] = [];
+    await c.runAction('import_delete_batches', async () => {
+      for (const batchId of batchIds) {
+        try {
+          await workbenchApi.deleteBatch(c.settings, batchId);
+          deleted += 1;
+        } catch (error) {
+          failures.push(`${batchId}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      if (failures.length) throw new Error(`已删除 ${deleted} 个，失败 ${failures.length} 个：${failures.join('；')}`);
+      return { deleted, batch_ids: batchIds };
+    });
+    const remaining = await refreshBatchList();
+    if (c.importBatchId && !remaining.some((batch) => batch.import_batch_id === c.importBatchId)) {
+      c.setImportBatchId('');
+      c.setBatchDisplayName('');
+      c.setBatch(null);
+      c.setOverview(null);
+      c.setDashboardCharts([]);
+      setTableRegistry([]);
+      setModuleStatus([]);
+    }
+    setStatusMessage(failures.length ? `已删除 ${deleted} 个批次，${failures.length} 个失败；详情见执行日志。` : `已删除 ${deleted} 个批次。`);
   }
 
   async function refreshBatchContext(batchId = c.importBatchId, analysisRunId = c.analysisRunId) {
@@ -42,7 +71,7 @@ export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; a
     void refreshBatchList().catch((error) => {
       setStatusMessage(error instanceof Error ? error.message : String(error));
     });
-  }, [c.settings.host, c.settings.port, c.settings.database, c.settings.user]);
+  }, [c.settings.host, c.settings.port, c.settings.database, c.settings.user, c.settings.secret]);
 
   useEffect(() => {
     if (!c.importBatchId.trim()) return;
@@ -59,6 +88,7 @@ export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; a
         batches={batches}
         selectedBatchId={c.importBatchId}
         onRefresh={refreshBatchList}
+        onDeleteBatches={deleteBatches}
         statusText={statusMessage}
         onSelectBatch={(batch) => {
           if (!batch) {

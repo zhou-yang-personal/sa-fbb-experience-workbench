@@ -93,6 +93,12 @@ pub struct RawLoadRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct DeleteBatchRequest {
+    pub settings: MySqlSettings,
+    pub import_batch_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct ImportCurrentFileRequest {
     pub settings: MySqlSettings,
     pub data_type: String,

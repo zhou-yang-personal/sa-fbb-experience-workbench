@@ -852,8 +852,12 @@ meta_quality_check_result
 ### 15.3 存储治理
 
 - 支持按 batch 删除 RAW / CLEAN / DWS / ADS。
+- 批次删除同时清理关联分析运行、导出记录、质量结果、映射结果和任务日志；运行中的 RAW / ETL / pipeline 必须阻断删除。
+- 每批物理表删除前必须校验注册表归属和安全表名，删除失败后允许对同一批次重试收口。
 - 支持归档旧 batch。
 - 不提交本地数据库文件和导出文件到 Git。
+
+`ads_network_hotspot_rank` 保留 BRAS / OLT / PON 的 `VARCHAR(255)` 原值，但使用自增主键和 128 字符前缀的查询索引，避免 utf8mb4 组合键超过 InnoDB 3072 字节限制。
 
 ## 16. 目录结构建议
 

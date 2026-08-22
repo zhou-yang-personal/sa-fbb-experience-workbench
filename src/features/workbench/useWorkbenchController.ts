@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from
 import type { ActionState, DashboardChartGroup, DashboardOverview, EtlJobStepRow, ExecutionLogEntry, FinalLeadUserRow, ImportBatchResult, ImportDataType, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
 import { workbenchApi } from './workbenchApi';
 
-const defaultSettings: MySqlSettings = { host: '127.0.0.1', port: 3306, database: 'sa_vbp', user: 'root', secret: '', local_infile: true };
+const defaultSettings: MySqlSettings = { host: '127.0.0.1', port: 3306, database: 'sa_vbp', user: 'root', secret: '123456', local_infile: true };
 const PERSISTENCE_KEY = 'sa-fbb-experience-workbench.context.v1';
 const dataTypes: ImportDataType[] = ['tcp', 'game', 'crm', 'coverage', 'reachability'];
 const importModes = ['load_data', 'streaming_insert'] as const;
@@ -132,7 +132,7 @@ function safeSettings(value: PersistedWorkbenchContext['settings']): MySqlSettin
     port: safePort(value?.port),
     database: safeString(value?.database, defaultSettings.database),
     user: safeString(value?.user, defaultSettings.user),
-    secret: '',
+    secret: defaultSettings.secret,
     local_infile: typeof value?.local_infile === 'boolean' ? value.local_infile : defaultSettings.local_infile,
   };
 }
@@ -201,7 +201,7 @@ export function useWorkbenchController(): WorkbenchController {
       started_at: startedAt.toISOString(),
       finished_at: new Date().toISOString(),
       duration_ms: 0,
-      message: 'Local workbench context was cleared and reset to defaults. MySQL password was never persisted.',
+      message: 'Local workbench context was cleared and reset to defaults. MySQL password returned to the built-in default and was not persisted.',
     });
   }
   async function runAction(label: string, action: () => Promise<unknown>) {

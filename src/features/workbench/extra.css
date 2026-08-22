@@ -115,6 +115,17 @@
   .access-rule-confirmation-grid { grid-template-columns: 1fr; }
 }
 .batch-context-form { grid-template-columns: 1.4fr 1.2fr 1fr 0.9fr; }
+.batch-delete-manager { margin-top: 12px; border: 1px solid rgba(248, 113, 113, 0.22); border-radius: 12px; padding: 10px; background: rgba(69, 10, 10, 0.12); }
+.batch-delete-manager summary { cursor: pointer; color: #fecaca; font-weight: 700; }
+.batch-delete-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.danger-button { border-color: rgba(248, 113, 113, 0.58); color: #fecaca; background: rgba(127, 29, 29, 0.32); }
+.batch-delete-list { display: grid; gap: 6px; max-height: 360px; overflow: auto; }
+.batch-delete-row { display: grid; grid-template-columns: auto minmax(260px, 1.8fr) 0.5fr 0.7fr 0.7fr; gap: 10px; align-items: center; border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 10px; padding: 8px 10px; background: rgba(15, 23, 42, 0.52); color: #cbd5e1; font-size: 12px; }
+.batch-delete-row input { width: 16px; height: 16px; margin: 0; }
+.batch-delete-row strong, .batch-delete-row small { display: block; }
+.batch-delete-row strong { color: #e8eefc; }
+.batch-delete-row small { color: #94a3b8; margin-top: 3px; word-break: break-all; }
+.batch-delete-row.is-protected { opacity: 0.58; }
 .analysis-module-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
 .analysis-module-card { display: grid; gap: 6px; align-content: start; min-height: 128px; text-align: left; border: 1px solid rgba(148, 163, 184, 0.18); background: rgba(15, 23, 42, 0.46); }
 .analysis-module-card strong { color: #e8eefc; }

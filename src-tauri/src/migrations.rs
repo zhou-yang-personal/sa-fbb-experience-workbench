@@ -91,3 +91,18 @@ pub fn ensure_access_columns_for_table(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ANALYTICS_SCHEMA;
+
+    #[test]
+    fn network_hotspot_schema_uses_bounded_indexes() {
+        assert!(ANALYTICS_SCHEMA.contains("id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY"));
+        assert!(ANALYTICS_SCHEMA
+            .contains("INDEX ix_hotspot_batch (import_batch_id, bras(128), olt(128), pon(128))"));
+        assert!(
+            !ANALYTICS_SCHEMA.contains("PRIMARY KEY (analysis_run_id, bras, olt, pon, user_type)")
+        );
+    }
+}

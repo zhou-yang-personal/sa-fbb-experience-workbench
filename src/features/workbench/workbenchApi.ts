@@ -43,6 +43,7 @@ export const workbenchApi = {
   applyAccessRulesToBatch: (settings: MySqlSettings, ruleSetId: string, importBatchId: string) => invoke<CommandAck>('access_rule_apply_to_batch', { req: { settings, rule_set_id: ruleSetId, import_batch_id: importBatchId } }),
   previewAccessRules: (settings: MySqlSettings, ruleSetId: string, importBatchId: string, sampleLimit = 50_000) => invoke<AccessRulePreviewResult>('access_rule_preview', { req: { settings, rule_set_id: ruleSetId, import_batch_id: importBatchId, sample_limit: sampleLimit } }),
   listBatches: (settings: MySqlSettings, dataType?: string) => invoke<BatchListItem[]>('import_list_batches', { settings, dataType }),
+  deleteBatch: (settings: MySqlSettings, importBatchId: string) => invoke<CommandAck>('import_delete_batch', { req: { settings, import_batch_id: importBatchId } }),
   prepareBatchTables: (settings: MySqlSettings, importBatchId: string) => invoke<MetricCard[]>('analysis_prepare_batch_tables', { settings, importBatchId }),
   batchTableRegistry: (settings: MySqlSettings, importBatchId: string) => invoke<BatchTableRegistryRow[]>('batch_get_table_registry', { settings, importBatchId }),
   moduleStatus: (settings: MySqlSettings, importBatchId: string, analysisRunId?: string) => invoke<ModuleStatusRow[]>('analysis_get_module_status', { settings, importBatchId, analysisRunId }),

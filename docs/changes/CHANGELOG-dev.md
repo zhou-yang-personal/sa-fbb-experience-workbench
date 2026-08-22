@@ -1,5 +1,29 @@
 # CHANGELOG-dev
 
+## 1.0.38 - 2026-08-22
+
+### Added
+
+- Added historical batch management with checkbox selection, quick selection of test/failed batches, and protected bulk deletion.
+- Batch deletion removes owned physical tables plus associated legacy RAW/DWD/DWS/ADS rows, analysis runs, exports, quality/mapping/profile results, pipelines and ETL metadata.
+
+### Changed
+
+- MySQL password defaults to `123456`; a user override remains memory-only and resets to the built-in default after reload or context reset.
+- Version markers were synchronized to `1.0.38`.
+
+### Fixed
+
+- Replaced the oversized `ads_network_hotspot_rank` utf8mb4 composite primary key with an auto-increment primary key and bounded prefix index, preventing MySQL ERROR 1071 during database initialization.
+
+### Verification
+
+- `npm run check`: passed.
+- `npm run build`: passed with the existing non-blocking Vite chunk-size warning.
+- `cd src-tauri && cargo check --offline`: passed with existing warnings.
+- `cd src-tauri && cargo test --offline`: passed, 30 tests.
+- Real MySQL batch deletion and migration execution remain to be smoke-tested against the target database.
+
 ## 1.0.37 - 2026-08-21
 
 ### Fixed

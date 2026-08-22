@@ -14,6 +14,7 @@ mod analytics_lead_commands;
 mod analytics_lead_page_commands;
 mod analytics_network_commands;
 mod analytics_user_commands;
+mod batch_delete_commands;
 mod batch_tables;
 mod config_commands;
 mod dashboard_commands;
@@ -57,6 +58,7 @@ fn main() {
             access_rule_commands::access_rule_apply_to_batch,
             access_rule_commands::access_rule_preview,
             analysis_commands::import_list_batches,
+            batch_delete_commands::import_delete_batch,
             analysis_commands::analysis_prepare_batch_tables,
             analysis_commands::batch_get_table_registry,
             analysis_commands::analysis_get_module_status,

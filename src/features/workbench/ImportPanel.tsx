@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { AccessRuleSetRow, ActionState, BatchTableRegistryRow, CsvProbeResult, ImportBatchResult, ImportDataType, ImportPipelineLogRow, ImportPipelineStatus, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
+import type { AccessRuleSetRow, ActionState, BatchListItem, BatchTableRegistryRow, CsvProbeResult, ImportBatchResult, ImportDataType, ImportPipelineLogRow, ImportPipelineStatus, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
 import { ActionButton } from './ActionButton';
+import { BatchSelector } from './BatchSelector';
 import { selectCsvFile } from './fileDialogs';
 import { mappingApi } from './mappingApi';
 import { profileApi } from './profileApi';
@@ -86,6 +87,8 @@ export function ImportPanel(props: Props) {
   const [pipelineLogs, setPipelineLogs] = useState<ImportPipelineLogRow[]>([]);
   const [pipelineRunId, setPipelineRunId] = useState('');
   const [publishedRuleSets, setPublishedRuleSets] = useState<AccessRuleSetRow[]>([]);
+  const [historyBatches, setHistoryBatches] = useState<BatchListItem[]>([]);
+  const [historyStatus, setHistoryStatus] = useState('正在读取历史批次…');
   const [selectedRuleSetId, setSelectedRuleSetId] = useState('');
   const [accessRuleConfirmed, setAccessRuleConfirmed] = useState(false);
   const [accessRuleMessage, setAccessRuleMessage] = useState('TCP / Game 导入前必须手动选择并确认一个已发布 IP 规则版本。');
@@ -155,6 +158,42 @@ export function ImportPanel(props: Props) {
       setAccessRuleConfirmed(false);
       setAccessRuleMessage(`IP 规则加载失败：${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  async function refreshHistoryBatches() {
+    const batches = await workbenchApi.listBatches(settings);
+    setHistoryBatches(batches);
+    setHistoryStatus(batches.length ? `已加载 ${batches.length} 个历史批次。` : '当前没有历史批次。');
+    return batches;
+  }
+
+  async function deleteHistoryBatches(batchIds: string[]) {
+    let deleted = 0;
+    const failures: string[] = [];
+    await runAction('import_delete_batches', async () => {
+      for (const batchId of batchIds) {
+        try {
+          await workbenchApi.deleteBatch(settings, batchId);
+          deleted += 1;
+        } catch (error) {
+          failures.push(`${batchId}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      if (failures.length) throw new Error(`已删除 ${deleted} 个，失败 ${failures.length} 个：${failures.join('；')}`);
+      return { deleted, batch_ids: batchIds };
+    });
+    const remaining = await refreshHistoryBatches();
+    if (importBatchId && !remaining.some((item) => item.import_batch_id === importBatchId)) {
+      setImportBatchId('');
+      setBatchDisplayName('');
+      setBatch(null);
+      setRawStatus([]);
+      setQualityRows([]);
+      setEtlJobs([]);
+      setRegistry([]);
+      setModuleStatus([]);
+    }
+    setHistoryStatus(failures.length ? `已删除 ${deleted} 个批次，${failures.length} 个失败；详情见执行日志。` : `已删除 ${deleted} 个批次。`);
   }
 
   function requiredAccessRuleSetId() {
@@ -240,6 +279,12 @@ export function ImportPanel(props: Props) {
   useEffect(() => {
     void refreshPublishedRuleSets();
   }, [requiresAccessRules, settings.host, settings.port, settings.database, settings.user, settings.secret]);
+
+  useEffect(() => {
+    void refreshHistoryBatches().catch((error) => {
+      setHistoryStatus(`历史批次加载失败：${error instanceof Error ? error.message : String(error)}`);
+    });
+  }, [settings.host, settings.port, settings.database, settings.user, settings.secret]);
 
   useEffect(() => {
     if (!pipelineRunId) return;
@@ -571,6 +616,31 @@ export function ImportPanel(props: Props) {
           </div>
         )}
       </section>
+      <BatchSelector
+        batches={historyBatches}
+        selectedBatchId={importBatchId}
+        statusText={historyStatus}
+        onRefresh={refreshHistoryBatches}
+        onDeleteBatches={deleteHistoryBatches}
+        onSelectBatch={(selected) => {
+          if (!selected) {
+            setImportBatchId('');
+            setBatchDisplayName('');
+            setBatch(null);
+            return;
+          }
+          setImportBatchId(selected.import_batch_id);
+          setBatchDisplayName(selected.batch_display_name ?? selected.source_file_name);
+          setDataType(selected.data_type as ImportDataType);
+          setBatch({
+            import_batch_id: selected.import_batch_id,
+            batch_display_name: selected.batch_display_name,
+            data_type: selected.data_type,
+            source_file_name: selected.source_file_name,
+            status: selected.status,
+          });
+        }}
+      />
       <section className="panel form-panel">
         <div className="log-header">
           <div>

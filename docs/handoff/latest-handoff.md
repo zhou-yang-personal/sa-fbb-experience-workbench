@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.37
+1.0.38
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,13 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.38 update
+
+- Added protected single/bulk deletion for historical import batches, including per-batch tables, shared legacy rows, analysis results and job metadata.
+- MySQL password now starts with the requested built-in default `123456`; user overrides remain in memory only.
+- Replaced the oversized utf8mb4 network-hotspot composite primary key with an auto-increment key and bounded prefix lookup index.
+- Version markers are synchronized to `1.0.38`.
 
 ## 1.0.37 update
 
@@ -47,11 +54,13 @@ CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final
 
 ## Verification
 
-- `npm run check`: passed on 2026-08-21.
-- `npm run build`: passed on 2026-08-21; Vite reports a non-blocking JavaScript chunk-size warning.
-- `cd src-tauri && cargo check`: passed on 2026-08-21 with existing dead-code/unused warnings.
-- `cd src-tauri && cargo test --offline`: passed, 27 tests.
-- Packaged Windows CSV picker interaction and a real MySQL import with manually selected rules remain to be smoke-tested from the 1.0.37 Windows artifact.
+- `npm run check`: passed on 2026-08-22.
+- `npm run build`: passed on 2026-08-22; Vite reports a non-blocking JavaScript chunk-size warning.
+- `cd src-tauri && cargo check --offline`: passed on 2026-08-22 with existing dead-code/unused warnings.
+- `cd src-tauri && cargo test --offline`: passed, 30 tests.
+- Network hotspot migration has a regression test for the bounded utf8mb4 index definition; target MySQL execution is not yet smoke-tested.
+- Historical batch deletion is compiled and unit-tested for status/table targeting, but destructive execution against a real target MySQL batch was not run.
+- Packaged Windows CSV picker, database initialization, batch deletion and a real import with manually selected rules remain to be smoke-tested from the next Windows artifact.
 - Real MySQL / customer CSV smoke: not run; no MySQL service or representative 1 GB+ fixture was available.
 
 ## Performance assessment

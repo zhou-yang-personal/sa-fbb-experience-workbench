@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS ads_hourly_experience_trend (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS ads_network_hotspot_rank (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   analysis_run_id VARCHAR(64) NOT NULL,
   import_batch_id VARCHAR(64) NOT NULL,
   bras VARCHAR(255) NOT NULL DEFAULT 'UNKNOWN',
@@ -85,9 +86,8 @@ CREATE TABLE IF NOT EXISTS ads_network_hotspot_rank (
   suggested_action VARCHAR(255) NULL,
   evidence_summary TEXT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (analysis_run_id, bras, olt, pon, user_type),
   INDEX ix_hotspot_rank (analysis_run_id, affected_users, poor_experience_user_pct),
-  INDEX ix_hotspot_batch (import_batch_id, bras, olt, pon)
+  INDEX ix_hotspot_batch (import_batch_id, bras(128), olt(128), pon(128))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS ads_user_experience_profile (
