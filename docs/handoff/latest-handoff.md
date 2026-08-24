@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.38
+1.0.39
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,15 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.39 update
+
+- RAW imports now reject zero-row outcomes before Quality Gate. LOAD DATA records the detected delimiter, verifies batch-visible rows and surfaces up to 20 MySQL warnings; Streaming INSERT also rejects header-only/zero-row files.
+- Probe, mapping validation, LOAD DATA and Streaming INSERT consistently use the bounded delimiter detection result for comma, Tab or semicolon input.
+- Dataset profiles resolve the current batch physical RAW table and no longer report the empty shared base table; `--` is excluded from distinct identity counts.
+- Pipeline failures automatically load RAW status, table registry evidence and failed Quality Gate items in the failure card.
+- Added customer TCP aliases for throughput average bandwidth and users average effective download rate.
+- Version markers are synchronized to `1.0.39`.
 
 ## 1.0.38 update
 
@@ -54,13 +63,14 @@ CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final
 
 ## Verification
 
-- `npm run check`: passed on 2026-08-22.
-- `npm run build`: passed on 2026-08-22; Vite reports a non-blocking JavaScript chunk-size warning.
-- `cd src-tauri && cargo check --offline`: passed on 2026-08-22 with existing dead-code/unused warnings.
-- `cd src-tauri && cargo test --offline`: passed, 30 tests.
+- `npm run check`: passed on 2026-08-24.
+- `npm run build`: passed on 2026-08-24; Vite reports a non-blocking JavaScript chunk-size warning.
+- `cd src-tauri && cargo check --offline`: passed on 2026-08-24 with existing dead-code/unused warnings.
+- `cd src-tauri && cargo test --offline`: passed, 36 tests.
 - Network hotspot migration has a regression test for the bounded utf8mb4 index definition; target MySQL execution is not yet smoke-tested.
 - Historical batch deletion is compiled and unit-tested for status/table targeting, but destructive execution against a real target MySQL batch was not run.
 - Packaged Windows CSV picker, database initialization, batch deletion and a real import with manually selected rules remain to be smoke-tested from the next Windows artifact.
+- Zero-row rejection, MySQL warning capture and physical-table dataset profile routing are compiled/unit-tested but not smoke-tested against a live MySQL 8.0 instance.
 - Real MySQL / customer CSV smoke: not run; no MySQL service or representative 1 GB+ fixture was available.
 
 ## Performance assessment

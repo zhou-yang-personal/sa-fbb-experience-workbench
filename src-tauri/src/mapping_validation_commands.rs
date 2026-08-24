@@ -44,7 +44,9 @@ pub fn validate_mapping_to_db(
     file_path: &str,
 ) -> Result<Vec<MappingValidationRow>, String> {
     crate::mapping_catalog::ensure_import_mapping_catalog(settings)?;
+    let delimiter = crate::probe::detect_delimiter(file_path)?;
     let mut reader = csv::ReaderBuilder::new()
+        .delimiter(delimiter)
         .flexible(true)
         .from_path(file_path)
         .map_err(|err| format!("failed to open CSV for mapping validation: {err}"))?;
@@ -342,6 +344,53 @@ mod tests {
                 .match_status,
             "missing_optional"
         );
+    }
+
+    #[test]
+    fn customer_tcp_sample_headers_keep_required_and_rate_metrics() {
+        let headers = StringRecord::from(vec![
+            "User Account",
+            "User Mac",
+            "Universal Video Applications",
+            "Statistics Duration",
+            "Local IP Address",
+            "Throughput (Average Bandwidth) (kbps)",
+            "Users Average Effective Download Rate (kbps)",
+            "Downloaded Data Volume (KB)",
+            "Effective Download Duration (s)",
+            "WAN_TYPE",
+        ]);
+        let rows = vec![
+            rule("user_account", "User Account", 1),
+            rule(
+                "universal_video_applications",
+                "Universal Video Applications",
+                1,
+            ),
+            rule("statistics_duration", "Statistics Duration", 1),
+            rule(
+                "throughput_avg_bandwidth_kbps",
+                "Throughput (Average Bandwidth) (kbps)",
+                0,
+            ),
+            rule(
+                "user_avg_effective_download_rate_kbps",
+                "Users Average Effective Download Rate (kbps)",
+                0,
+            ),
+            rule(
+                "downloaded_data_volume_kb",
+                "Downloaded Data Volume (KB)",
+                1,
+            ),
+            rule(
+                "effective_download_duration_s",
+                "Effective Download Duration (s)",
+                1,
+            ),
+        ];
+        let results = evaluate_mapping_groups(&headers, rows);
+        assert!(results.iter().all(|row| row.match_status == "matched"));
     }
 
     #[test]

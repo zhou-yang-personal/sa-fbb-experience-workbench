@@ -1,5 +1,29 @@
 # CHANGELOG-dev
 
+## 1.0.39 - 2026-08-24
+
+### Changed
+
+- CSV Probe, mapping validation, `LOAD DATA LOCAL INFILE` and Streaming INSERT now share bounded delimiter detection for comma, Tab and semicolon files.
+- Dataset profile metrics now query the current batch physical RAW table and exclude the `--` sentinel from distinct identity counts.
+- Pipeline failure cards automatically load RAW batch status, table registry evidence and failed Quality Gate items.
+- Added TCP aliases for `Throughput (Average Bandwidth) (kbps)` and `Users Average Effective Download Rate (kbps)`.
+- Version markers were synchronized to `1.0.39`.
+
+### Fixed
+
+- RAW imports no longer mark zero-row outcomes as successful. LOAD DATA verifies batch-visible rows, captures MySQL warnings and fails before Quality Gate; Streaming INSERT rejects header-only/zero-row files.
+- Quality Gate fatal errors now include the failed check names and metric evidence instead of only instructing the user to call another command.
+- Quality checks no longer count the `--` sentinel as a real account, MAC or application value.
+
+### Verification
+
+- `npm run check`: passed.
+- `npm run build`: passed with the existing non-blocking Vite chunk-size warning.
+- `cd src-tauri && cargo check --offline`: passed with existing warnings.
+- `cd src-tauri && cargo test --offline`: passed, 36 tests.
+- Real MySQL and representative 1 GB+ CSV smoke/benchmark: not run in this environment.
+
 ## 1.0.38 - 2026-08-22
 
 ### Added

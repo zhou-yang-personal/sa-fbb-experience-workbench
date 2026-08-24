@@ -71,6 +71,20 @@ fn quality_not_applicable_sql(import_batch_id: &str, data_type: &str) -> String 
     )
 }
 
+fn format_failed_quality_details(rows: &[(String, String, String, String)]) -> String {
+    rows.iter()
+        .take(8)
+        .map(|(check_item, metric_name, metric_value, metric_text)| {
+            if metric_text.is_empty() {
+                format!("{check_item}({metric_name}={metric_value})")
+            } else {
+                format!("{check_item}({metric_name}={metric_value}; {metric_text})")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
 #[tauri::command]
 pub fn quality_run_gate(req: EtlRequest) -> Result<CommandAck, String> {
     batch_tables::ensure_batch_tables(&req.settings, &req.import_batch_id)?;
@@ -122,9 +136,16 @@ pub fn quality_run_gate(req: EtlRequest) -> Result<CommandAck, String> {
         .map_err(|err| format!("failed to inspect quality gate outcome: {err}"))?
         .unwrap_or(0);
     if failed_checks > 0 {
+        let failed_rows: Vec<(String, String, String, String)> = conn
+            .exec(
+                "SELECT check_item, metric_name, COALESCE(CAST(metric_value AS CHAR), 'NULL'), COALESCE(metric_text, '') FROM meta_quality_check_result WHERE import_batch_id=? AND passed=0 AND severity='error' ORDER BY check_section, check_item LIMIT 8",
+                (&req.import_batch_id,),
+            )
+            .map_err(|err| format!("failed to read fatal quality details: {err}"))?;
+        let details = format_failed_quality_details(&failed_rows);
         return Err(format!(
-            "Quality Gate rejected batch {}: {failed_checks} fatal checks failed; inspect quality_get_failed_results before retrying",
-            req.import_batch_id
+            "Quality Gate rejected batch {}: {failed_checks} fatal checks failed; failed_items={details}",
+            req.import_batch_id,
         ));
     }
     Ok(ack(message))
@@ -268,7 +289,10 @@ pub fn leads_run_final_fusion(req: EtlRequest) -> Result<CommandAck, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{quality_templates_for_data_type, GAME_QUALITY_SQL, TCP_QUALITY_SQL};
+    use super::{
+        format_failed_quality_details, quality_templates_for_data_type, GAME_QUALITY_SQL,
+        TCP_QUALITY_SQL,
+    };
 
     #[test]
     fn quality_gate_routes_by_data_type() {
@@ -304,12 +328,33 @@ mod tests {
             assert!(sql.contains("REGEXP_REPLACE"));
             assert!(sql.contains("[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}"));
             assert!(sql.contains("stat_time_text"));
+            assert!(sql.contains("NULLIF(NULLIF(TRIM(user_mac), ''), '--')"));
             assert!(!sql.contains("STR_TO_DATE(NULLIF(TRIM(statistics_duration)"));
             assert!(!sql.contains("STR_TO_DATE(NULLIF(TRIM(statistical_time)"));
             assert!(!sql.contains("CHAR(9), '')"));
             assert!(!sql.contains("CHAR(10), '')"));
             assert!(!sql.contains("CHAR(13), '')"));
         }
+    }
+
+    #[test]
+    fn fatal_quality_message_contains_actionable_metrics() {
+        let details = format_failed_quality_details(&[
+            (
+                "tcp_row_count".to_string(),
+                "row_cnt".to_string(),
+                "0".to_string(),
+                "".to_string(),
+            ),
+            (
+                "tcp_time_range".to_string(),
+                "active_hours".to_string(),
+                "0".to_string(),
+                "min_time=NULL".to_string(),
+            ),
+        ]);
+        assert!(details.contains("tcp_row_count(row_cnt=0)"));
+        assert!(details.contains("tcp_time_range(active_hours=0; min_time=NULL)"));
     }
 }
 

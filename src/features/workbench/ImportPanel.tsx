@@ -234,7 +234,8 @@ export function ImportPanel(props: Props) {
       setPipelineLogs((items) => [...items, ...logs].slice(-200));
     }
     setStatusMessage(status.message ?? `Pipeline ${status.status}`);
-    if (status.import_batch_id && ['success', 'degraded'].includes(String(status.status).toLowerCase())) {
+    const normalizedStatus = String(status.status).toLowerCase();
+    if (status.import_batch_id && ['success', 'degraded'].includes(normalizedStatus)) {
       const [quality, jobs, nextRegistry, modules] = await Promise.all([
         qualityApi.allResults(settings, status.import_batch_id),
         workbenchApi.jobs(settings, status.import_batch_id),
@@ -245,6 +246,15 @@ export function ImportPanel(props: Props) {
       setEtlJobs(jobs);
       setRegistry(nextRegistry);
       setModuleStatus(modules);
+    } else if (status.import_batch_id && normalizedStatus === 'failed') {
+      const [failedQuality, nextRawStatus, nextRegistry] = await Promise.allSettled([
+        qualityApi.failedResults(settings, status.import_batch_id),
+        workbenchApi.importStatus(settings, status.import_batch_id),
+        workbenchApi.batchTableRegistry(settings, status.import_batch_id),
+      ]);
+      setQualityRows(failedQuality.status === 'fulfilled' ? failedQuality.value : []);
+      setRawStatus(nextRawStatus.status === 'fulfilled' ? nextRawStatus.value : []);
+      setRegistry(nextRegistry.status === 'fulfilled' ? nextRegistry.value : []);
     }
     return status;
   }
@@ -255,6 +265,11 @@ export function ImportPanel(props: Props) {
       if (!batchDisplayName.trim()) throw new Error('请先为本次导入设置批次名称。');
       const accessRuleSetId = requiredAccessRuleSetId();
       setPipelineLogs([]);
+      setQualityRows([]);
+      setRawStatus([]);
+      setProfileMetrics([]);
+      setRegistry([]);
+      setModuleStatus([]);
       lastLogSeqRef.current = 0;
       const started = await workbenchApi.pipelineStart(settings, dataType, filePath, batchDisplayName, importMode, analysisRunId, accessRuleSetId);
       setPipelineRunId(started.pipeline_run_id);
@@ -609,6 +624,18 @@ export function ImportPanel(props: Props) {
           <div className="diagnostic-row-failed" style={{ padding: 12, borderRadius: 12 }}>
             <strong>失败步骤：{pipelineStatus.failed_step ?? pipelineStatus.current_step ?? '-'}</strong>
             <p className="muted-row">{pipelineStatus.error_message ?? pipelineStatus.message ?? '未返回错误详情'}</p>
+            {rawStatus.length > 0 && (
+              <div className="table-like" style={{ marginTop: 10 }}>
+                <div className="table-row table-head"><span>RAW 状态</span><span>值</span><span>诊断</span></div>
+                {rawStatus.map((item) => <div key={`failed-raw-${item.label}`} className="table-row"><span>{item.label}</span><span>{item.value}</span><span>{item.hint}</span></div>)}
+              </div>
+            )}
+            {qualityRows.length > 0 && (
+              <div className="table-like" style={{ marginTop: 10 }}>
+                <div className="table-row table-head"><span>Quality Gate 失败项</span><span>指标</span><span>证据</span></div>
+                {qualityRows.map((item) => <div key={`failed-quality-${item.label}-${item.value}`} className="table-row"><span>{item.label}</span><span>{item.value}</span><span>{item.hint}</span></div>)}
+              </div>
+            )}
             <div className="action-row">
               <button type="button" onClick={() => navigator.clipboard?.writeText(`${pipelineStatus.failed_step ?? ''}\n${pipelineStatus.error_message ?? ''}`)}>复制错误</button>
               <button type="button" onClick={startPipeline}>重试整条计划</button>

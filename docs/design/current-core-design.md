@@ -488,6 +488,8 @@ ads_build_priority_cluster
 8. 执行 RAW 层质量检查
 ```
 
+Probe 只读取有界样本识别逗号、Tab 或分号，字段映射、LOAD DATA 和 Streaming INSERT 必须复用同一分隔符。LOAD DATA 返回后先验证当前 `import_batch_id` 在批次物理 RAW 表中可见；0 行必须在 RAW 步骤直接失败并保留 MySQL warning，不得进入 Quality Gate 后才以四项通用错误暴露。
+
 适用：
 
 - 千万级 CSV。
@@ -522,8 +524,10 @@ RAW 导入后必须执行：
 质量门禁失败时：
 
 - 阻断 RAW → CLEAN。
-- 展示失败项。
+- 在流水线失败卡片直接展示失败项、RAW 批次状态和物理表行数。
 - 允许用户选择修正映射后重跑。
+
+数据画像必须通过批次表注册表解析物理 RAW 表；共享 RAW 基表仅作为 `CREATE TABLE ... LIKE` 模板，不作为已分批数据的画像来源。
 
 ## 8. 清洗与聚合任务设计
 
