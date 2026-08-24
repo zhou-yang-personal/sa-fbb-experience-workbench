@@ -73,6 +73,126 @@ fn source_file_name(file_path: &str) -> String {
         .unwrap_or_else(|| file_path.to_string())
 }
 
+fn format_bytes(bytes: u64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = 1024.0 * KIB;
+    const GIB: f64 = 1024.0 * MIB;
+    let value = bytes as f64;
+    if value >= GIB {
+        format!("{:.2} GiB", value / GIB)
+    } else if value >= MIB {
+        format!("{:.1} MiB", value / MIB)
+    } else if value >= KIB {
+        format!("{:.1} KiB", value / KIB)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+fn raw_import_heartbeat_message(mode: &str, transferred_bytes: u64, total_bytes: u64) -> String {
+    let streaming_insert = matches!(mode, "streaming_insert" | "insert" | "fallback");
+    let action = if streaming_insert {
+        "Streaming INSERT 正在读取源文件"
+    } else {
+        "LOAD DATA 正在传输客户端文件"
+    };
+    if total_bytes == 0 {
+        return format!(
+            "{action}：已处理 {}；源文件大小未知",
+            format_bytes(transferred_bytes)
+        );
+    }
+    let percent = (transferred_bytes as f64 / total_bytes as f64 * 100.0).min(100.0);
+    if transferred_bytes >= total_bytes {
+        if streaming_insert {
+            format!(
+                "源文件已读取完成：{} / {}（100%）；正在等待剩余批次写入与 MySQL 提交",
+                format_bytes(transferred_bytes),
+                format_bytes(total_bytes)
+            )
+        } else {
+            format!(
+                "客户端文件已传输完成：{} / {}（100%）；正在等待 MySQL 解析、索引更新与提交",
+                format_bytes(transferred_bytes),
+                format_bytes(total_bytes)
+            )
+        }
+    } else {
+        format!(
+            "{action}：{} / {}（{percent:.1}%）",
+            format_bytes(transferred_bytes),
+            format_bytes(total_bytes)
+        )
+    }
+}
+
+fn raw_import_stall_hint(transferred_bytes: u64, total_bytes: u64) -> &'static str {
+    if transferred_bytes == 0 {
+        "客户端字节连续 30 秒未变化；请检查文件是否仍可读、MySQL LOCAL INFILE 请求或磁盘状态"
+    } else if total_bytes > 0 && transferred_bytes >= total_bytes {
+        "文件已传完但 MySQL 连续 30 秒未返回；可能仍在解析、更新索引或提交，可用 SHOW PROCESSLIST 确认"
+    } else {
+        "客户端传输字节连续 30 秒未增长；请检查磁盘读取、MySQL 连接和安全软件"
+    }
+}
+
+fn spawn_raw_import_reporter(
+    settings: MySqlSettings,
+    pipeline_run_id: String,
+    progress: crate::raw_import_v2::RawLoadProgress,
+    mode: String,
+    total_bytes: u64,
+    total_started: std::time::Instant,
+) -> (std::sync::mpsc::Sender<()>, std::thread::JoinHandle<()>) {
+    let (stop_tx, stop_rx) = std::sync::mpsc::channel();
+    let reporter = std::thread::spawn(move || {
+        let mut last_bytes = progress.transferred_bytes();
+        let mut stagnant_intervals = 0_u8;
+        loop {
+            match stop_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    let transferred_bytes = progress.transferred_bytes();
+                    if transferred_bytes == last_bytes {
+                        stagnant_intervals = stagnant_intervals.saturating_add(1);
+                    } else {
+                        stagnant_intervals = 0;
+                        last_bytes = transferred_bytes;
+                    }
+                    let stalled = stagnant_intervals >= 6;
+                    let mut message =
+                        raw_import_heartbeat_message(&mode, transferred_bytes, total_bytes);
+                    if stalled {
+                        message.push_str("；");
+                        message.push_str(raw_import_stall_hint(transferred_bytes, total_bytes));
+                        stagnant_intervals = 0;
+                    }
+                    let elapsed_ms = now_elapsed_ms(total_started);
+                    let _ = update_run(
+                        &settings,
+                        &pipeline_run_id,
+                        "running",
+                        Some("import_current_file_atomic"),
+                        Some(&message),
+                        None,
+                        None,
+                        elapsed_ms,
+                    );
+                    let _ = append_log(
+                        &settings,
+                        &pipeline_run_id,
+                        if stalled { "warning" } else { "info" },
+                        Some("import_current_file_atomic"),
+                        &message,
+                        elapsed_ms,
+                    );
+                }
+            }
+        }
+    });
+    (stop_tx, reporter)
+}
+
 fn ensure_pipeline_schema(settings: &MySqlSettings) -> Result<(), String> {
     sql_runner::execute_script(settings, PIPELINE_SCHEMA).map(|_| ())
 }
@@ -424,7 +544,36 @@ fn run_pipeline_job(
                 step,
                 total_started,
                 || {
-                    let result = crate::import_commands::import_current_file_atomic(
+                    let total_bytes = std::fs::metadata(&req.file_path)
+                        .map(|metadata| metadata.len())
+                        .unwrap_or(0);
+                    let progress = crate::raw_import_v2::RawLoadProgress::default();
+                    let import_mode = req
+                        .import_mode
+                        .clone()
+                        .unwrap_or_else(|| "load_data".to_string())
+                        .to_lowercase();
+                    let monitor_message = format!(
+                        "RAW 导入监控已启动：源文件大小={}；每 5 秒报告客户端传输进度",
+                        format_bytes(total_bytes)
+                    );
+                    append_log(
+                        &settings,
+                        &pipeline_run_id,
+                        "info",
+                        Some(step.name),
+                        &monitor_message,
+                        now_elapsed_ms(total_started),
+                    )?;
+                    let (stop_reporter, reporter) = spawn_raw_import_reporter(
+                        settings.clone(),
+                        pipeline_run_id.clone(),
+                        progress.clone(),
+                        import_mode,
+                        total_bytes,
+                        total_started,
+                    );
+                    let import_result = crate::import_commands::import_current_file_atomic_observed(
                         ImportCurrentFileRequest {
                             settings: settings.clone(),
                             data_type: req.data_type.clone(),
@@ -433,9 +582,15 @@ fn run_pipeline_job(
                             mode: req.import_mode.clone(),
                             access_rule_set_id: req.access_rule_set_id.clone(),
                         },
-                    )?;
+                        progress,
+                        |batch| {
+                            update_batch_id(&settings, &pipeline_run_id, &batch.import_batch_id)
+                        },
+                    );
+                    let _ = stop_reporter.send(());
+                    let _ = reporter.join();
+                    let result = import_result?;
                     import_batch_id = Some(result.batch.import_batch_id.clone());
-                    update_batch_id(&settings, &pipeline_run_id, &result.batch.import_batch_id)?;
                     Ok(Some(format!(
                         "RAW import finished: batch={}, mapping_rows={}",
                         result.batch.import_batch_id,
@@ -792,7 +947,10 @@ pub fn import_pipeline_get_logs(
 
 #[cfg(test)]
 mod tests {
-    use super::{final_status_for_step_failure, pipeline_plan, PipelineOutcome};
+    use super::{
+        final_status_for_step_failure, pipeline_plan, raw_import_heartbeat_message,
+        raw_import_stall_hint, PipelineOutcome,
+    };
 
     #[test]
     fn pipeline_step_order_is_fixed() {
@@ -830,5 +988,15 @@ mod tests {
             final_status_for_step_failure("raw_quality_gate"),
             PipelineOutcome::Failed
         );
+    }
+
+    #[test]
+    fn raw_import_heartbeat_distinguishes_transfer_from_mysql_commit() {
+        assert!(raw_import_heartbeat_message("load_data", 25, 100).contains("25.0%"));
+        let committed = raw_import_heartbeat_message("load_data", 100, 100);
+        assert!(committed.contains("100%"));
+        assert!(committed.contains("等待 MySQL"));
+        assert!(raw_import_stall_hint(0, 100).contains("LOCAL INFILE"));
+        assert!(raw_import_stall_hint(100, 100).contains("SHOW PROCESSLIST"));
     }
 }

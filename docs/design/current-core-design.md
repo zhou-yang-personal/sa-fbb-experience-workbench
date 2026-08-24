@@ -488,7 +488,7 @@ ads_build_priority_cluster
 8. 执行 RAW 层质量检查
 ```
 
-Probe 只读取有界样本识别逗号、Tab 或分号，字段映射、LOAD DATA 和 Streaming INSERT 必须复用同一分隔符。Rust MySQL 客户端在每次 LOAD DATA 前注册仅允许当前所选 CSV 规范路径的 `LocalInfileHandler`，通过 1 MiB 缓冲流式传输文件，拒绝服务端请求其他本地路径，并在语句结束后立即移除处理器。LOAD DATA 返回后先验证当前 `import_batch_id` 在批次物理 RAW 表中可见；0 行必须在 RAW 步骤直接失败并保留 MySQL warning，不得进入 Quality Gate 后才以四项通用错误暴露。
+Probe 只读取有界样本识别逗号、Tab 或分号，字段映射、LOAD DATA 和 Streaming INSERT 必须复用同一分隔符。Rust MySQL 客户端在每次 LOAD DATA 前注册仅允许当前所选 CSV 规范路径的 `LocalInfileHandler`，通过 1 MiB 缓冲流式传输文件，拒绝服务端请求其他本地路径，并在语句结束后立即移除处理器。RAW 长步骤以共享原子计数器记录客户端已处理字节，每 5 秒通过独立 MySQL 连接写入 pipeline heartbeat；达到 100% 后显示 MySQL 解析/索引/提交等待，连续 30 秒无变化则输出分阶段 warning。批次创建后立即绑定到 pipeline run。LOAD DATA 返回后先验证当前 `import_batch_id` 在批次物理 RAW 表中可见；0 行必须在 RAW 步骤直接失败并保留 MySQL warning，不得进入 Quality Gate 后才以四项通用错误暴露。
 
 适用：
 

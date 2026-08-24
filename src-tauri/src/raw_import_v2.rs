@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use csv::StringRecord;
 use mysql::prelude::*;
@@ -17,6 +19,29 @@ struct RawSpec {
 }
 
 type HeaderAliases = HashMap<String, Vec<String>>;
+
+#[derive(Clone, Default)]
+pub struct RawLoadProgress {
+    transferred_bytes: Arc<AtomicU64>,
+}
+
+impl RawLoadProgress {
+    pub fn transferred_bytes(&self) -> u64 {
+        self.transferred_bytes.load(Ordering::Relaxed)
+    }
+
+    fn reset(&self) {
+        self.transferred_bytes.store(0, Ordering::Relaxed);
+    }
+
+    fn add_transferred_bytes(&self, bytes: u64) {
+        self.transferred_bytes.fetch_add(bytes, Ordering::Relaxed);
+    }
+
+    fn set_transferred_bytes(&self, bytes: u64) {
+        self.transferred_bytes.store(bytes, Ordering::Relaxed);
+    }
+}
 
 const TCP_COLUMNS: &[&str] = &[
     "user_account",
@@ -116,6 +141,16 @@ const REACHABILITY_COLUMNS: &[&str] = &[
 ];
 
 pub fn start_raw_load(req: RawLoadRequest) -> Result<String, String> {
+    start_raw_load_with_progress(req, None)
+}
+
+pub fn start_raw_load_with_progress(
+    req: RawLoadRequest,
+    progress: Option<RawLoadProgress>,
+) -> Result<String, String> {
+    if let Some(progress) = progress.as_ref() {
+        progress.reset();
+    }
     preflight_required_mapping(&req)?;
     let mode = req
         .mode
@@ -129,9 +164,9 @@ pub fn start_raw_load(req: RawLoadRequest) -> Result<String, String> {
         })
         .to_lowercase();
     if mode == "streaming_insert" || mode == "insert" || mode == "fallback" {
-        streaming_insert(req)
+        streaming_insert(req, progress)
     } else {
-        mapped_load_data(req)
+        mapped_load_data(req, progress)
     }
 }
 
@@ -178,14 +213,17 @@ fn raw_spec(req: &RawLoadRequest) -> Result<RawSpec, String> {
     }
 }
 
-fn mapped_load_data(req: RawLoadRequest) -> Result<String, String> {
+fn mapped_load_data(
+    req: RawLoadRequest,
+    progress: Option<RawLoadProgress>,
+) -> Result<String, String> {
     let spec = raw_spec(&req)?;
     let mut conn = db::conn(&req.settings)?;
     let aliases = load_header_aliases(&mut conn, &req.data_type);
     drop(conn);
     let delimiter = crate::probe::detect_delimiter(&req.file_path)?;
     let headers = read_headers(&req.file_path, delimiter)?;
-    load_data(req, spec, &headers, &aliases, delimiter)
+    load_data(req, spec, &headers, &aliases, delimiter, progress)
 }
 
 fn load_data(
@@ -194,6 +232,7 @@ fn load_data(
     headers: &StringRecord,
     aliases: &HeaderAliases,
     delimiter: u8,
+    progress: Option<RawLoadProgress>,
 ) -> Result<String, String> {
     let mut conn = db::conn(&req.settings)?;
     let file_name = source_file_name(&req.file_path);
@@ -216,7 +255,13 @@ fn load_data(
     if assignments.is_empty() {
         return Err("no CSV columns can be mapped to the selected RAW schema".to_string());
     }
-    let local_infile_handler = db::local_infile_handler_for_path(&req.file_path)?;
+    let progress_for_handler = progress.clone();
+    let local_infile_handler =
+        db::local_infile_handler_for_path_with_progress(&req.file_path, move |bytes| {
+            if let Some(progress) = progress_for_handler.as_ref() {
+                progress.add_transferred_bytes(bytes);
+            }
+        })?;
     conn.exec_drop("UPDATE meta_import_batch SET status='running', started_at=NOW(), total_rows=NULL, imported_rows=0, message='raw mapped load_data started' WHERE import_batch_id=?", (&req.import_batch_id,)).map_err(|err| format!("failed to mark batch running: {err}"))?;
     conn.query_drop(format!("TRUNCATE TABLE `{}`", spec.table))
         .map_err(|err| format!("failed to reset RAW batch table before LOAD DATA: {err}"))?;
@@ -274,7 +319,10 @@ fn load_data(
     }
 }
 
-fn streaming_insert(req: RawLoadRequest) -> Result<String, String> {
+fn streaming_insert(
+    req: RawLoadRequest,
+    progress: Option<RawLoadProgress>,
+) -> Result<String, String> {
     let spec = raw_spec(&req)?;
     let delimiter = crate::probe::detect_delimiter(&req.file_path)?;
     let mut conn = db::conn(&req.settings)?;
@@ -295,12 +343,15 @@ fn streaming_insert(req: RawLoadRequest) -> Result<String, String> {
         .clone();
     let header_index = header_index(&headers);
     let mut rows = Vec::with_capacity(500);
+    let mut row = StringRecord::new();
     let mut source_line_no = 1_u64;
     let mut total_rows = 0_u64;
 
-    for row in reader.records() {
+    while reader
+        .read_record(&mut row)
+        .map_err(|err| format!("failed to read CSV row {}: {err}", source_line_no + 1))?
+    {
         source_line_no += 1;
-        let row = row.map_err(|err| format!("failed to read CSV row {source_line_no}: {err}"))?;
         rows.push(row_to_values(
             &req.import_batch_id,
             &file_name,
@@ -320,7 +371,13 @@ fn streaming_insert(req: RawLoadRequest) -> Result<String, String> {
                 "mapped streaming insert running",
             )?;
             rows.clear();
+            if let Some(progress) = progress.as_ref() {
+                progress.set_transferred_bytes(reader.position().byte());
+            }
         }
+    }
+    if let Some(progress) = progress.as_ref() {
+        progress.set_transferred_bytes(reader.position().byte());
     }
     if !rows.is_empty() {
         flush_rows(&mut conn, &spec, &rows)?;
@@ -600,6 +657,7 @@ fn delimiter_label(delimiter: u8) -> &'static str {
 mod tests {
     use super::{
         load_data_field_terminator, source_index_for_column, value_for_column, HeaderAliases,
+        RawLoadProgress,
     };
     use csv::StringRecord;
     use std::collections::HashMap;
@@ -651,5 +709,17 @@ mod tests {
         assert_eq!(load_data_field_terminator(b'\t').unwrap(), "\\t");
         assert_eq!(load_data_field_terminator(b';').unwrap(), ";");
         assert!(load_data_field_terminator(b'|').is_err());
+    }
+
+    #[test]
+    fn raw_load_progress_is_shared_and_resettable() {
+        let progress = RawLoadProgress::default();
+        let shared = progress.clone();
+        progress.add_transferred_bytes(1024);
+        assert_eq!(shared.transferred_bytes(), 1024);
+        shared.set_transferred_bytes(2048);
+        assert_eq!(progress.transferred_bytes(), 2048);
+        progress.reset();
+        assert_eq!(shared.transferred_bytes(), 0);
     }
 }

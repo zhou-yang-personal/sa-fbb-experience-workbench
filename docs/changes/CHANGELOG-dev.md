@@ -1,5 +1,23 @@
 # CHANGELOG-dev
 
+## 1.0.41 - 2026-08-24
+
+### Added
+
+- Added a five-second RAW import heartbeat containing processed bytes, source size and transfer percentage for LOAD DATA and Streaming INSERT.
+- Added a 30-second no-byte-change warning that distinguishes pre-transfer stalls, mid-transfer stalls and post-transfer MySQL parse/index/commit waits.
+
+### Changed
+
+- Import batches are now attached to the pipeline immediately after creation instead of only after the entire RAW import returns.
+- Version markers were synchronized to `1.0.41`.
+
+### Verification
+
+- `cd src-tauri && cargo test --offline`: passed, 41 tests.
+- `npm run check`, `npm run build` and `cd src-tauri && cargo check --offline`: passed.
+- Live Windows/MySQL import and representative 1 GB+ benchmark: not run in this environment.
+
 ## 1.0.40 - 2026-08-24
 
 ### Fixed

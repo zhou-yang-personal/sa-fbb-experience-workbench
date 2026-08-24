@@ -172,6 +172,28 @@ pub fn import_get_batch_status(
 pub fn import_current_file_atomic(
     req: ImportCurrentFileRequest,
 ) -> Result<ImportCurrentFileResult, String> {
+    import_current_file_atomic_inner(req, None, |_| Ok(()))
+}
+
+pub fn import_current_file_atomic_observed<F>(
+    req: ImportCurrentFileRequest,
+    progress: crate::raw_import_v2::RawLoadProgress,
+    on_batch_created: F,
+) -> Result<ImportCurrentFileResult, String>
+where
+    F: FnOnce(&ImportBatchResult) -> Result<(), String>,
+{
+    import_current_file_atomic_inner(req, Some(progress), on_batch_created)
+}
+
+fn import_current_file_atomic_inner<F>(
+    req: ImportCurrentFileRequest,
+    progress: Option<crate::raw_import_v2::RawLoadProgress>,
+    on_batch_created: F,
+) -> Result<ImportCurrentFileResult, String>
+where
+    F: FnOnce(&ImportBatchResult) -> Result<(), String>,
+{
     if req.file_path.trim().is_empty() {
         return Err("CSV file path is required".to_string());
     }
@@ -187,6 +209,13 @@ pub fn import_current_file_atomic(
         Some(&req.batch_display_name),
         req.access_rule_set_id.as_deref(),
     )?;
+    if let Err(err) = on_batch_created(&batch) {
+        mark_batch_failed(&req.settings, &batch.import_batch_id, &err)?;
+        return Err(format!(
+            "failed to attach import batch to pipeline: {err}; import_batch_id={}",
+            batch.import_batch_id
+        ));
+    }
     let validation_rows = crate::mapping_validation_commands::validate_mapping_to_db(
         &req.settings,
         &batch.import_batch_id,
@@ -209,7 +238,7 @@ pub fn import_current_file_atomic(
         file_path: req.file_path.clone(),
         mode: req.mode.clone(),
     };
-    if let Err(err) = crate::raw_import_v2::start_raw_load(raw_req) {
+    if let Err(err) = crate::raw_import_v2::start_raw_load_with_progress(raw_req, progress) {
         mark_batch_failed(&req.settings, &batch.import_batch_id, &err)?;
         return Err(format!("{err}; import_batch_id={}", batch.import_batch_id));
     }
