@@ -216,6 +216,7 @@ fn load_data(
     if assignments.is_empty() {
         return Err("no CSV columns can be mapped to the selected RAW schema".to_string());
     }
+    let local_infile_handler = db::local_infile_handler_for_path(&req.file_path)?;
     conn.exec_drop("UPDATE meta_import_batch SET status='running', started_at=NOW(), total_rows=NULL, imported_rows=0, message='raw mapped load_data started' WHERE import_batch_id=?", (&req.import_batch_id,)).map_err(|err| format!("failed to mark batch running: {err}"))?;
     conn.query_drop(format!("TRUNCATE TABLE `{}`", spec.table))
         .map_err(|err| format!("failed to reset RAW batch table before LOAD DATA: {err}"))?;
@@ -225,7 +226,10 @@ fn load_data(
         spec.table,
         assignments.join(", ")
     );
-    match conn.query_drop(sql) {
+    conn.set_local_infile_handler(Some(local_infile_handler));
+    let load_result = conn.query_drop(sql);
+    conn.set_local_infile_handler(None);
+    match load_result {
         Ok(_) => {
             let reported_rows = conn.affected_rows();
             let warnings = load_data_warnings(&mut conn);
@@ -257,7 +261,7 @@ fn load_data(
                 "raw mapped load_data finished",
             )?;
             Ok(format!(
-                "raw mapped load_data finished: table={}, rows={rows}, mysql_reported_rows={reported_rows}, delimiter={}",
+                "raw mapped load_data finished: table={}, rows={rows}, mysql_reported_rows={reported_rows}, delimiter={}, local_infile_stream=enabled",
                 spec.table,
                 delimiter_label(delimiter)
             ))

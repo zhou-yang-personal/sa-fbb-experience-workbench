@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.39
+1.0.40
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,13 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.40 update
+
+- Fixed the Rust MySQL client path that executed `LOAD DATA LOCAL INFILE` without a local-infile handler, which made the client send an empty payload and MySQL report zero rows without warnings.
+- The selected CSV is now transferred with a bounded 1 MiB buffer; the application does not load the whole file into memory.
+- The per-import handler canonicalizes and permits only the exact user-selected file, rejects any other server-requested local path, and is removed immediately after the statement.
+- Version markers are synchronized to `1.0.40`.
 
 ## 1.0.39 update
 
@@ -66,11 +73,11 @@ CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final
 - `npm run check`: passed on 2026-08-24.
 - `npm run build`: passed on 2026-08-24; Vite reports a non-blocking JavaScript chunk-size warning.
 - `cd src-tauri && cargo check --offline`: passed on 2026-08-24 with existing dead-code/unused warnings.
-- `cd src-tauri && cargo test --offline`: passed, 36 tests.
+- `cd src-tauri && cargo test --offline`: passed, 39 tests.
 - Network hotspot migration has a regression test for the bounded utf8mb4 index definition; target MySQL execution is not yet smoke-tested.
 - Historical batch deletion is compiled and unit-tested for status/table targeting, but destructive execution against a real target MySQL batch was not run.
 - Packaged Windows CSV picker, database initialization, batch deletion and a real import with manually selected rules remain to be smoke-tested from the next Windows artifact.
-- Zero-row rejection, MySQL warning capture and physical-table dataset profile routing are compiled/unit-tested but not smoke-tested against a live MySQL 8.0 instance.
+- The scoped LOCAL INFILE handler, zero-row rejection, MySQL warning capture and physical-table dataset profile routing are compiled/unit-tested but not smoke-tested against a live MySQL 8.0 instance.
 - Real MySQL / customer CSV smoke: not run; no MySQL service or representative 1 GB+ fixture was available.
 
 ## Performance assessment

@@ -1,5 +1,22 @@
 # CHANGELOG-dev
 
+## 1.0.40 - 2026-08-24
+
+### Fixed
+
+- Registered a per-import MySQL `LocalInfileHandler` so `LOAD DATA LOCAL INFILE` receives the selected CSV bytes instead of an empty client payload that produces zero imported rows without warnings.
+- Restricted the handler to the canonical path of the current user-selected file and removed it immediately after the LOAD DATA statement.
+
+### Performance
+
+- The handler streams the CSV through a bounded 1 MiB buffer and does not load the complete file into application memory.
+
+### Verification
+
+- `cd src-tauri && cargo test --offline`: passed, 39 tests.
+- The exact-file allowlist, alternate-file denial and missing-file rejection are covered by unit tests.
+- Real MySQL import and representative 1 GB+ CSV benchmark: not run in this environment.
+
 ## 1.0.39 - 2026-08-24
 
 ### Changed
