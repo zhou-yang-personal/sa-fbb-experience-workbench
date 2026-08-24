@@ -15,7 +15,9 @@ export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; a
   const [batches, setBatches] = useState<BatchListItem[]>([]);
   const [tableRegistry, setTableRegistry] = useState<BatchTableRegistryRow[]>([]);
   const [moduleStatus, setModuleStatus] = useState<ModuleStatusRow[]>([]);
-  const [statusMessage, setStatusMessage] = useState('请选择批次，系统会自动刷新分析上下文。');
+  const [statusMessage, setStatusMessage] = useState('请选择批次；选择后不会自动执行分析。');
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [contextCheckRunning, setContextCheckRunning] = useState(false);
 
   async function refreshBatchList() {
     const result = await workbenchApi.listBatches(c.settings);
@@ -59,12 +61,25 @@ export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; a
       setStatusMessage('请先选择批次。');
       return;
     }
-    await workbenchApi.prepareBatchTables(c.settings, batchId);
-    const registry = await workbenchApi.batchTableRegistry(c.settings, batchId);
-    const status = await workbenchApi.moduleStatus(c.settings, batchId, analysisRunId.trim() || undefined);
-    setTableRegistry(registry);
-    setModuleStatus(status);
-    setStatusMessage(status.some((item) => item.enabled) ? '分析上下文已刷新。' : '当前批次多数组件未就绪，请查看诊断详情。');
+    setContextCheckRunning(true);
+    setStatusMessage('正在执行结构检查；该操作可能统计批次表，请耐心等待。');
+    try {
+      const result = await c.runAction('analysis_context_check', async () => {
+        await workbenchApi.prepareBatchTables(c.settings, batchId);
+        const registry = await workbenchApi.batchTableRegistry(c.settings, batchId);
+        const status = await workbenchApi.moduleStatus(c.settings, batchId, analysisRunId.trim() || undefined);
+        return { registry, status };
+      }) as { registry: BatchTableRegistryRow[]; status: ModuleStatusRow[] } | null;
+      if (!result) {
+        setStatusMessage('结构检查失败，请查看执行日志后重试。');
+        return;
+      }
+      setTableRegistry(result.registry);
+      setModuleStatus(result.status);
+      setStatusMessage(result.status.some((item) => item.enabled) ? '结构检查完成。' : '当前批次多数组件未就绪，请查看诊断详情。');
+    } finally {
+      setContextCheckRunning(false);
+    }
   }
 
   useEffect(() => {
@@ -72,13 +87,6 @@ export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; a
       setStatusMessage(error instanceof Error ? error.message : String(error));
     });
   }, [c.settings.host, c.settings.port, c.settings.database, c.settings.user, c.settings.secret]);
-
-  useEffect(() => {
-    if (!c.importBatchId.trim()) return;
-    void refreshBatchContext().catch((error) => {
-      setStatusMessage(error instanceof Error ? error.message : String(error));
-    });
-  }, [c.importBatchId, c.analysisRunId]);
 
   const resultsNotGenerated = moduleStatus.some((item) => (item.status_text ?? '').includes('尚未生成分析结果'));
 
@@ -98,7 +106,7 @@ export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; a
             c.setDashboardCharts([]);
             setTableRegistry([]);
             setModuleStatus([]);
-            setStatusMessage('请先选择批次。');
+            setStatusMessage('请选择批次；选择后不会自动执行分析。');
             return;
           }
           c.setImportBatchId(batch.import_batch_id);
@@ -113,6 +121,9 @@ export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; a
             status: batch.status,
           });
           c.setBatchDisplayName(batch.batch_display_name ?? batch.source_file_name);
+          setTableRegistry([]);
+          setModuleStatus([]);
+          setStatusMessage('批次已选择。请选择具体分析页，并点击“加载当前看板”。');
         }}
       />
 
@@ -120,9 +131,9 @@ export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; a
         <div className="step-card-head">
           <div>
             <h2>分析上下文</h2>
-            <p className="hero-text">所有图表和表格都以当前 import_batch_id / analysis_run_id 为边界，并只消费 DWS / ADS / 分页聚合结果。</p>
+            <p className="hero-text">这里只保存当前批次和分析运行。打开应用、选择批次或切换看板都不会自动执行大查询。</p>
           </div>
-          <button type="button" onClick={() => refreshBatchContext()}>刷新上下文</button>
+          <button type="button" disabled={!c.importBatchId.trim() || contextCheckRunning} onClick={() => refreshBatchContext()}>{contextCheckRunning ? '检查中…' : '检查表与模块（较重）'}</button>
         </div>
         <div className="form-grid batch-context-form">
           <label>
@@ -142,8 +153,9 @@ export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; a
 
       <AnalyticsDashboard c={c} activeView={activeView} />
 
-      <details className="advanced-actions analytics-diagnostics">
-        <summary>高级分析与诊断</summary>
+      <details className="advanced-actions analytics-diagnostics" onToggle={(event) => setDiagnosticsOpen(event.currentTarget.open)}>
+        <summary>高级分析与诊断（展开后才加载）</summary>
+        {diagnosticsOpen && <>
         <AnalyticsStructuredKpiPanel c={c} />
         <AnalyticsStructuredDeepDivePanel c={c} />
         <AnalyticsAdsActions c={c} />
@@ -170,6 +182,7 @@ export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; a
           ))}
           {!tableRegistry.length && <div className="table-row muted-row">暂无 batch table registry。</div>}
         </div>
+        </>}
       </details>
     </section>
   );

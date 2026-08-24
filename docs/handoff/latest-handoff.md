@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.41
+1.0.42
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,14 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.42 update
+
+- Removed automatic batch-table preparation, registry counting, module inspection and dashboard loading from application startup, restored-context changes and analysis-page navigation.
+- Each decision page now exposes an explicit on-demand task with its dataset plan, progress, current step, partial failure state, retry and stop-after-current-query behavior.
+- The current page loads only its required DWS / ADS datasets; overview loads its five datasets sequentially instead of starting six queries concurrently.
+- Advanced diagnostics mount only after expansion, and ECharts is dynamically imported only when a chart is rendered.
+- Version markers are synchronized to `1.0.42`.
 
 ## 1.0.41 update
 

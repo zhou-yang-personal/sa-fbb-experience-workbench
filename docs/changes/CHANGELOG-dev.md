@@ -1,5 +1,20 @@
 # CHANGELOG-dev
 
+## 1.0.42 - 2026-08-24
+
+### Changed
+
+- Analysis startup now restores only lightweight context. It does not automatically prepare batch tables, count physical tables or load dashboard datasets.
+- Each decision page exposes an explicit, page-scoped load task with plan, progress, current step, retry and stop-after-current-query interaction.
+- Overview datasets run sequentially, while other pages request only the DWS / ADS dataset they need.
+- Advanced diagnostics mount only when expanded, and ECharts is loaded dynamically when charts are rendered.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-24.
+- `npm run build`, `cd src-tauri && cargo check --offline` and `cd src-tauri && cargo test --offline`: passed; 41 Rust tests passed and only existing Rust warnings remain.
+- Live Windows/MySQL interaction and representative 1 GB+ benchmark: not run in this environment.
+
 ## 1.0.41 - 2026-08-24
 
 ### Added

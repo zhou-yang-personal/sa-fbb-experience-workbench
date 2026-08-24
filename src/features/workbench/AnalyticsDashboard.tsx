@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import * as echarts from 'echarts';
+import type { ECharts } from 'echarts';
 import type { MetricCard } from '../../shared/types';
 import { AnalyticsEvidenceTable } from './AnalyticsEvidenceTable';
 import { analyticsStructuredApi } from './analyticsStructuredApi';
@@ -18,6 +18,17 @@ type StructuredDataset = {
   leadEvidence: MetricCard[];
 };
 
+type DatasetKey = keyof StructuredDataset;
+type TaskStatus = 'idle' | 'running' | 'stopping' | 'success' | 'partial' | 'failure' | 'stopped';
+
+type DashboardTask = {
+  status: TaskStatus;
+  completed: number;
+  total: number;
+  current?: DatasetKey;
+  message: string;
+};
+
 type ChartPoint = {
   label: string;
   value: number;
@@ -32,6 +43,24 @@ const emptyDataset: StructuredDataset = {
   networkHotspots: [],
   userProfiles: [],
   leadEvidence: [],
+};
+
+const viewDatasets: Record<AnalyticsTab, DatasetKey[]> = {
+  overview: ['kpis', 'appRank', 'networkHotspots', 'leadEvidence', 'hourlyTrend'],
+  apps: ['appRank'],
+  quality: ['networkHotspots'],
+  cable: ['hourlyTrend'],
+  users: ['userProfiles'],
+  leads: ['leadEvidence'],
+};
+
+const datasetLabels: Record<DatasetKey, string> = {
+  kpis: '总览指标',
+  appRank: '应用体验排行',
+  hourlyTrend: '小时趋势',
+  networkHotspots: '网络热点',
+  userProfiles: '用户画像',
+  leadEvidence: '迁转机会证据',
 };
 
 const pageCopy: Record<AnalyticsTab, { eyebrow: string; title: string; description: string }> = {
@@ -185,16 +214,25 @@ function AnalyticsChart({ title, subtitle, kind, points, onSelect, height = 380 
     : points, [effectiveKind, kind, points]);
   useEffect(() => {
     if (!ref.current) return;
-    const chart = echarts.init(ref.current);
-    chart.setOption(chartOption(effectiveKind, title, subtitle, renderedPoints), true);
-    chart.on('click', (params) => {
-      const label = String(params.name ?? '');
-      const source = renderedPoints.find((point) => point.label === label)?.source;
-      if (source && onSelect) onSelect(source);
+    let chart: ECharts | undefined;
+    let disposed = false;
+    const resize = () => chart?.resize();
+    void import('echarts').then((echarts) => {
+      if (disposed || !ref.current) return;
+      chart = echarts.init(ref.current);
+      chart.setOption(chartOption(effectiveKind, title, subtitle, renderedPoints), true);
+      chart.on('click', (params) => {
+        const label = String(params.name ?? '');
+        const source = renderedPoints.find((point) => point.label === label)?.source;
+        if (source && onSelect) onSelect(source);
+      });
+      window.addEventListener('resize', resize);
     });
-    const resize = () => chart.resize();
-    window.addEventListener('resize', resize);
-    return () => { window.removeEventListener('resize', resize); chart.dispose(); };
+    return () => {
+      disposed = true;
+      window.removeEventListener('resize', resize);
+      chart?.dispose();
+    };
   }, [effectiveKind, height, onSelect, renderedPoints, subtitle, title]);
   return <article className="analytics-card analytics-chart-card"><div className="analytics-chart" style={{ height }} ref={ref} /><footer><span>来源：DWS / ADS</span><span>{kind !== effectiveKind ? '时点不足 8 个，已降级为柱图' : `${points.length} data points`}</span></footer></article>;
 }
@@ -210,45 +248,103 @@ function EvidenceDrawer({ row, onClose }: { row: MetricCard; onClose: () => void
 
 export function AnalyticsDashboard({ c, activeView }: { c: WorkbenchController; activeView: AnalyticsTab }) {
   const [data, setData] = useState<StructuredDataset>(emptyDataset);
-  const [message, setMessage] = useState('选择批次和分析运行后加载聚合结果。');
+  const [loadedViews, setLoadedViews] = useState<Partial<Record<AnalyticsTab, string>>>({});
+  const [task, setTask] = useState<DashboardTask>({ status: 'idle', completed: 0, total: 0, message: '等待用户启动加载。' });
   const [failures, setFailures] = useState<string[]>([]);
+  const [failedDatasetKeys, setFailedDatasetKeys] = useState<DatasetKey[]>([]);
   const [access, setAccess] = useState('ALL');
   const [keyword, setKeyword] = useState('');
   const [minUsers, setMinUsers] = useState(0);
   const [selectedEvidence, setSelectedEvidence] = useState<MetricCard | null>(null);
   const disabled = !c.importBatchId.trim() || !c.analysisRunId.trim();
+  const actionBusy = Boolean(c.currentAction);
+  const contextKey = `${c.importBatchId.trim()}::${c.analysisRunId.trim()}`;
+  const viewLoaded = loadedViews[activeView] === contextKey;
+  const stopRequested = useRef(false);
+  const taskGeneration = useRef(0);
 
-  async function refreshAll() {
-    if (disabled) return;
-    await c.runAction('analytics_dashboard_refresh', async () => {
-      const requests = [
-        ['kpis', analyticsStructuredApi.kpis(c.effectiveSettings, c.importBatchId, c.analysisRunId)],
-        ['appRank', analyticsStructuredApi.appRank(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 200 })],
-        ['hourlyTrend', analyticsStructuredApi.hourlyTrend(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 500, sortBy: 'hour' })],
-        ['networkHotspots', analyticsStructuredApi.networkHotspots(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 200, sortBy: 'users' })],
-        ['userProfiles', analyticsStructuredApi.userProfiles(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 300, sortBy: 'demand' })],
-        ['leadEvidence', analyticsStructuredApi.leadEvidence(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 500, sortBy: 'demand' })],
-      ] as const;
-      const results = await Promise.allSettled(requests.map(([, request]) => request));
-      const next: StructuredDataset = { kpis: [], appRank: [], hourlyTrend: [], networkHotspots: [], userProfiles: [], leadEvidence: [] };
-      const nextFailures: string[] = [];
-      results.forEach((result, index) => {
-        const key = requests[index][0];
-        if (result.status === 'fulfilled') next[key] = result.value as MetricCard[];
-        else nextFailures.push(`${key}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
-      });
-      setData(next);
-      setFailures(nextFailures);
-      const rowCount = Object.values(next).reduce((sum, rows) => sum + rows.length, 0);
-      setMessage(`已加载 ${rowCount} 条聚合证据；${nextFailures.length ? `${nextFailures.length} 个数据集失败` : '所有数据集可读取'}。`);
-      c.setOverview({ metrics: next.kpis });
-      return { rowCount, failures: nextFailures };
-    });
+  function loadDataset(key: DatasetKey) {
+    if (key === 'kpis') return analyticsStructuredApi.kpis(c.effectiveSettings, c.importBatchId, c.analysisRunId);
+    if (key === 'appRank') return analyticsStructuredApi.appRank(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 200 });
+    if (key === 'hourlyTrend') return analyticsStructuredApi.hourlyTrend(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 500, sortBy: 'hour' });
+    if (key === 'networkHotspots') return analyticsStructuredApi.networkHotspots(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 200, sortBy: 'users' });
+    if (key === 'userProfiles') return analyticsStructuredApi.userProfiles(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 300, sortBy: 'demand' });
+    return analyticsStructuredApi.leadEvidence(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 500, sortBy: 'demand' });
   }
 
   useEffect(() => {
-    if (!disabled) void refreshAll();
+    taskGeneration.current += 1;
+    stopRequested.current = true;
+    setData(emptyDataset);
+    setFailures([]);
+    setFailedDatasetKeys([]);
+    setLoadedViews({});
+    setTask({ status: 'idle', completed: 0, total: 0, message: disabled ? '请先选择批次并填写 analysis_run_id。' : '上下文已就绪，等待用户启动加载。' });
   }, [c.importBatchId, c.analysisRunId]);
+
+  useEffect(() => {
+    taskGeneration.current += 1;
+    stopRequested.current = true;
+    setFailures([]);
+    setFailedDatasetKeys([]);
+    const cached = loadedViews[activeView] === contextKey;
+    setTask(cached
+      ? { status: 'success', completed: viewDatasets[activeView].length, total: viewDatasets[activeView].length, message: '当前看板使用本次会话缓存；需要时可手动重新加载。' }
+      : { status: 'idle', completed: 0, total: 0, message: '等待用户启动当前看板加载。' });
+  }, [activeView]);
+
+  async function loadCurrentView() {
+    if (disabled || actionBusy || task.status === 'running' || task.status === 'stopping') return;
+    const keys = viewDatasets[activeView];
+    const requestedContext = contextKey;
+    const generation = taskGeneration.current + 1;
+    taskGeneration.current = generation;
+    stopRequested.current = false;
+    setFailures([]);
+    setFailedDatasetKeys([]);
+    setTask({ status: 'running', completed: 0, total: keys.length, current: keys[0], message: `正在加载：${datasetLabels[keys[0]]}` });
+    const result = await c.runAction(`analytics_load_${activeView}`, async () => {
+      const nextFailures: string[] = [];
+      let completed = 0;
+      let rowCount = 0;
+      for (const key of keys) {
+        if (stopRequested.current || generation !== taskGeneration.current) break;
+        setTask({ status: 'running', completed, total: keys.length, current: key, message: `正在加载：${datasetLabels[key]}` });
+        try {
+          const rows = await loadDataset(key);
+          if (generation !== taskGeneration.current) break;
+          setData((current) => ({ ...current, [key]: rows }));
+          if (key === 'kpis') c.setOverview({ metrics: rows });
+          rowCount += rows.length;
+        } catch (error) {
+          nextFailures.push(`${datasetLabels[key]}: ${error instanceof Error ? error.message : String(error)}`);
+          setFailedDatasetKeys((current) => [...current, key]);
+        }
+        completed += 1;
+        setTask({ status: stopRequested.current ? 'stopping' : 'running', completed, total: keys.length, message: stopRequested.current ? '当前查询已结束，正在停止后续步骤。' : `已完成 ${completed}/${keys.length} 个数据集。` });
+      }
+      return { completed, total: keys.length, rowCount, failures: nextFailures, stopped: stopRequested.current };
+    }) as { completed: number; total: number; rowCount: number; failures: string[]; stopped: boolean } | null;
+
+    if (generation !== taskGeneration.current) return;
+    if (!result) {
+      setTask({ status: 'failure', completed: 0, total: keys.length, message: '加载失败，可查看日志后重试。' });
+      return;
+    }
+    setFailures(result.failures);
+    if (result.stopped) {
+      setTask({ status: 'stopped', completed: result.completed, total: result.total, message: `已停止后续加载；已完成 ${result.completed}/${result.total} 个数据集。` });
+      return;
+    }
+    setLoadedViews((current) => ({ ...current, [activeView]: requestedContext }));
+    const status = result.failures.length ? 'partial' : 'success';
+    setTask({ status, completed: result.completed, total: result.total, message: `已加载 ${result.rowCount} 条聚合证据${result.failures.length ? `，${result.failures.length} 个数据集失败。` : '。'}` });
+  }
+
+  function stopLoading() {
+    stopRequested.current = true;
+    setTask((current) => ({ ...current, status: 'stopping', message: '停止请求已接收；当前查询完成后不再加载后续数据集。' }));
+  }
 
   const filtered = useMemo(() => ({
     appRank: filterRows(data.appRank, access, keyword, minUsers),
@@ -281,13 +377,33 @@ export function AnalyticsDashboard({ c, activeView }: { c: WorkbenchController; 
   const copy = pageCopy[activeView];
   const selectEvidence = (row: MetricCard) => setSelectedEvidence(row);
 
+  const running = task.status === 'running' || task.status === 'stopping';
+  const progress = task.total > 0 ? Math.round(task.completed / task.total * 100) : 0;
+  const loadButtonLabel = task.status === 'partial' || task.status === 'failure' || task.status === 'stopped'
+    ? '重试当前看板'
+    : viewLoaded ? '重新加载当前看板' : '加载当前看板';
+
   return <section className="analytics-dashboard analytics-dashboard-v3">
-    <header className="workspace-page-header analytics-page-header"><div><p className="eyebrow">{copy.eyebrow}</p><h2>{copy.title}</h2><p>{copy.description}</p></div><button type="button" className="primary-button" disabled={disabled} onClick={refreshAll}>刷新当前分析</button></header>
+    <header className="workspace-page-header analytics-page-header"><div><p className="eyebrow">{copy.eyebrow}</p><h2>{copy.title}</h2><p>{copy.description}</p></div>{running
+      ? <button type="button" className="danger-button" onClick={stopLoading} disabled={task.status === 'stopping'}>{task.status === 'stopping' ? '正在停止…' : '停止后续加载'}</button>
+      : <button type="button" className="primary-button" disabled={disabled || actionBusy} onClick={loadCurrentView}>{loadButtonLabel}</button>}</header>
+    <section className={`analytics-task-card task-${task.status}`} aria-live="polite">
+      <div className="analytics-task-head"><div><span>按需分析任务</span><strong>{task.message}</strong></div><span className="analytics-task-status">{task.status.toUpperCase()}</span></div>
+      <div className="analytics-task-progress"><span style={{ width: `${progress}%` }} /></div>
+      <div className="analytics-task-plan">{viewDatasets[activeView].map((key, index) => {
+        const failed = failedDatasetKeys.includes(key);
+        const className = failed ? 'is-failed' : index < task.completed ? 'is-complete' : task.current === key && running ? 'is-running' : '';
+        return <span key={key} className={className}>{failed ? '!' : index < task.completed ? '✓' : index + 1} {datasetLabels[key]}</span>;
+      })}</div>
+      <small>切换页面不会自动发起查询；停止操作会等待当前数据库请求结束，再跳过剩余步骤。</small>
+    </section>
+    {!viewLoaded && !running && task.status !== 'stopped' && <section className="analytics-load-gate"><div><p className="eyebrow">Ready on demand</p><h3>当前看板尚未加载</h3><p>{actionBusy ? '上一项操作仍在完成，结束后即可启动本页任务。' : `本页需要 ${viewDatasets[activeView].length} 个聚合数据集。只有点击按钮后才会查询 MySQL，不会在应用启动或切换页面时自动执行。`}</p></div><button type="button" className="primary-button" disabled={disabled || actionBusy} onClick={loadCurrentView}>开始加载 {copy.title}</button></section>}
+    {(viewLoaded || running || task.status === 'partial' || task.status === 'stopped') && <>
     <section className="analytics-filter-bar" aria-label="分析筛选">
       <label>接入类型<select value={access} onChange={(event) => setAccess(event.target.value)}><option value="ALL">全部</option><option value="CABLE">Cable</option><option value="FTTH">FTTH</option><option value="UNKNOWN">Unknown</option></select></label>
       <label>搜索<input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="App、用户、BRAS、OLT、PON" /></label>
       <label>最小用户数<input type="number" min={0} value={minUsers} onChange={(event) => setMinUsers(Math.max(0, Number(event.target.value)))} /></label>
-      <div className="filter-context"><span>Batch</span><strong>{c.batchDisplayName || c.importBatchId || '-'}</strong><small>{message}</small></div>
+      <div className="filter-context"><span>Batch</span><strong>{c.batchDisplayName || c.importBatchId || '-'}</strong><small>{task.message}</small></div>
     </section>
     {failures.length > 0 && <section className="analytics-error-banner"><strong>部分数据集加载失败</strong>{failures.map((failure) => <span key={failure}>{failure}</span>)}</section>}
     <KpiStrip items={kpis} />
@@ -335,6 +451,7 @@ export function AnalyticsDashboard({ c, activeView }: { c: WorkbenchController; 
       <AnalyticsChart title="候选用户需求评分" subtitle="评分用于排序；最终行动仍由问题侧与资格字段决定" kind="bar" points={userPoints(filtered.leadEvidence, 'demand_score')} onSelect={selectEvidence} />
       <AnalyticsEvidenceTable title="迁转机会证据" rows={filtered.leadEvidence} limit={400} />
     </div>}
+    </>}
     {selectedEvidence && <EvidenceDrawer row={selectedEvidence} onClose={() => setSelectedEvidence(null)} />}
   </section>;
 }

@@ -44,7 +44,7 @@ export function WorkbenchAppV2() {
   function hint() {
     if (['overview', 'apps', 'quality', 'cable', 'users', 'leads'].includes(activeSection)) {
       if (!hasBatch) return { title: '先选择导入批次', detail: '数据分析以 import_batch_id 为边界。可以先去“数据导入”创建批次，或在分析页下拉选择已有批次。', tone: 'warning' as const };
-      return { title: '查看当前批次分析驾驶舱', detail: '当前版本已强化为大屏看板：KPI、大图、业务表格和诊断明细均按 DWS/ADS 聚合结果刷新。', tone: 'normal' as const };
+      return { title: '按需加载当前分析页', detail: '应用不会在启动或切换页面时自动执行大查询。确认批次和 analysis_run_id 后，点击“加载当前看板”再开始任务。', tone: 'normal' as const };
     }
     if (activeSection === 'import') {
       if (!hasBatchName) return { title: '导入前先命名批次', detail: '批次名称必须是正常人能读懂的业务名称，后续所有看板先按这个批次进入。', tone: 'warning' as const };
