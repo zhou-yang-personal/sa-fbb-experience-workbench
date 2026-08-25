@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.43
+1.0.44
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,14 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.44 update
+
+- Removed all automatic MySQL diagnostics from system-page navigation; diagnostics now start only after an explicit user action.
+- Added a six-step serialized diagnostic task with progress, current step, partial failures and stop-after-current-query behavior.
+- Added cached Registry reads and changed module inspection to refresh table counts once, avoiding duplicate large-table counts in one diagnostic run.
+- Lazily mounted Quality/ETL troubleshooting and the full execution log only after their sections are expanded.
+- Version markers are synchronized to `1.0.44`.
 
 ## 1.0.43 update
 

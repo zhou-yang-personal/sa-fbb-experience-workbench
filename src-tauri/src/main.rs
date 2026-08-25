@@ -61,6 +61,7 @@ fn main() {
             batch_delete_commands::import_delete_batch,
             analysis_commands::analysis_prepare_batch_tables,
             analysis_commands::batch_get_table_registry,
+            analysis_commands::batch_get_table_registry_cached,
             analysis_commands::analysis_get_module_status,
             analysis_commands::analysis_export_module_csv,
             analysis_commands::analysis_get_module_metrics,

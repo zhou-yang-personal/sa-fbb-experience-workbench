@@ -460,12 +460,31 @@ pub fn batch_get_table_registry(
     settings: MySqlSettings,
     import_batch_id: String,
 ) -> Result<Vec<BatchTableRegistryRow>, String> {
-    let mut conn = db::conn(&settings)?;
     batch_tables::ensure_batch_tables(&settings, &import_batch_id)?;
     let _ = batch_tables::refresh_registry_counts(&settings, &import_batch_id);
+    let mut conn = db::conn(&settings)?;
+    query_batch_table_registry(&mut conn, &import_batch_id)
+}
+
+#[tauri::command]
+pub fn batch_get_table_registry_cached(
+    settings: MySqlSettings,
+    import_batch_id: String,
+) -> Result<Vec<BatchTableRegistryRow>, String> {
+    let mut conn = db::conn(&settings)?;
+    if !batch_tables::table_exists(&mut conn, "meta_batch_table_registry")? {
+        return Ok(Vec::new());
+    }
+    query_batch_table_registry(&mut conn, &import_batch_id)
+}
+
+fn query_batch_table_registry(
+    conn: &mut mysql::PooledConn,
+    import_batch_id: &str,
+) -> Result<Vec<BatchTableRegistryRow>, String> {
     conn.exec_map(
         "SELECT import_batch_id, layer, data_type, logical_table_name, base_table_name, physical_table_name, CAST(row_count AS SIGNED), status FROM meta_batch_table_registry WHERE import_batch_id=? ORDER BY layer, logical_table_name",
-        (&import_batch_id,),
+        (import_batch_id,),
         |(import_batch_id, layer, data_type, logical_table_name, base_table_name, physical_table_name, row_count, status): (String, String, String, String, String, String, i64, String)| BatchTableRegistryRow {
             import_batch_id,
             layer,
@@ -489,7 +508,10 @@ pub fn analysis_get_module_status(
     let batch_data_type =
         fetch_batch_data_type(&settings, &import_batch_id)?.unwrap_or_else(|| "mixed".to_string());
     batch_tables::ensure_batch_tables(&settings, &import_batch_id)?;
-    let registry_rows = batch_get_table_registry(settings.clone(), import_batch_id.clone())?;
+    let _ = batch_tables::refresh_registry_counts(&settings, &import_batch_id);
+    let mut registry_conn = db::conn(&settings)?;
+    let registry_rows = query_batch_table_registry(&mut registry_conn, &import_batch_id)?;
+    drop(registry_conn);
     let registry_map: HashMap<String, (String, i64)> = registry_rows
         .iter()
         .map(|row| {
@@ -675,7 +697,7 @@ pub fn analysis_get_module_metrics(
 ) -> Result<Vec<MetricCard>, String> {
     let statuses =
         analysis_get_module_status(settings.clone(), import_batch_id.clone(), analysis_run_id)?;
-    let registry = batch_get_table_registry(settings, import_batch_id.clone())?;
+    let registry = batch_get_table_registry_cached(settings, import_batch_id.clone())?;
     let enabled = statuses.iter().filter(|row| row.enabled).count();
     let disabled = statuses.len().saturating_sub(enabled);
     let mut metrics = vec![

@@ -46,6 +46,7 @@ export const workbenchApi = {
   deleteBatch: (settings: MySqlSettings, importBatchId: string) => invoke<CommandAck>('import_delete_batch', { req: { settings, import_batch_id: importBatchId } }),
   prepareBatchTables: (settings: MySqlSettings, importBatchId: string) => invoke<MetricCard[]>('analysis_prepare_batch_tables', { settings, importBatchId }),
   batchTableRegistry: (settings: MySqlSettings, importBatchId: string) => invoke<BatchTableRegistryRow[]>('batch_get_table_registry', { settings, importBatchId }),
+  cachedBatchTableRegistry: (settings: MySqlSettings, importBatchId: string) => invoke<BatchTableRegistryRow[]>('batch_get_table_registry_cached', { settings, importBatchId }),
   moduleStatus: (settings: MySqlSettings, importBatchId: string, analysisRunId?: string) => invoke<ModuleStatusRow[]>('analysis_get_module_status', { settings, importBatchId, analysisRunId }),
   moduleMetrics: (settings: MySqlSettings, importBatchId: string, analysisRunId?: string) => invoke<MetricCard[]>('analysis_get_module_metrics', { settings, importBatchId, analysisRunId }),
   exportModule: (settings: MySqlSettings, importBatchId: string, analysisRunId: string | undefined, moduleId: string, outputPath: string) =>

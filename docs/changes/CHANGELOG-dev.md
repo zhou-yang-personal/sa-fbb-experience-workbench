@@ -1,5 +1,23 @@
 # CHANGELOG-dev
 
+## 1.0.44 - 2026-08-25
+
+### Changed
+
+- System-page navigation no longer starts MySQL diagnostics automatically; the user must explicitly start the diagnostic task.
+- Catalog, mapping, quality, ETL, module and Registry checks now run serially with progress, per-step state and stop-after-current-query behavior.
+- Quality/ETL troubleshooting components and the full execution log mount only after their collapsed sections are opened.
+
+### Fixed
+
+- Removed duplicate large-table row-count refreshes from one module/Registry diagnostic run by adding a cached Registry read path.
+
+### Verification
+
+- `npm run check` and `npm run build`: passed on 2026-08-25; the existing ECharts chunk-size warning remains.
+- `cd src-tauri && cargo check --offline` and `cd src-tauri && cargo test --offline`: passed; 42 Rust tests passed and only existing Rust warnings remain.
+- Live Windows/MySQL page-navigation timing and diagnostic query timing: not run in this environment.
+
 ## 1.0.43 - 2026-08-25
 
 ### Added
