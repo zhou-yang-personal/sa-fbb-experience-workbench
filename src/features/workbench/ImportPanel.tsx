@@ -29,6 +29,7 @@ type Props = {
   loadMetrics: (label: string, action: () => Promise<MetricCard[]>) => Promise<MetricCard[]>;
   actionStates: Record<string, ActionState>;
   analysisRunId: string;
+  setAnalysisRunId: (value: string) => void;
   onOpenAnalysis?: () => void;
   onOpenAccessRules?: () => void;
 };
@@ -94,6 +95,15 @@ function storePipelineRunId(settings: MySqlSettings, pipelineRunId: string) {
   }
 }
 
+function clearStoredPipelineRunId(settings: MySqlSettings) {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.removeItem(pipelineRunStorageKey(settings));
+  } catch {
+    // No persistent pipeline context is available, but the current view can continue.
+  }
+}
+
 function mergePipelineLogs(current: ImportPipelineLogRow[], incoming: ImportPipelineLogRow[]) {
   const unique = new Map<number, ImportPipelineLogRow>();
   current.forEach((row) => unique.set(row.sequence, row));
@@ -102,7 +112,7 @@ function mergePipelineLogs(current: ImportPipelineLogRow[], incoming: ImportPipe
 }
 
 export function ImportPanel(props: Props) {
-  const { settings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, batchDisplayName, setBatchDisplayName, batch, setBatch, createBatch, runAction, loadMetrics, actionStates } = props;
+  const { settings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, batchDisplayName, setBatchDisplayName, batch, setBatch, createBatch, runAction, loadMetrics, actionStates, setAnalysisRunId } = props;
   const [mappingSummary, setMappingSummary] = useState<MetricCard[]>([]);
   const [mappingResults, setMappingResults] = useState<MetricCard[]>([]);
   const [profileMetrics, setProfileMetrics] = useState<MetricCard[]>([]);
@@ -130,7 +140,8 @@ export function ImportPanel(props: Props) {
   const [accessRuleConfirmed, setAccessRuleConfirmed] = useState(false);
   const [accessRuleMessage, setAccessRuleMessage] = useState('TCP / Game 导入前必须手动选择并确认一个已发布 IP 规则版本。');
   const lastLogSeqRef = useRef(0);
-  const pipelinePollInFlightRef = useRef(false);
+  const pipelinePollInFlightRef = useRef(new Set<string>());
+  const pipelineGenerationRef = useRef(0);
   const requiresAccessRules = dataType === 'tcp' || dataType === 'game';
   const selectedRuleSet = publishedRuleSets.find((item) => item.rule_set_id === selectedRuleSetId);
 
@@ -258,10 +269,10 @@ export function ImportPanel(props: Props) {
     return '';
   }
 
-  async function refreshPipeline(runId = pipelineRunId) {
+  async function refreshPipeline(runId = pipelineRunId, generation = pipelineGenerationRef.current) {
     if (!runId) return null;
-    if (pipelinePollInFlightRef.current) return null;
-    pipelinePollInFlightRef.current = true;
+    if (pipelinePollInFlightRef.current.has(runId)) return null;
+    pipelinePollInFlightRef.current.add(runId);
     setPipelinePolling(true);
     try {
       const [status, firstPage] = await Promise.all([
@@ -291,8 +302,10 @@ export function ImportPanel(props: Props) {
           if (page.length < 100) break;
         }
       }
+      if (generation !== pipelineGenerationRef.current) return null;
       setPipelineStatus(status);
       if (status.import_batch_id) setImportBatchId(status.import_batch_id);
+      if (status.analysis_run_id) setAnalysisRunId(status.analysis_run_id);
       if (collected.length) {
         lastLogSeqRef.current = cursor;
         setPipelineLogs((items) => mergePipelineLogs(items, collected));
@@ -302,36 +315,58 @@ export function ImportPanel(props: Props) {
       setPipelinePollingError('');
       setStatusMessage(status.message ?? `Pipeline ${status.status}`);
       if (status.import_batch_id && ['success', 'degraded'].includes(normalizedStatus)) {
-        const [quality, jobs, nextRegistry, modules] = await Promise.all([
+        const [quality, jobs] = await Promise.allSettled([
           qualityApi.allResults(settings, status.import_batch_id),
           workbenchApi.jobs(settings, status.import_batch_id),
-          workbenchApi.batchTableRegistry(settings, status.import_batch_id),
-          workbenchApi.moduleStatus(settings, status.import_batch_id, status.analysis_run_id ?? analysisRunId),
         ]);
-        setQualityRows(quality);
-        setEtlJobs(jobs);
-        setRegistry(nextRegistry);
-        setModuleStatus(modules);
+        if (quality.status === 'fulfilled') setQualityRows(quality.value);
+        if (jobs.status === 'fulfilled') setEtlJobs(jobs.value);
       } else if (status.import_batch_id && normalizedStatus === 'failed') {
-        const [failedQuality, nextRawStatus, nextRegistry] = await Promise.allSettled([
+        const [failedQuality, nextRawStatus] = await Promise.allSettled([
           qualityApi.failedResults(settings, status.import_batch_id),
           workbenchApi.importStatus(settings, status.import_batch_id),
-          workbenchApi.batchTableRegistry(settings, status.import_batch_id),
         ]);
         setQualityRows(failedQuality.status === 'fulfilled' ? failedQuality.value : []);
         setRawStatus(nextRawStatus.status === 'fulfilled' ? nextRawStatus.value : []);
-        setRegistry(nextRegistry.status === 'fulfilled' ? nextRegistry.value : []);
       }
       return status;
     } catch (error) {
+      if (generation !== pipelineGenerationRef.current) return null;
       const message = error instanceof Error ? error.message : String(error);
       setPipelinePollingError(message);
       setStatusMessage(`Pipeline 状态刷新失败：${message}`);
       return null;
     } finally {
-      pipelinePollInFlightRef.current = false;
-      setPipelinePolling(false);
+      pipelinePollInFlightRef.current.delete(runId);
+      setPipelinePolling(pipelinePollInFlightRef.current.size > 0);
     }
+  }
+
+  async function restorePipelineForBatch(selected: BatchListItem) {
+    const generation = pipelineGenerationRef.current + 1;
+    pipelineGenerationRef.current = generation;
+    setAnalysisRunId(selected.analysis_run_id ?? '');
+    if (!selected.pipeline_run_id) {
+      setPipelineRunId('');
+      clearStoredPipelineRunId(settings);
+      setPipelineStatus(null);
+      setPipelineLogs([]);
+      setPipelinePollingError('');
+      lastLogSeqRef.current = 0;
+      setStatusMessage('该批次没有关联的自动导入流水线日志；可能是旧版或手工创建的 RAW 批次。');
+      return null;
+    }
+    setPipelineRunId(selected.pipeline_run_id);
+    storePipelineRunId(settings, selected.pipeline_run_id);
+    setPipelineStatus(null);
+    setPipelineLogs([]);
+    setPipelinePollingError('');
+    setPipelineLastPollAt(null);
+    setPipelineLastLogAt(null);
+    setPipelineAutoRefresh(true);
+    lastLogSeqRef.current = 0;
+    setStatusMessage(`正在恢复批次 ${selected.import_batch_id} 的流水线状态与日志…`);
+    return refreshPipeline(selected.pipeline_run_id, generation);
   }
 
   async function startPipeline() {
@@ -339,6 +374,7 @@ export function ImportPanel(props: Props) {
       if (!filePath.trim()) throw new Error('请先通过文件选择框选择 CSV 文件。');
       if (!batchDisplayName.trim()) throw new Error('请先为本次导入设置批次名称。');
       const accessRuleSetId = requiredAccessRuleSetId();
+      pipelineGenerationRef.current += 1;
       setPipelineLogs([]);
       setPipelinePollingError('');
       setPipelineLastPollAt(null);
@@ -378,6 +414,7 @@ export function ImportPanel(props: Props) {
   useEffect(() => {
     const storedRunId = readStoredPipelineRunId(settings);
     if (storedRunId === pipelineRunId) return;
+    pipelineGenerationRef.current += 1;
     setPipelineRunId(storedRunId);
     setPipelineStatus(null);
     setPipelineLogs([]);
@@ -388,9 +425,14 @@ export function ImportPanel(props: Props) {
   }, [settings.host, settings.port, settings.database, settings.user]);
 
   useEffect(() => {
-    void refreshHistoryBatches().catch((error) => {
-      setHistoryStatus(`历史批次加载失败：${error instanceof Error ? error.message : String(error)}`);
-    });
+    void refreshHistoryBatches()
+      .then((batches) => {
+        const selected = batches.find((item) => item.import_batch_id === importBatchId);
+        if (selected && (selected.pipeline_run_id ?? '') !== pipelineRunId) void restorePipelineForBatch(selected);
+      })
+      .catch((error) => {
+        setHistoryStatus(`历史批次加载失败：${error instanceof Error ? error.message : String(error)}`);
+      });
   }, [settings.host, settings.port, settings.database, settings.user, settings.secret]);
 
   useEffect(() => {
@@ -400,7 +442,7 @@ export function ImportPanel(props: Props) {
     let disposed = false;
     const poll = async () => {
       if (disposed) return;
-      await refreshPipeline(pipelineRunId);
+      await refreshPipeline(pipelineRunId, pipelineGenerationRef.current);
     };
     const timer = window.setInterval(poll, 1000);
     void poll();
@@ -747,6 +789,7 @@ export function ImportPanel(props: Props) {
           setImportBatchId(selected.import_batch_id);
           setBatchDisplayName(selected.batch_display_name ?? selected.source_file_name);
           setDataType(selected.data_type as ImportDataType);
+          setAnalysisRunId(selected.analysis_run_id ?? '');
           setBatch({
             import_batch_id: selected.import_batch_id,
             batch_display_name: selected.batch_display_name,
@@ -754,6 +797,7 @@ export function ImportPanel(props: Props) {
             source_file_name: selected.source_file_name,
             status: selected.status,
           });
+          void restorePipelineForBatch(selected);
         }}
       />
       <PipelineLogMonitor

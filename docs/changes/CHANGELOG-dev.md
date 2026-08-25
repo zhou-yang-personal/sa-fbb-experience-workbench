@@ -1,5 +1,25 @@
 # CHANGELOG-dev
 
+## 1.0.45 - 2026-08-25
+
+### Changed
+
+- Historical batches now expose RAW status and latest pipeline status separately, and selecting one synchronizes its latest pipeline `analysis_run_id`.
+- Returning to the import page restores the selected batch's pipeline status and logs from sequence zero; selecting an old/manual batch clears unrelated persisted logs.
+- Terminal pipeline refreshes load only lightweight quality and job evidence instead of automatically triggering Registry and module table-count diagnostics.
+
+### Fixed
+
+- Dashboard queries whose datasets are empty or whose KPI structures are all zero no longer report `SUCCESS`; the UI identifies missing CLEAN/DWS/ADS evidence and links back to import diagnostics.
+- Latest pipeline run metadata now takes precedence over older analysis-run records for the same batch, preventing dashboard queries from using a stale run ID.
+
+### Verification
+
+- `npm run check` and `npm run build`: passed on 2026-08-25; the existing ECharts chunk-size warning remains.
+- Targeted Rust format check and `cd src-tauri && cargo check --offline`: passed with existing warnings.
+- `cd src-tauri && CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --offline`: passed; 42 Rust tests passed. The first attempt exhausted the full root filesystem during linking, so generated Cargo caches were cleaned and the test was rerun serially.
+- Live Windows/MySQL batch selection, pipeline-log recovery and dashboard evidence verification: not run in this environment.
+
 ## 1.0.44 - 2026-08-25
 
 ### Changed

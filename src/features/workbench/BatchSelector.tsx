@@ -12,7 +12,8 @@ type Props = {
 
 function batchLabel(batch: BatchListItem) {
   const displayName = batch.batch_display_name?.trim() || batch.source_file_name;
-  return `${displayName} · ${batch.data_type.toUpperCase()} · ${batch.import_batch_id}`;
+  const pipeline = batch.pipeline_status?.toUpperCase() ?? 'NO PIPELINE';
+  return `${displayName} · ${batch.data_type.toUpperCase()} · PIPELINE ${pipeline} · ${batch.import_batch_id}`;
 }
 
 function isTestBatch(batch: BatchListItem) {
@@ -23,10 +24,14 @@ function isTestBatch(batch: BatchListItem) {
   return batch.status.toLowerCase() === 'failed' || /(^|[^a-z])(test|demo|sample)([^a-z]|$)/.test(searchable) || searchable.includes('测试');
 }
 
+function isBatchRunning(batch: BatchListItem) {
+  return batch.status.toLowerCase() === 'running' || ['pending', 'running'].includes(String(batch.pipeline_status ?? '').toLowerCase());
+}
+
 export function BatchSelector({ batches, selectedBatchId, onSelectBatch, onRefresh, onDeleteBatches, statusText }: Props) {
   const [selectedForDeletion, setSelectedForDeletion] = useState<string[]>([]);
   const [deleting, setDeleting] = useState(false);
-  const deletableBatches = useMemo(() => batches.filter((batch) => batch.status.toLowerCase() !== 'running'), [batches]);
+  const deletableBatches = useMemo(() => batches.filter((batch) => !isBatchRunning(batch)), [batches]);
 
   useEffect(() => {
     const available = new Set(deletableBatches.map((batch) => batch.import_batch_id));
@@ -92,7 +97,7 @@ export function BatchSelector({ batches, selectedBatchId, onSelectBatch, onRefre
         </div>
         <div className="batch-delete-list">
           {batches.map((batch) => {
-            const running = batch.status.toLowerCase() === 'running';
+            const running = isBatchRunning(batch);
             const checked = selectedForDeletion.includes(batch.import_batch_id);
             return (
               <label className={`batch-delete-row ${running ? 'is-protected' : ''}`} key={batch.import_batch_id}>
@@ -102,7 +107,7 @@ export function BatchSelector({ batches, selectedBatchId, onSelectBatch, onRefre
                   <small>{batch.import_batch_id}</small>
                 </span>
                 <span>{batch.data_type.toUpperCase()}</span>
-                <span className={batch.status.toLowerCase() === 'failed' ? 'status-failure-text' : ''}>{running ? 'RUNNING · 已保护' : batch.status.toUpperCase()}</span>
+                <span className={(batch.pipeline_status ?? batch.status).toLowerCase() === 'failed' ? 'status-failure-text' : ''}>{running ? '任务运行中 · 已保护' : `RAW ${batch.status.toUpperCase()} · PIPELINE ${batch.pipeline_status?.toUpperCase() ?? 'NONE'}`}</span>
                 <span>{batch.imported_rows ?? 0} rows</span>
               </label>
             );

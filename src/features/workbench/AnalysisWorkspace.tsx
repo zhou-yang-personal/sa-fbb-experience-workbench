@@ -11,13 +11,20 @@ import { workbenchApi } from './workbenchApi';
 
 type AnalyticsView = 'overview' | 'apps' | 'quality' | 'cable' | 'users' | 'leads';
 
-export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; activeView: AnalyticsView }) {
+export function AnalysisWorkspace({ c, activeView, onOpenImport }: { c: WorkbenchController; activeView: AnalyticsView; onOpenImport: () => void }) {
   const [batches, setBatches] = useState<BatchListItem[]>([]);
   const [tableRegistry, setTableRegistry] = useState<BatchTableRegistryRow[]>([]);
   const [moduleStatus, setModuleStatus] = useState<ModuleStatusRow[]>([]);
   const [statusMessage, setStatusMessage] = useState('请选择批次；选择后不会自动执行分析。');
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [contextCheckRunning, setContextCheckRunning] = useState(false);
+  const selectedBatch = batches.find((item) => item.import_batch_id === c.importBatchId);
+
+  useEffect(() => {
+    if (selectedBatch && (selectedBatch.analysis_run_id ?? '') !== c.analysisRunId) {
+      c.setAnalysisRunId(selectedBatch.analysis_run_id ?? '');
+    }
+  }, [selectedBatch?.import_batch_id, selectedBatch?.analysis_run_id]);
 
   async function refreshBatchList() {
     const result = await workbenchApi.listBatches(c.settings);
@@ -101,6 +108,7 @@ export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; a
         onSelectBatch={(batch) => {
           if (!batch) {
             c.setImportBatchId('');
+            c.setAnalysisRunId('');
             c.setBatch(null);
             c.setOverview(null);
             c.setDashboardCharts([]);
@@ -110,6 +118,7 @@ export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; a
             return;
           }
           c.setImportBatchId(batch.import_batch_id);
+          c.setAnalysisRunId(batch.analysis_run_id ?? '');
           c.setDataType(batch.data_type as WorkbenchController['dataType']);
           c.setOverview(null);
           c.setDashboardCharts([]);
@@ -123,7 +132,12 @@ export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; a
           c.setBatchDisplayName(batch.batch_display_name ?? batch.source_file_name);
           setTableRegistry([]);
           setModuleStatus([]);
-          setStatusMessage('批次已选择。请选择具体分析页，并点击“加载当前看板”。');
+          const pipelineStatus = String(batch.pipeline_status ?? '').toLowerCase();
+          setStatusMessage(pipelineStatus === 'failed'
+            ? `RAW 已导入，但自动分析流水线失败：${batch.pipeline_message ?? '请回到数据导入查看失败步骤和日志。'}`
+            : !batch.analysis_run_id
+              ? '批次只有 RAW 导入记录，尚未发现 analysis_run_id；请回到数据导入完成 CLEAN/DWS/ADS。'
+              : `批次与 analysis_run_id=${batch.analysis_run_id} 已同步，请加载当前看板。`);
         }}
       />
 
@@ -145,13 +159,14 @@ export function AnalysisWorkspace({ c, activeView }: { c: WorkbenchController; a
           <span className={c.importBatchId ? 'status-pill status-success' : 'status-pill status-failure'}>batch {c.importBatchId ? 'selected' : 'missing'}</span>
           <span className={c.analysisRunId ? 'status-pill status-success' : 'status-pill status-failure'}>analysis run {c.analysisRunId ? 'ready' : 'missing'}</span>
           <span className="status-pill">data {c.dataType.toUpperCase()}</span>
+          <span className={`status-pill ${String(selectedBatch?.pipeline_status ?? '').toLowerCase() === 'failed' ? 'status-failure' : selectedBatch?.pipeline_status ? 'status-success' : 'status-warning'}`}>pipeline {selectedBatch?.pipeline_status ?? 'unknown'}</span>
           <span className="status-pill">tables {tableRegistry.length}</span>
           <span className="status-pill">modules {moduleStatus.filter((item) => item.enabled).length}/{moduleStatus.length}</span>
         </div>
         {resultsNotGenerated && <p className="muted-row status-failure-text">当前批次尚未完成分析结果生成，请回到数据导入，完成 CLEAN/DWS/ADS 后再查看。</p>}
       </article>
 
-      <AnalyticsDashboard c={c} activeView={activeView} />
+      <AnalyticsDashboard c={c} activeView={activeView} batchContext={selectedBatch} onOpenImport={onOpenImport} />
 
       <details className="advanced-actions analytics-diagnostics" onToggle={(event) => setDiagnosticsOpen(event.currentTarget.open)}>
         <summary>高级分析与诊断（展开后才加载）</summary>

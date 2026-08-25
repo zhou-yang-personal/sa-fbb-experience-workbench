@@ -359,9 +359,9 @@ pub fn import_list_batches(
 ) -> Result<Vec<BatchListItem>, String> {
     let mut conn = db::conn(&settings)?;
     let sql = if data_type.is_some() {
-        "SELECT b.import_batch_id, COALESCE(b.batch_display_name, ''), b.data_type, b.source_file_name, b.status, CAST(COALESCE(b.total_rows, 0) AS SIGNED), CAST(COALESCE(b.imported_rows, 0) AS SIGNED), (SELECT analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id = b.import_batch_id ORDER BY ar.started_at DESC LIMIT 1) FROM meta_import_batch b WHERE b.data_type = ? ORDER BY b.created_at DESC, b.import_batch_id DESC LIMIT 500"
+        "SELECT b.import_batch_id, COALESCE(b.batch_display_name, ''), b.data_type, b.source_file_name, b.status, CAST(COALESCE(b.total_rows, 0) AS SIGNED), CAST(COALESCE(b.imported_rows, 0) AS SIGNED), COALESCE(pr.analysis_run_id, (SELECT analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id = b.import_batch_id ORDER BY ar.started_at DESC LIMIT 1)), pr.pipeline_run_id, pr.status, COALESCE(pr.error_message, pr.message) FROM meta_import_batch b LEFT JOIN meta_pipeline_run pr ON pr.pipeline_run_id=(SELECT pr2.pipeline_run_id FROM meta_pipeline_run pr2 WHERE pr2.import_batch_id=b.import_batch_id ORDER BY pr2.updated_at DESC, pr2.created_at DESC, pr2.pipeline_run_id DESC LIMIT 1) WHERE b.data_type = ? ORDER BY b.created_at DESC, b.import_batch_id DESC LIMIT 500"
     } else {
-        "SELECT b.import_batch_id, COALESCE(b.batch_display_name, ''), b.data_type, b.source_file_name, b.status, CAST(COALESCE(b.total_rows, 0) AS SIGNED), CAST(COALESCE(b.imported_rows, 0) AS SIGNED), (SELECT analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id = b.import_batch_id ORDER BY ar.started_at DESC LIMIT 1) FROM meta_import_batch b ORDER BY b.created_at DESC, b.import_batch_id DESC LIMIT 500"
+        "SELECT b.import_batch_id, COALESCE(b.batch_display_name, ''), b.data_type, b.source_file_name, b.status, CAST(COALESCE(b.total_rows, 0) AS SIGNED), CAST(COALESCE(b.imported_rows, 0) AS SIGNED), COALESCE(pr.analysis_run_id, (SELECT analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id = b.import_batch_id ORDER BY ar.started_at DESC LIMIT 1)), pr.pipeline_run_id, pr.status, COALESCE(pr.error_message, pr.message) FROM meta_import_batch b LEFT JOIN meta_pipeline_run pr ON pr.pipeline_run_id=(SELECT pr2.pipeline_run_id FROM meta_pipeline_run pr2 WHERE pr2.import_batch_id=b.import_batch_id ORDER BY pr2.updated_at DESC, pr2.created_at DESC, pr2.pipeline_run_id DESC LIMIT 1) ORDER BY b.created_at DESC, b.import_batch_id DESC LIMIT 500"
     };
     let rows = if let Some(data_type) = data_type {
         conn.exec_map(
@@ -376,6 +376,9 @@ pub fn import_list_batches(
                 total_rows,
                 imported_rows,
                 analysis_run_id,
+                pipeline_run_id,
+                pipeline_status,
+                pipeline_message,
             ): (
                 String,
                 String,
@@ -384,6 +387,9 @@ pub fn import_list_batches(
                 String,
                 i64,
                 i64,
+                Option<String>,
+                Option<String>,
+                Option<String>,
                 Option<String>,
             )| BatchListItem {
                 import_batch_id,
@@ -398,6 +404,9 @@ pub fn import_list_batches(
                 total_rows: Some(total_rows),
                 imported_rows: Some(imported_rows),
                 analysis_run_id,
+                pipeline_run_id,
+                pipeline_status,
+                pipeline_message,
             },
         )
     } else {
@@ -413,6 +422,9 @@ pub fn import_list_batches(
                 total_rows,
                 imported_rows,
                 analysis_run_id,
+                pipeline_run_id,
+                pipeline_status,
+                pipeline_message,
             ): (
                 String,
                 String,
@@ -421,6 +433,9 @@ pub fn import_list_batches(
                 String,
                 i64,
                 i64,
+                Option<String>,
+                Option<String>,
+                Option<String>,
                 Option<String>,
             )| BatchListItem {
                 import_batch_id,
@@ -435,6 +450,9 @@ pub fn import_list_batches(
                 total_rows: Some(total_rows),
                 imported_rows: Some(imported_rows),
                 analysis_run_id,
+                pipeline_run_id,
+                pipeline_status,
+                pipeline_message,
             },
         )
     }

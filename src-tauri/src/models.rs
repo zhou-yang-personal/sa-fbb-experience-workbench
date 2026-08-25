@@ -46,6 +46,9 @@ pub struct BatchListItem {
     pub total_rows: Option<i64>,
     pub imported_rows: Option<i64>,
     pub analysis_run_id: Option<String>,
+    pub pipeline_run_id: Option<String>,
+    pub pipeline_status: Option<String>,
+    pub pipeline_message: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

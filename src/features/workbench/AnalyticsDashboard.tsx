@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ECharts } from 'echarts';
-import type { MetricCard } from '../../shared/types';
+import type { BatchListItem, MetricCard } from '../../shared/types';
 import { AnalyticsEvidenceTable } from './AnalyticsEvidenceTable';
 import { analyticsStructuredApi } from './analyticsStructuredApi';
 import { parseMetricHint } from './analyticsStructuredCharts';
@@ -19,7 +19,7 @@ type StructuredDataset = {
 };
 
 type DatasetKey = keyof StructuredDataset;
-type TaskStatus = 'idle' | 'running' | 'stopping' | 'success' | 'partial' | 'failure' | 'stopped';
+type TaskStatus = 'idle' | 'running' | 'stopping' | 'success' | 'partial' | 'failure' | 'stopped' | 'empty';
 
 type DashboardTask = {
   status: TaskStatus;
@@ -62,6 +62,11 @@ const datasetLabels: Record<DatasetKey, string> = {
   userProfiles: '用户画像',
   leadEvidence: '迁转机会证据',
 };
+
+function hasMeaningfulEvidence(key: DatasetKey, rows: MetricCard[]) {
+  if (key !== 'kpis') return rows.length > 0;
+  return rows.some((row) => Math.abs(numberValue(row.value)) > 0);
+}
 
 const pageCopy: Record<AnalyticsTab, { eyebrow: string; title: string; description: string }> = {
   overview: { eyebrow: 'Decision cockpit', title: '经营与体验总览', description: '先确认数据可信度，再查看问题影响、网络行动和合格机会。' },
@@ -246,12 +251,14 @@ function EvidenceDrawer({ row, onClose }: { row: MetricCard; onClose: () => void
   return <div className="analytics-evidence-drawer-backdrop" role="presentation" onClick={onClose}><aside className="analytics-evidence-drawer" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Evidence</p><h3>{row.label}</h3></div><button type="button" onClick={onClose}>关闭</button></header><div className="analytics-evidence-kv">{Object.entries(detail).map(([key, value]) => <div key={key}><span>{key}</span><strong>{value}</strong></div>)}</div></aside></div>;
 }
 
-export function AnalyticsDashboard({ c, activeView }: { c: WorkbenchController; activeView: AnalyticsTab }) {
+export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }: { c: WorkbenchController; activeView: AnalyticsTab; batchContext?: BatchListItem; onOpenImport: () => void }) {
   const [data, setData] = useState<StructuredDataset>(emptyDataset);
   const [loadedViews, setLoadedViews] = useState<Partial<Record<AnalyticsTab, string>>>({});
   const [task, setTask] = useState<DashboardTask>({ status: 'idle', completed: 0, total: 0, message: '等待用户启动加载。' });
   const [failures, setFailures] = useState<string[]>([]);
   const [failedDatasetKeys, setFailedDatasetKeys] = useState<DatasetKey[]>([]);
+  const [emptyDatasetKeys, setEmptyDatasetKeys] = useState<DatasetKey[]>([]);
+  const [datasetCounts, setDatasetCounts] = useState<Partial<Record<DatasetKey, number>>>({});
   const [access, setAccess] = useState('ALL');
   const [keyword, setKeyword] = useState('');
   const [minUsers, setMinUsers] = useState(0);
@@ -278,6 +285,8 @@ export function AnalyticsDashboard({ c, activeView }: { c: WorkbenchController; 
     setData(emptyDataset);
     setFailures([]);
     setFailedDatasetKeys([]);
+    setEmptyDatasetKeys([]);
+    setDatasetCounts({});
     setLoadedViews({});
     setTask({ status: 'idle', completed: 0, total: 0, message: disabled ? '请先选择批次并填写 analysis_run_id。' : '上下文已就绪，等待用户启动加载。' });
   }, [c.importBatchId, c.analysisRunId]);
@@ -287,6 +296,8 @@ export function AnalyticsDashboard({ c, activeView }: { c: WorkbenchController; 
     stopRequested.current = true;
     setFailures([]);
     setFailedDatasetKeys([]);
+    setEmptyDatasetKeys([]);
+    setDatasetCounts({});
     const cached = loadedViews[activeView] === contextKey;
     setTask(cached
       ? { status: 'success', completed: viewDatasets[activeView].length, total: viewDatasets[activeView].length, message: '当前看板使用本次会话缓存；需要时可手动重新加载。' }
@@ -302,11 +313,15 @@ export function AnalyticsDashboard({ c, activeView }: { c: WorkbenchController; 
     stopRequested.current = false;
     setFailures([]);
     setFailedDatasetKeys([]);
+    setEmptyDatasetKeys([]);
+    setDatasetCounts({});
     setTask({ status: 'running', completed: 0, total: keys.length, current: keys[0], message: `正在加载：${datasetLabels[keys[0]]}` });
     const result = await c.runAction(`analytics_load_${activeView}`, async () => {
       const nextFailures: string[] = [];
       let completed = 0;
       let rowCount = 0;
+      let meaningfulDatasets = 0;
+      const nextEmptyKeys: DatasetKey[] = [];
       for (const key of keys) {
         if (stopRequested.current || generation !== taskGeneration.current) break;
         setTask({ status: 'running', completed, total: keys.length, current: key, message: `正在加载：${datasetLabels[key]}` });
@@ -314,8 +329,11 @@ export function AnalyticsDashboard({ c, activeView }: { c: WorkbenchController; 
           const rows = await loadDataset(key);
           if (generation !== taskGeneration.current) break;
           setData((current) => ({ ...current, [key]: rows }));
+          setDatasetCounts((current) => ({ ...current, [key]: rows.length }));
           if (key === 'kpis') c.setOverview({ metrics: rows });
           rowCount += rows.length;
+          if (hasMeaningfulEvidence(key, rows)) meaningfulDatasets += 1;
+          else nextEmptyKeys.push(key);
         } catch (error) {
           nextFailures.push(`${datasetLabels[key]}: ${error instanceof Error ? error.message : String(error)}`);
           setFailedDatasetKeys((current) => [...current, key]);
@@ -323,8 +341,8 @@ export function AnalyticsDashboard({ c, activeView }: { c: WorkbenchController; 
         completed += 1;
         setTask({ status: stopRequested.current ? 'stopping' : 'running', completed, total: keys.length, message: stopRequested.current ? '当前查询已结束，正在停止后续步骤。' : `已完成 ${completed}/${keys.length} 个数据集。` });
       }
-      return { completed, total: keys.length, rowCount, failures: nextFailures, stopped: stopRequested.current };
-    }) as { completed: number; total: number; rowCount: number; failures: string[]; stopped: boolean } | null;
+      return { completed, total: keys.length, rowCount, meaningfulDatasets, emptyDatasetKeys: nextEmptyKeys, failures: nextFailures, stopped: stopRequested.current };
+    }) as { completed: number; total: number; rowCount: number; meaningfulDatasets: number; emptyDatasetKeys: DatasetKey[]; failures: string[]; stopped: boolean } | null;
 
     if (generation !== taskGeneration.current) return;
     if (!result) {
@@ -332,13 +350,19 @@ export function AnalyticsDashboard({ c, activeView }: { c: WorkbenchController; 
       return;
     }
     setFailures(result.failures);
+    setEmptyDatasetKeys(result.emptyDatasetKeys);
     if (result.stopped) {
       setTask({ status: 'stopped', completed: result.completed, total: result.total, message: `已停止后续加载；已完成 ${result.completed}/${result.total} 个数据集。` });
       return;
     }
-    setLoadedViews((current) => ({ ...current, [activeView]: requestedContext }));
-    const status = result.failures.length ? 'partial' : 'success';
-    setTask({ status, completed: result.completed, total: result.total, message: `已加载 ${result.rowCount} 条聚合证据${result.failures.length ? `，${result.failures.length} 个数据集失败。` : '。'}` });
+    const noEvidence = result.meaningfulDatasets === 0;
+    if (!noEvidence) setLoadedViews((current) => ({ ...current, [activeView]: requestedContext }));
+    const incomplete = result.emptyDatasetKeys.length > 0;
+    const status = noEvidence ? 'empty' : result.failures.length || incomplete ? 'partial' : 'success';
+    const message = noEvidence
+      ? `查询已完成，但 ${result.completed} 个数据集都没有可分析聚合数据；返回的 ${result.rowCount} 条指标结构为全 0 或空结果${result.failures.length ? `，另有 ${result.failures.length} 个查询失败` : ''}。`
+      : `已加载 ${result.rowCount} 条聚合记录${result.failures.length ? `，${result.failures.length} 个查询失败` : ''}${incomplete ? `，${result.emptyDatasetKeys.length} 个数据集为空` : ''}。`;
+    setTask({ status, completed: result.completed, total: result.total, message });
   }
 
   function stopLoading() {
@@ -392,13 +416,23 @@ export function AnalyticsDashboard({ c, activeView }: { c: WorkbenchController; 
       <div className="analytics-task-progress"><span style={{ width: `${progress}%` }} /></div>
       <div className="analytics-task-plan">{viewDatasets[activeView].map((key, index) => {
         const failed = failedDatasetKeys.includes(key);
-        const className = failed ? 'is-failed' : index < task.completed ? 'is-complete' : task.current === key && running ? 'is-running' : '';
-        return <span key={key} className={className}>{failed ? '!' : index < task.completed ? '✓' : index + 1} {datasetLabels[key]}</span>;
+        const empty = emptyDatasetKeys.includes(key);
+        const className = failed ? 'is-failed' : empty ? 'is-empty' : index < task.completed ? 'is-complete' : task.current === key && running ? 'is-running' : '';
+        const count = datasetCounts[key];
+        return <span key={key} className={className}>{failed ? '!' : empty ? '○' : index < task.completed ? '✓' : index + 1} {datasetLabels[key]}{count !== undefined ? ` · ${count} rows${empty && count > 0 ? ' / all 0' : ''}` : ''}</span>;
       })}</div>
       <small>切换页面不会自动发起查询；停止操作会等待当前数据库请求结束，再跳过剩余步骤。</small>
     </section>
-    {!viewLoaded && !running && task.status !== 'stopped' && <section className="analytics-load-gate"><div><p className="eyebrow">Ready on demand</p><h3>当前看板尚未加载</h3><p>{actionBusy ? '上一项操作仍在完成，结束后即可启动本页任务。' : `本页需要 ${viewDatasets[activeView].length} 个聚合数据集。只有点击按钮后才会查询 MySQL，不会在应用启动或切换页面时自动执行。`}</p></div><button type="button" className="primary-button" disabled={disabled || actionBusy} onClick={loadCurrentView}>开始加载 {copy.title}</button></section>}
-    {(viewLoaded || running || task.status === 'partial' || task.status === 'stopped') && <>
+    {task.status === 'empty' && <section className="analytics-empty-result-banner">
+      <div>
+        <strong>RAW 数据可能已经导入，但当前批次尚无可用 CLEAN/DWS/ADS 结果</strong>
+        <span>RAW {batchContext?.status ?? 'unknown'} · Pipeline {batchContext?.pipeline_status ?? 'unknown'} · analysis_run_id {c.analysisRunId || 'missing'}</span>
+        <small>{String(batchContext?.pipeline_status ?? '').toLowerCase() === 'failed' ? batchContext?.pipeline_message ?? '自动分析流水线失败。' : '请回到数据导入页恢复该批次的流水线日志，确认 Quality Gate、CLEAN/DWD 和 DWS/ADS 是否完成。'}</small>
+      </div>
+      <button type="button" onClick={onOpenImport}>查看该批次导入状态与日志</button>
+    </section>}
+    {!viewLoaded && !running && task.status !== 'stopped' && task.status !== 'empty' && <section className="analytics-load-gate"><div><p className="eyebrow">Ready on demand</p><h3>当前看板尚未加载</h3><p>{actionBusy ? '上一项操作仍在完成，结束后即可启动本页任务。' : `本页需要 ${viewDatasets[activeView].length} 个聚合数据集。只有点击按钮后才会查询 MySQL，不会在应用启动或切换页面时自动执行。`}</p></div><button type="button" className="primary-button" disabled={disabled || actionBusy} onClick={loadCurrentView}>开始加载 {copy.title}</button></section>}
+    {(viewLoaded || running || task.status === 'partial' || task.status === 'stopped' || task.status === 'empty') && <>
     <section className="analytics-filter-bar" aria-label="分析筛选">
       <label>接入类型<select value={access} onChange={(event) => setAccess(event.target.value)}><option value="ALL">全部</option><option value="CABLE">Cable</option><option value="FTTH">FTTH</option><option value="UNKNOWN">Unknown</option></select></label>
       <label>搜索<input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="App、用户、BRAS、OLT、PON" /></label>

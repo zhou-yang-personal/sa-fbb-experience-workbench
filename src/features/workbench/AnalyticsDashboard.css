@@ -7,7 +7,8 @@
 .analytics-task-card.task-stopping { border-color: #84adff; background: #f5f8ff; }
 .analytics-task-card.task-success { border-color: #abefc6; background: #f6fef9; }
 .analytics-task-card.task-partial,
-.analytics-task-card.task-stopped { border-color: #fedf89; background: #fffcf5; }
+.analytics-task-card.task-stopped,
+.analytics-task-card.task-empty { border-color: #fedf89; background: #fffcf5; }
 .analytics-task-card.task-failure { border-color: #fecdca; background: #fff7f6; }
 .analytics-task-head { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; }
 .analytics-task-head div > span { display: block; color: #667085; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
@@ -20,7 +21,16 @@
 .analytics-task-plan span.is-complete { color: #027a48; background: #ecfdf3; border-color: #abefc6; }
 .analytics-task-plan span.is-running { color: #155eef; background: #eff4ff; border-color: #b2ccff; }
 .analytics-task-plan span.is-failed { color: #b42318; background: #fef3f2; border-color: #fecdca; }
+.analytics-task-plan span.is-empty { color: #b54708; background: #fffaeb; border-color: #fedf89; }
 .analytics-task-card > small { color: #667085; }
+.analytics-empty-result-banner { display: flex; justify-content: space-between; gap: 24px; align-items: center; padding: 16px 18px; color: #7a2e0e; background: #fffaeb; border: 1px solid #fedf89; border-radius: 14px; }
+.analytics-empty-result-banner div { display: grid; gap: 5px; }
+.analytics-empty-result-banner strong,
+.analytics-empty-result-banner span,
+.analytics-empty-result-banner small { display: block; }
+.analytics-empty-result-banner span { font-size: 12px; }
+.analytics-empty-result-banner small { color: #93370d; }
+.analytics-empty-result-banner button { flex: 0 0 auto; }
 .analytics-load-gate { display: flex; justify-content: space-between; gap: 28px; align-items: center; min-height: 150px; padding: 24px; background: linear-gradient(135deg, #fff 0%, #f5f8ff 100%); border: 1px dashed #84adff; border-radius: 16px; }
 .analytics-load-gate h3 { margin: 5px 0 7px; color: #172033; }
 .analytics-load-gate p { max-width: 760px; margin: 0; color: #667085; line-height: 1.55; }

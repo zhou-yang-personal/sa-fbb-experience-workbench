@@ -102,6 +102,9 @@ export interface BatchListItem {
   total_rows?: number;
   imported_rows?: number;
   analysis_run_id?: string;
+  pipeline_run_id?: string;
+  pipeline_status?: string;
+  pipeline_message?: string;
 }
 
 export interface BatchTableRegistryRow {

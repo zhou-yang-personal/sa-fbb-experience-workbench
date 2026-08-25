@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.44
+1.0.45
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,14 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.45 update
+
+- Batch history now reports RAW and pipeline readiness independently and resolves the latest pipeline ID, status, failure message and `analysis_run_id` for each batch.
+- Selecting a batch synchronizes its analysis context. The import page reloads that batch's pipeline status and logs from sequence zero, while batches without a pipeline clear stale monitor state.
+- Dashboard completion is evidence-aware: empty arrays and six all-zero KPI placeholders produce an explicit empty state, not `SUCCESS`, and direct the user to the selected batch's import diagnostics.
+- Terminal pipeline refreshes no longer auto-run Registry and module table-count checks.
+- Version markers are synchronized to `1.0.45`.
 
 ## 1.0.44 update
 
@@ -103,10 +111,9 @@ CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final
 
 ## Verification
 
-- `npm run check`: passed on 2026-08-24.
-- `npm run build`: passed on 2026-08-24; Vite reports a non-blocking JavaScript chunk-size warning.
-- `cd src-tauri && cargo check --offline`: passed on 2026-08-24 with existing dead-code/unused warnings.
-- `cd src-tauri && cargo test --offline`: passed, 41 tests.
+- `npm run check` and `npm run build`: passed on 2026-08-25; Vite reports the existing non-blocking JavaScript chunk-size warning.
+- Targeted Rust format check and `cd src-tauri && cargo check --offline`: passed on 2026-08-25 with existing dead-code/unused warnings.
+- `cd src-tauri && CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --offline`: passed on 2026-08-25, 42 tests. Generated Cargo build artifacts were cleaned once after the root filesystem filled during the first linker attempt.
 - Network hotspot migration has a regression test for the bounded utf8mb4 index definition; target MySQL execution is not yet smoke-tested.
 - Historical batch deletion is compiled and unit-tested for status/table targeting, but destructive execution against a real target MySQL batch was not run.
 - Packaged Windows CSV picker, database initialization, batch deletion, RAW progress heartbeat and a real import with manually selected rules remain to be smoke-tested from the next Windows artifact.

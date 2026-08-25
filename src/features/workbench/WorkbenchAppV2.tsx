@@ -57,7 +57,7 @@ export function WorkbenchAppV2() {
   }
 
   function renderSection() {
-    if (['overview', 'apps', 'quality', 'cable', 'users', 'leads'].includes(activeSection)) return <AnalysisWorkspace c={c} activeView={activeSection as 'overview' | 'apps' | 'quality' | 'cable' | 'users' | 'leads'} />;
+    if (['overview', 'apps', 'quality', 'cable', 'users', 'leads'].includes(activeSection)) return <AnalysisWorkspace c={c} activeView={activeSection as 'overview' | 'apps' | 'quality' | 'cable' | 'users' | 'leads'} onOpenImport={() => setActiveSection('import')} />;
     if (activeSection === 'import') return <ImportPanel {...c} onOpenAnalysis={() => setActiveSection('overview')} onOpenAccessRules={() => setActiveSection('config')} />;
     if (activeSection === 'config') return <ConfigurationPanel c={c} />;
     return <SystemPanel c={c} />;
