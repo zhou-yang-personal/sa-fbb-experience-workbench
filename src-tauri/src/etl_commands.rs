@@ -251,6 +251,8 @@ mod tests {
 
 #[tauri::command]
 pub fn etl_start_aggregate_job(req: EtlRequest) -> Result<CommandAck, String> {
+    crate::migrations::ensure_access_schema(&req.settings)?;
+    crate::migrations::ensure_experience_policy_schema(&req.settings)?;
     batch_tables::ensure_batch_tables(&req.settings, &req.import_batch_id)?;
     let analysis_run_id = req
         .analysis_run_id
@@ -267,10 +269,61 @@ pub fn etl_start_aggregate_job(req: EtlRequest) -> Result<CommandAck, String> {
         "dws_user_daily_profile",
     )?;
     let mut conn = db::conn(&req.settings)?;
-    let _ = conn.exec_drop(
-        "REPLACE INTO meta_analysis_run (analysis_run_id, import_batch_id, run_type, status, started_at, message) VALUES (?, ?, 'base_aggregate', 'running', NOW(), 'aggregate started')",
-        (&analysis_run_id, &req.import_batch_id),
-    );
+    let (access_rule_set_id, access_rule_set_version, others_access_type): (
+        Option<String>,
+        Option<i64>,
+        Option<String>,
+    ) = conn
+        .exec_first(
+            "SELECT b.access_rule_set_id, b.access_rule_set_version, s.default_access_type FROM meta_import_batch b LEFT JOIN meta_access_rule_set s ON s.rule_set_id=b.access_rule_set_id WHERE b.import_batch_id=?",
+            (&req.import_batch_id,),
+        )
+        .map_err(|err| format!("failed to snapshot access rules for analysis run: {err}"))?
+        .ok_or_else(|| format!("import batch not found: {}", req.import_batch_id))?;
+    let access_rule_set_id = access_rule_set_id.ok_or_else(|| {
+        "analysis requires a published IP rule version with an explicit Others mapping".to_string()
+    })?;
+    let access_rule_set_version = access_rule_set_version.ok_or_else(|| {
+        "analysis batch is missing its access rule version; bind a published rule first".to_string()
+    })?;
+    let others_access_type = others_access_type
+        .as_deref()
+        .map(crate::access_rule_commands::normalize_others_access_type)
+        .transpose()?
+        .ok_or_else(|| {
+            "analysis batch rule has no explicit Others mapping; publish a corrected rule version"
+                .to_string()
+        })?;
+    let (experience_policy_id, experience_policy_version): (String, i64) = conn
+        .exec_first(
+            "SELECT policy_id, CAST(version AS SIGNED) FROM meta_experience_analysis_policy WHERE status='published' ORDER BY version DESC LIMIT 1",
+            (),
+        )
+        .map_err(|err| format!("failed to resolve published experience policy: {err}"))?
+        .ok_or_else(|| "no published experience analysis policy is available".to_string())?;
+    conn.exec_drop(
+        "REPLACE INTO meta_analysis_run (analysis_run_id, import_batch_id, run_type, access_rule_set_id, access_rule_set_version, others_access_type, experience_policy_id, experience_policy_version, status, started_at, message) VALUES (?, ?, 'base_aggregate', ?, ?, ?, ?, ?, 'running', NOW(), 'aggregate started')",
+        (&analysis_run_id, &req.import_batch_id, &access_rule_set_id, access_rule_set_version, &others_access_type, &experience_policy_id, experience_policy_version),
+    )
+    .map_err(|err| format!("failed to create traceable analysis run: {err}"))?;
+    conn.exec_drop(
+        "REPLACE INTO meta_analysis_run_policy_binding (analysis_run_id, import_batch_id, access_rule_set_id, access_rule_set_version, others_access_type, app_mapping_version, experience_policy_id, experience_policy_version, policy_snapshot) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, JSON_OBJECT('access_rule_set_id', ?, 'access_rule_set_version', ?, 'others_access_type', ?, 'experience_policy_id', ?, 'experience_policy_version', ?))",
+        (
+            &analysis_run_id,
+            &req.import_batch_id,
+            &access_rule_set_id,
+            access_rule_set_version,
+            &others_access_type,
+            &experience_policy_id,
+            experience_policy_version,
+            &access_rule_set_id,
+            access_rule_set_version,
+            &others_access_type,
+            &experience_policy_id,
+            experience_policy_version,
+        ),
+    )
+    .map_err(|err| format!("failed to bind analysis policy snapshot: {err}"))?;
     let message = match job_runner::run_job(
         &req.settings,
         &req.import_batch_id,

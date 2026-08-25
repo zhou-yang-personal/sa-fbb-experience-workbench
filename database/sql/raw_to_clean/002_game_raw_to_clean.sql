@@ -11,6 +11,7 @@ INSERT INTO :dwd_game_detail_clean (
   source_user_type,
   user_type,
   local_ip_address,
+  server_ip,
   access_type_source,
   access_type_confidence,
   access_rule_id,
@@ -78,10 +79,26 @@ WITH params AS (
     r.account_key AS user_account,
     r.mac_key AS user_mac,
     r.source_user_type,
-    COALESCE(ar.access_type, NULLIF(r.source_user_type, 'UNKNOWN'), ars.default_access_type, 'UNKNOWN') AS user_type,
+    CASE
+      WHEN r.ip_num IS NULL THEN 'UNKNOWN'
+      WHEN ar.rule_id IS NOT NULL THEN ar.access_type
+      WHEN ars.default_access_type IN ('CABLE', 'FTTH', 'OTHER') THEN ars.default_access_type
+      ELSE 'UNKNOWN'
+    END AS user_type,
     r.ip_key AS local_ip_address,
-    CASE WHEN ar.rule_id IS NOT NULL THEN 'IP_RULE' WHEN r.source_user_type <> 'UNKNOWN' THEN 'SOURCE_FIELD' WHEN ars.default_access_type <> 'UNKNOWN' THEN 'RULE_SET_DEFAULT' ELSE 'UNMATCHED' END AS access_type_source,
-    CASE WHEN ar.rule_id IS NOT NULL THEN 'HIGH' WHEN r.source_user_type <> 'UNKNOWN' THEN 'MEDIUM' WHEN ars.default_access_type <> 'UNKNOWN' THEN 'HIGH' ELSE 'LOW' END AS access_type_confidence,
+    NULLIF(TRIM(r.server_ip), '') AS server_ip,
+    CASE
+      WHEN r.ip_num IS NULL THEN 'UNAVAILABLE_IP'
+      WHEN ar.rule_id IS NOT NULL THEN 'IP_RULE'
+      WHEN ars.default_access_type IN ('CABLE', 'FTTH', 'OTHER') THEN 'RULE_SET_OTHERS'
+      ELSE 'UNMATCHED'
+    END AS access_type_source,
+    CASE
+      WHEN r.ip_num IS NULL THEN 'LOW'
+      WHEN ar.rule_id IS NOT NULL THEN 'HIGH'
+      WHEN ars.default_access_type IN ('CABLE', 'FTTH', 'OTHER') THEN 'HIGH'
+      ELSE 'LOW'
+    END AS access_type_confidence,
     ar.rule_id AS access_rule_id,
     b.access_rule_set_version,
     COALESCE(NULLIF(TRIM(m.standard_app_name), ''), NULLIF(TRIM(r.application_protocol), ''), 'UNKNOWN_APP') AS app_name,
@@ -122,6 +139,7 @@ SELECT
   source_user_type,
   user_type,
   local_ip_address,
+  server_ip,
   access_type_source,
   access_type_confidence,
   access_rule_id,

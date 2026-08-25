@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AccessIpRangeRow, AccessRuleInput, AccessRulePreviewResult, AccessRuleSetRow, AccessRuleValidationResult, BatchListItem, BatchTableRegistryRow, CommandAck, CsvProbeResult, DashboardOverview, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, ImportPipelineLogRow, ImportPipelineStartResult, ImportPipelineStatus, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
+import type { AccessIpRangeRow, AccessRuleInput, AccessRulePreviewResult, AccessRuleSetRow, AccessRuleValidationResult, AppExperienceProfileRow, BatchListItem, BatchTableRegistryRow, CommandAck, CsvProbeResult, DashboardOverview, ExperiencePolicyRow, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, ImportPipelineLogRow, ImportPipelineStartResult, ImportPipelineStatus, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
 
 function normalizeFilter(value?: string) {
   const normalized = value?.trim();
@@ -43,6 +43,13 @@ export const workbenchApi = {
   publishAccessRules: (settings: MySqlSettings, ruleSetId: string) => invoke<AccessRuleSetRow>('access_rule_publish', { req: { settings, rule_set_id: ruleSetId } }),
   applyAccessRulesToBatch: (settings: MySqlSettings, ruleSetId: string, importBatchId: string) => invoke<CommandAck>('access_rule_apply_to_batch', { req: { settings, rule_set_id: ruleSetId, import_batch_id: importBatchId } }),
   previewAccessRules: (settings: MySqlSettings, ruleSetId: string, importBatchId: string, sampleLimit = 50_000) => invoke<AccessRulePreviewResult>('access_rule_preview', { req: { settings, rule_set_id: ruleSetId, import_batch_id: importBatchId, sample_limit: sampleLimit } }),
+  experiencePolicies: (settings: MySqlSettings) => invoke<ExperiencePolicyRow[]>('experience_policy_list', { settings }),
+  experienceProfiles: (settings: MySqlSettings, policyId: string) => invoke<AppExperienceProfileRow[]>('experience_profile_list', { req: { settings, policy_id: policyId } }),
+  createExperiencePolicyDraft: (settings: MySqlSettings) => invoke<CommandAck>('experience_policy_create_draft', { settings }),
+  updateExperiencePolicy: (settings: MySqlSettings, policy: ExperiencePolicyRow) => invoke<CommandAck>('experience_policy_update', { req: { settings, ...policy } }),
+  updateExperienceProfile: (settings: MySqlSettings, profile: AppExperienceProfileRow) => invoke<CommandAck>('experience_profile_update', { req: { settings, ...profile } }),
+  cloneExperienceProfile: (settings: MySqlSettings, policyId: string, sourceProfileId: string) => invoke<CommandAck>('experience_profile_clone', { req: { settings, policy_id: policyId, source_profile_id: sourceProfileId } }),
+  publishExperiencePolicy: (settings: MySqlSettings, policyId: string) => invoke<CommandAck>('experience_policy_publish', { req: { settings, policy_id: policyId } }),
   listBatches: (settings: MySqlSettings, dataType?: string) => invoke<BatchListItem[]>('import_list_batches', { settings, dataType }),
   deleteBatch: (settings: MySqlSettings, importBatchId: string) => invoke<CommandAck>('import_delete_batch', { req: { settings, import_batch_id: importBatchId } }),
   prepareBatchTables: (settings: MySqlSettings, importBatchId: string) => invoke<MetricCard[]>('analysis_prepare_batch_tables', { settings, importBatchId }),

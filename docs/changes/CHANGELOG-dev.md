@@ -1,5 +1,52 @@
 # CHANGELOG-dev
 
+## 1.0.50 - 2026-08-25
+
+- Added a shared, persistent Analysis Context with filter chips, single-filter removal, clear and back navigation across analysis pages.
+- Replaced the default overview entry with Experience Status, rule-qualified Auto Findings and explicit Data Coverage; large queries remain user-triggered and ADS/DWS-first.
+- Added a bilingual Investigation Workspace with finding scope, cautious evidence-side judgement, affected-user evidence, user/app/hour drill-down and saved investigations.
+- Added typed Tauri APIs for V2 status, findings, coverage, investigation evidence and saved investigation state.
+- Added versioned Experience Policy and App Profile configuration, immutable publish flow and category-profile cloning. Published policies are snapshotted by new analysis runs.
+- Added `user × app × hour` DWS and App-hour ADS for reusable time investigation without dashboard RAW scans.
+- Retained source Server IP in new CLEAN results and added an App/Finding-scoped evidence drill-down capped at 200 priority users and 20,000 DWD observations; no global Server-IP explosion is created.
+- Added previous comparable-run verification for poor-observation, persistent-user and severe-user rates. Comparison is suppressed unless all bound rule versions match.
+- Renamed legacy network views to Network / Path Evidence and stopped presenting missing topology as confirmed hotspots or root causes.
+- Clarified that commercial results are experience-driven opportunities rather than directly marketable CRM leads.
+- Synchronized application version markers to `1.0.50`; `AGENTS.project.md` remains unchanged because it requires explicit user authorization.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-25.
+- `npm run build`: passed on 2026-08-25; the existing ECharts chunk-size warning remains.
+- `cargo check --offline`: passed on 2026-08-25 with existing warnings.
+- `cargo test --offline --quiet`: passed on 2026-08-25.
+- Live MySQL execution, controlled Server-IP runtime and comparable-run values on the 13,205,379-row Windows batch remain pending.
+
+## 1.0.49 - 2026-08-25
+
+### Added
+
+- Added a versioned experience-policy foundation, App experience profiles, analysis-run policy snapshots and side-by-side V2 user/App, App/access and App ADS tables.
+- Added four auditable App experience rates with exact numerators, denominators, sample status and policy version: poor observation, ever affected, persistent poor and severe poor.
+- Added a no-RAW-reimport manual reaggregation for `BATCH_7ae0c7d1c0a240ba833e366bf755397d`, producing `RUN_REAGG_V2_20260825` while preserving `RUN_MANUAL_001`.
+- Added reusable bilingual chart explanations to all current dashboard and PDF chart positions.
+
+### Changed
+
+- Others is now an explicit per-rule-version choice. New drafts start unconfigured; preview, publish, import binding and batch binding reject missing or Unknown Others values.
+- RAW-to-CLEAN classification now uses explicit IP ranges followed by configured Others. CSV access fields remain evidence only; missing/invalid IP is kept as unavailable instead of being forced to Cable.
+- App materialization now produces V2 metrics and App queries prefer V2 ADS. Problem-App charts use persistent-poor metrics and exclude insufficient samples; legacy ADS remains a compatibility fallback.
+- Analysis runs snapshot access-rule and experience-policy versions. Version markers were synchronized to `1.0.49`, except `AGENTS.project.md`, which requires explicit user authorization to edit.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-25.
+- `npm run build`: passed on 2026-08-25; the existing ECharts chunk-size warning remains.
+- `cargo check --offline` with the existing isolated target cache and incremental compilation disabled: passed with 23 existing warnings.
+- Rust access-rule tests: 2 passed in the parallel backend validation.
+- SQL static checks and `git diff --check`: passed. Live MySQL execution against the 13,205,379-row Windows batch is pending because this Linux environment has no MySQL service.
+- Dependencies and committed lock files were not changed.
+
 ## 1.0.48 - 2026-08-25
 
 ### Added

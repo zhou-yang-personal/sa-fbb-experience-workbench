@@ -1,0 +1,141 @@
+import type { ChartExplanationContent } from './ChartExplanation';
+
+export type ChartExplanationId =
+  | 'app_affected_users'
+  | 'app_affected_user_rate'
+  | 'app_poor_observation_rate'
+  | 'app_ever_affected_user_rate'
+  | 'app_severe_user_rate'
+  | 'app_tcp_traffic'
+  | 'topology_affected_users'
+  | 'topology_poor_user_rate'
+  | 'network_side_rtt'
+  | 'subscriber_side_rtt'
+  | 'typical_effective_rate'
+  | 'typical_subscriber_rtt'
+  | 'typical_user_loss'
+  | 'user_demand_band'
+  | 'user_traffic_band'
+  | 'user_issue_side'
+  | 'lead_stage'
+  | 'lead_stage_share'
+  | 'lead_demand_score';
+
+const bilingual = (zh: string, en: string) => ({ 'zh-CN': zh, 'en-US': en } as const);
+
+export const chartExplanationCatalog: Record<ChartExplanationId, ChartExplanationContent> = {
+  app_affected_users: {
+    question: bilingual('哪些 App 的持续差体验用户最多？', 'Which apps have the most persistently poor users?'),
+    calculation: bilingual('满足最低有效观测数、最低异常次数和用户自身差体验观测率门槛的唯一用户数。', 'Distinct users meeting the minimum valid observations, poor-observation count, and personal poor-rate threshold.'),
+    interpretation: bilingual('数值越大表示持续影响范围越广；它比“至少异常一次”更适合识别问题 App。', 'A larger value means broader persistent impact and is more suitable for problem-app detection than one-off impact.'),
+    limitation: bilingual('仅纳入样本充足对象；门槛来自本次分析绑定的策略版本，不代表已确认根因。', 'Only sufficient samples qualify; thresholds come from the bound policy version and do not establish root cause.'),
+  },
+  app_affected_user_rate: {
+    question: bilingual('各 App 有多大比例的合格用户属于持续差体验？', 'What share of eligible users are persistently poor for each app?'),
+    calculation: bilingual('持续差体验用户 ÷ 满足最低有效观测数的用户 × 100%。', 'Persistently poor users divided by users meeting the minimum valid-observation rule, multiplied by 100%.'),
+    interpretation: bilingual('用于问题 App 排序；需同时查看分子、分母、差体验观测占比和严重用户占比。', 'Use it to rank problem apps, together with numerator, denominator, poor-observation rate, and severe-user rate.'),
+    limitation: bilingual('旧聚合回退仍是“曾受影响”口径；只有 source=ads_app_experience_v2 才是本定义。', 'Legacy fallback still uses ever-affected semantics; this definition applies only when source=ads_app_experience_v2.'),
+  },
+  app_poor_observation_rate: {
+    question: bilingual('App 的有效观测中，实际有多大比例触发差体验？', 'What share of valid app observations were actually poor?'),
+    calculation: bilingual('差体验观测数 ÷ 有效体验观测数 × 100%。', 'Poor observations divided by valid experience observations, multiplied by 100%.'),
+    interpretation: bilingual('直接反映异常发生频率，可识别“用户很多但每人只偶发一次”的情况。', 'It reflects issue frequency and separates broad one-off impact from repeated poor experience.'),
+    limitation: bilingual('有效观测由 App 体验策略决定；无适用体验字段的记录不进入分母。', 'Valid observations depend on the app experience policy; records without applicable metrics are excluded.'),
+  },
+  app_ever_affected_user_rate: {
+    question: bilingual('有多少合格用户至少遇到过一次差体验？', 'What share of eligible users encountered at least one poor observation?'),
+    calculation: bilingual('至少一次差体验的合格用户 ÷ 满足最低有效观测数的用户 × 100%。', 'Eligible users with at least one poor observation divided by all eligible users, multiplied by 100%.'),
+    interpretation: bilingual('表示问题触达范围；100% 不表示所有请求都异常，也不表示持续异常。', 'It measures reach; 100% does not mean every request was poor or that the issue was persistent.'),
+    limitation: bilingual('高频 App 更容易出现至少一次异常，不能单独用于问题 App 排名。', 'High-frequency apps are more likely to have one poor event, so this metric should not rank problem apps alone.'),
+  },
+  app_severe_user_rate: {
+    question: bilingual('各 App 有多大比例的合格用户满足严重差体验规则？', 'What share of eligible users meet the severe-poor rule for each app?'),
+    calculation: bilingual('满足独立严重阈值、最低严重次数和严重率的用户 ÷ 合格用户 × 100%。', 'Users meeting separate severe thresholds, minimum severe count, and severe rate divided by eligible users.'),
+    interpretation: bilingual('用于识别用户数未必最大但后果更严重的局部问题。', 'Use it to identify locally severe issues that may not affect the largest user count.'),
+    limitation: bilingual('严重阈值为策略配置，不等于故障等级；仍需指标和问题侧证据确认。', 'Severe thresholds are policy configuration, not a fault grade; metric and issue-side evidence are still required.'),
+  },
+  app_tcp_traffic: {
+    question: bilingual('哪些 App 承载了更多 TCP 下载流量？', 'Which apps carried more TCP download traffic?'),
+    calculation: bilingual('汇总当前 TCP 数据中下载数据量并换算为 GB。', 'Sum downloaded data volume from the current TCP dataset and convert it to GB.'),
+    interpretation: bilingual('高流量表示业务使用规模大，不代表体验一定好或差。', 'High traffic indicates usage scale, not necessarily good or poor experience.'),
+    limitation: bilingual('未导入独立 Game 文件时不包含游戏时长；缺失下载量的观测不应按 0 解读。', 'Game duration is excluded when Game data is not imported; missing download volume must not be interpreted as zero.'),
+  },
+  topology_affected_users: {
+    question: bilingual('哪些可识别网络位置聚集了更多受影响用户？', 'Which identifiable network locations contain more affected users?'),
+    calculation: bilingual('按 BRAS / OLT / PON 与接入制式分组，统计至少一次差体验的唯一用户。', 'Group by BRAS / OLT / PON and access type, then count distinct ever-affected users.'),
+    interpretation: bilingual('高值表示影响范围集中，可作为进一步调查入口，不等于设备故障。', 'A high value indicates concentrated impact and is an investigation entry point, not proof of device failure.'),
+    limitation: bilingual('拓扑字段缺失或样本量不足时只能说明聚集，不能精确定位网络节点。', 'Missing topology fields or insufficient samples allow only concentration evidence, not precise node localization.'),
+  },
+  topology_poor_user_rate: {
+    question: bilingual('哪些可识别网络位置的用户受影响比例更高？', 'Which identifiable network locations have a higher affected-user share?'),
+    calculation: bilingual('节点内差体验唯一用户 ÷ 节点内观测唯一用户 × 100%。', 'Distinct poor users at the node divided by distinct observed users at the node, multiplied by 100%.'),
+    interpretation: bilingual('同时查看分子、分母和影响用户数；高比例的小样本节点不能直接排在前列。', 'Read numerator, denominator, and affected users together; a high-rate small-sample node should not automatically rank first.'),
+    limitation: bilingual('这不是设备故障率；Unknown 拓扑是字段缺失集合，不是一个真实热点。', 'This is not a device failure rate; Unknown topology is a missing-data bucket, not a real hotspot.'),
+  },
+  network_side_rtt: {
+    question: bilingual('哪些网络位置的网络侧往返时延更高？', 'Which network locations have higher network-side round-trip time?'),
+    calculation: bilingual('按网络位置聚合有效 Network-side RTT 观测的平均值，单位 ms。', 'Average valid network-side RTT observations by network location, in milliseconds.'),
+    interpretation: bilingual('较高 RTT 是网络侧路径异常证据之一，需要结合丢包、时段和对照组确认。', 'Higher RTT is one item of network-path evidence and should be confirmed with loss, time, and a baseline.'),
+    limitation: bilingual('平均值可能掩盖尖峰；缺少路径、设备性能或 CDN 数据时不能直接认定根因。', 'Averages can hide spikes; without path, device-performance, or CDN data, root cause cannot be confirmed.'),
+  },
+  subscriber_side_rtt: {
+    question: bilingual('哪些网络位置关联的用户侧往返时延更高？', 'Which network locations are associated with higher subscriber-side round-trip time?'),
+    calculation: bilingual('按网络位置聚合有效 Subscriber-side RTT 观测的平均值，单位 ms。', 'Average valid subscriber-side RTT observations by network location, in milliseconds.'),
+    interpretation: bilingual('较高值更偏家庭/用户侧证据，但应与网络侧 RTT 和丢包同时判断。', 'Higher values lean toward home/user-side evidence, but should be read with network-side RTT and packet loss.'),
+    limitation: bilingual('Subscriber-side RTT 不能单独证明 Wi-Fi 问题；仍需 CPE、Wi-Fi 或终端遥测。', 'Subscriber-side RTT alone cannot prove a Wi-Fi issue; CPE, Wi-Fi, or device telemetry is still needed.'),
+  },
+  typical_effective_rate: {
+    question: bilingual('Cable 与 FTTH 在一天不同时段的典型有效速率如何变化？', 'How does typical effective rate vary by hour for Cable and FTTH?'),
+    calculation: bilingual('按小时将多日有效速率以活跃用户数加权，形成典型 24 小时曲线，单位 Mbps。', 'Weight multi-day effective rate by active users for each hour to form a typical 24-hour profile, in Mbps.'),
+    interpretation: bilingual('用于发现高峰承压和接入制式差异；应优先比较相同 App 与相近样本结构。', 'Use it to find peak-hour pressure and access differences; compare like apps and similar sample structures first.'),
+    limitation: bilingual('这是典型日汇总，不是实时趋势；App 构成或用户活跃差异会影响总体比较。', 'This is a typical-day aggregate, not a real-time trend; app mix and activity differences can affect the comparison.'),
+  },
+  typical_subscriber_rtt: {
+    question: bilingual('Cable 与 FTTH 的用户侧 RTT 在一天中何时升高？', 'When does subscriber-side RTT rise during the day for Cable and FTTH?'),
+    calculation: bilingual('按小时将多日 Subscriber-side RTT 以活跃用户数加权，单位 ms。', 'Weight multi-day subscriber-side RTT by active users for each hour, in milliseconds.'),
+    interpretation: bilingual('同一时段持续升高提示接入或家庭侧承压，需要结合网络侧指标交叉验证。', 'A sustained rise in the same hours suggests access or home-side pressure and needs network-side cross-checks.'),
+    limitation: bilingual('总体均值受 App 和用户构成影响，不能据此单独断定 Cable 或 FTTH 的技术质量。', 'The aggregate is affected by app and user mix and cannot alone establish the technical quality of Cable or FTTH.'),
+  },
+  typical_user_loss: {
+    question: bilingual('Cable 与 FTTH 的用户侧下行丢包在一天中何时更明显？', 'When is user-side downstream loss more pronounced for Cable and FTTH?'),
+    calculation: bilingual('按小时将多日用户侧下行丢包率以活跃用户数加权，单位 %。', 'Weight multi-day user-side downstream packet-loss rate by active users for each hour, in percent.'),
+    interpretation: bilingual('高峰时段抬升可能提示接入、家庭网络或终端承压，应查看相同 App 的对照。', 'A peak-hour increase may indicate access, home-network, or device pressure; compare the same apps.'),
+    limitation: bilingual('不同业务对丢包敏感度不同；缺失观测和样本结构差异会影响总体曲线。', 'Apps differ in loss sensitivity; missing observations and sample-mix differences can affect the aggregate profile.'),
+  },
+  user_demand_band: {
+    question: bilingual('用户需求强度主要分布在哪些区间？', 'How are users distributed across demand-intensity bands?'),
+    calculation: bilingual('按当前分析策略的需求评分区间，对全量聚合用户进行唯一用户计数。', 'Count distinct aggregated users by demand-score band under the current analysis policy.'),
+    interpretation: bilingual('高需求表示业务使用强，不等于体验差，也不等于具备营销资格。', 'High demand means intensive usage; it does not imply poor experience or marketing eligibility.'),
+    limitation: bilingual('评分取决于当前可用 App 与流量证据，缺少套餐、CRM 和覆盖数据。', 'The score depends on available app and traffic evidence and lacks plan, CRM, and coverage data.'),
+  },
+  user_traffic_band: {
+    question: bilingual('用户在分析周期内的 TCP 流量规模如何分布？', 'How is user TCP traffic distributed during the analysis period?'),
+    calculation: bilingual('按用户汇总 TCP 下载流量，再按配置区间统计唯一用户数。', 'Aggregate TCP downloaded traffic by user, then count distinct users in configured bands.'),
+    interpretation: bilingual('用于区分轻度和重度使用群体，应与 App 类型和体验证据结合。', 'Use it to distinguish light and heavy usage, together with app type and experience evidence.'),
+    limitation: bilingual('不包含未导入数据源，流量高低也不能直接代表套餐适配或迁转价值。', 'It excludes data sources not imported, and traffic alone does not establish plan fit or migration value.'),
+  },
+  user_issue_side: {
+    question: bilingual('受影响用户的主要问题证据更偏向哪一侧？', 'Which side does the primary issue evidence lean toward for affected users?'),
+    calculation: bilingual('根据用户侧、网络侧及可用体验指标的规则判断，对全量用户按主要问题侧分组计数。', 'Use rule-based user-side, network-side, and available experience evidence to group and count users by primary issue side.'),
+    interpretation: bilingual('用于确定下一步调查方向；“证据不足”应优先补充数据，而不是归责。', 'Use it to choose the next investigation direction; insufficient evidence calls for more data, not attribution.'),
+    limitation: bilingual('这是证据倾向，不是已确认根因；缺少拓扑、CPE 或内容源数据时定位能力受限。', 'This is evidence direction, not confirmed root cause; missing topology, CPE, or content-source data limits localization.'),
+  },
+  lead_stage: {
+    question: bilingual('当前用户被分到哪些体验驱动机会或排除阶段？', 'How are users distributed across experience-driven opportunity and exclusion stages?'),
+    calculation: bilingual('按当前分析运行的 Lead Type 对唯一用户计数。', 'Count distinct users by Lead Type in the current analysis run.'),
+    interpretation: bilingual('A0/A2 是身份补充或先修障人群；A1 仍需 CRM、覆盖和可触达资格校验。', 'A0/A2 require identity enrichment or repair first; A1 still needs CRM, coverage, and reachability checks.'),
+    limitation: bilingual('这是体验数据驱动的候选分层，不是可直接营销名单。', 'This is an experience-driven candidate segmentation, not a ready-to-market list.'),
+  },
+  lead_stage_share: {
+    question: bilingual('各体验驱动机会与排除阶段占当前人群的比例是多少？', 'What share of the current population falls into each opportunity or exclusion stage?'),
+    calculation: bilingual('各 Lead Type 唯一用户数 ÷ 当前分析运行已分层唯一用户总数。', 'Distinct users in each Lead Type divided by all segmented distinct users in the analysis run.'),
+    interpretation: bilingual('用于理解人群结构；占比变化需要在规则版本和数据覆盖可比时才有意义。', 'Use it to understand population structure; changes matter only when rule versions and data coverage are comparable.'),
+    limitation: bilingual('分层占比不是转化率，也不代表正式营销资格。', 'Segmentation share is not a conversion rate and does not represent formal marketing eligibility.'),
+  },
+  lead_demand_score: {
+    question: bilingual('哪些候选用户的应用需求评分更高？', 'Which candidate users have higher application-demand scores?'),
+    calculation: bilingual('按当前策略综合 App 使用、流量等证据形成需求评分并排序。', 'Combine app usage, traffic, and related evidence under the current policy to score and rank demand.'),
+    interpretation: bilingual('评分只用于调查和候选排序，最终行动还要结合问题侧和资格字段。', 'The score is only for investigation and candidate ranking; final action also needs issue-side and eligibility evidence.'),
+    limitation: bilingual('缺少 CRM、套餐、FTTH 覆盖、合约、欠费和可触达状态时不能形成正式名单。', 'Without CRM, plan, FTTH coverage, contract, arrears, and reachability status, it cannot produce a formal campaign list.'),
+  },
+};

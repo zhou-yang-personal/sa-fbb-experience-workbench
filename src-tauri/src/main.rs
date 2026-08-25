@@ -21,11 +21,13 @@ mod dashboard_commands;
 mod dataset_profile_commands;
 mod db;
 mod etl_commands;
+mod experience_policy_commands;
 mod final_fusion;
 mod header_normalizer;
 mod import_commands;
 mod import_commands_mapped;
 mod import_pipeline_commands;
+mod investigation_commands;
 mod job_inspection_commands;
 mod job_inspector;
 mod job_runner;
@@ -58,6 +60,13 @@ fn main() {
             access_rule_commands::access_rule_publish,
             access_rule_commands::access_rule_apply_to_batch,
             access_rule_commands::access_rule_preview,
+            experience_policy_commands::experience_policy_list,
+            experience_policy_commands::experience_profile_list,
+            experience_policy_commands::experience_policy_create_draft,
+            experience_policy_commands::experience_policy_update,
+            experience_policy_commands::experience_profile_update,
+            experience_policy_commands::experience_profile_clone,
+            experience_policy_commands::experience_policy_publish,
             analysis_commands::import_list_batches,
             batch_delete_commands::import_delete_batch,
             analysis_commands::analysis_prepare_batch_tables,
@@ -68,6 +77,15 @@ fn main() {
             analysis_commands::analysis_get_module_metrics,
             analytics_commands::analytics_get_kpi_summary,
             analytics_commands::analytics_get_data_coverage,
+            investigation_commands::analytics_get_experience_status_v2,
+            investigation_commands::analytics_get_findings_v2,
+            investigation_commands::analytics_get_data_coverage_v2,
+            investigation_commands::analytics_get_run_verification_v2,
+            investigation_commands::analytics_get_investigation_evidence,
+            investigation_commands::analytics_get_investigation_hourly,
+            investigation_commands::analytics_get_investigation_server_ips,
+            investigation_commands::investigation_save,
+            investigation_commands::investigation_list,
             analytics_ads_app::analytics_materialize_app_rank,
             ads_hour::ads_hour,
             ads_user::ads_user,

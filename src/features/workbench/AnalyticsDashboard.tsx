@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ECharts } from 'echarts';
 import type { BatchListItem, MetricCard, MySqlSettings } from '../../shared/types';
 import { AnalyticsEvidenceTable } from './AnalyticsEvidenceTable';
+import { ChartExplanation } from './ChartExplanation';
 import { analyticsStructuredApi } from './analyticsStructuredApi';
 import { parseMetricHint } from './analyticsStructuredCharts';
+import { chartExplanationCatalog, type ChartExplanationId } from './chartExplanationCatalog';
 import type { WorkbenchController } from './useWorkbenchController';
 
 type ChartKind = 'bar' | 'line' | 'donut';
@@ -43,6 +45,7 @@ type ExportChartSpec = {
   id: string;
   title: string;
   subtitle: string;
+  explanationId: ChartExplanationId;
   kind: ChartKind;
   points: ChartPoint[];
 };
@@ -95,10 +98,10 @@ const datasetLabels: Record<DatasetKey, string> = {
   kpis: '总览指标',
   appRank: '应用体验排行',
   hourlyTrend: '小时趋势',
-  networkHotspots: '网络热点',
+  networkHotspots: '网络 / 路径证据',
   userProfiles: '用户画像',
   userSummary: '用户全量分群',
-  leadEvidence: '迁转机会证据',
+  leadEvidence: '体验驱动机会证据',
   leadSummary: '机会全量分层',
 };
 
@@ -110,10 +113,10 @@ function hasMeaningfulEvidence(key: DatasetKey, rows: MetricCard[]) {
 const pageCopy: Record<AnalyticsTab, { eyebrow: string; title: string; description: string }> = {
   overview: { eyebrow: 'Decision cockpit', title: '经营与体验总览', description: '先确认数据可信度，再查看问题影响、网络行动和合格机会。' },
   apps: { eyebrow: 'Application experience', title: '应用体验', description: '按真实 App、接入类型和问题侧识别受影响用户与业务需求。' },
-  quality: { eyebrow: 'Network action', title: '网络问题定位', description: '沿 BRAS / OLT / PON 定位热点，并区分网络侧与家庭侧问题。' },
+  quality: { eyebrow: 'Network / path evidence', title: '网络 / 路径证据', description: '只在真实字段与足够样本支持时展示可疑聚集；缺失拓扑不包装为热点或已确认根因。' },
   cable: { eyebrow: 'Access benchmark', title: 'Cable vs FTTH', description: '在相同时间口径下比较速率、时延、丢包和体验结果。' },
   users: { eyebrow: 'User evidence', title: '用户洞察', description: '查看用户需求、体验、接入识别和机会证据，而不是只看一个评分。' },
-  leads: { eyebrow: 'Qualified opportunity', title: '迁转升套机会', description: '先排除身份不足与网络严重异常，再查看候选和培育用户。' },
+  leads: { eyebrow: 'Experience-driven opportunity', title: 'Cable-to-Fiber 体验机会', description: '体验 Finding 与商业机会分开；这里仅表示体验驱动候选，正式营销仍需 CRM、覆盖、套餐、欠费、黑名单和可触达资格。' },
 };
 
 function numberValue(value: unknown) {
@@ -140,9 +143,12 @@ function compact(value: number) {
 
 function appPoints(rows: MetricCard[], key: string): ChartPoint[] {
   return rows.map((row) => {
+    const detail = parseMetricHint(row.hint);
     const access = textFromHint(row, 'user_type', 'UNKNOWN');
     const app = textFromHint(row, 'app_name', row.label);
-    return { label: `${app} · ${access}`, value: fromHint(row, key), series: access, source: row };
+    const requiresSufficientSample = ['poor_experience_users', 'poor_experience_user_pct', 'persistent_poor_users', 'persistent_poor_user_rate_pct', 'severe_poor_user_rate_pct'].includes(key);
+    const excluded = requiresSufficientSample && detail.sample_status === 'INSUFFICIENT_SAMPLE';
+    return { label: `${app} · ${access}`, value: excluded ? 0 : fromHint(row, key), series: access, source: row };
   }).filter((row) => row.value > 0);
 }
 
@@ -255,10 +261,10 @@ function exportSections(filtered: ReturnType<typeof filteredDataset>): ExportSec
       title: pageCopy.overview.title,
       description: pageCopy.overview.description,
       charts: [
-        { id: 'overview-app-users', title: '问题 App 影响用户', subtitle: '唯一受影响用户；按真实 App 排序', kind: 'bar', points: appPoints(filtered.appRank, 'poor_experience_users') },
-        { id: 'overview-hotspots', title: '网络热点差体验率', subtitle: '差体验唯一用户 / 节点观测唯一用户', kind: 'bar', points: hotspotPoints(filtered.networkHotspots, 'severity') },
-        { id: 'overview-leads', title: '机会与排除分层', subtitle: '按用户计数；A0/A2 不得进入直接营销', kind: 'bar', points: leadStages },
-        { id: 'overview-hourly-rate', title: '典型日接入类型速率', subtitle: '按活跃用户加权的 7 日小时均值，Mbps', kind: 'line', points: typicalHourlyPoints(filtered.hourlyTrend, 'effective_mbps') },
+        { id: 'overview-app-users', title: '问题 App 持续差体验用户', subtitle: '满足持续性与最低样本规则的唯一用户', explanationId: 'app_affected_users', kind: 'bar', points: appPoints(filtered.appRank, 'persistent_poor_users') },
+        { id: 'overview-hotspots', title: '网络 / 路径可疑聚集', subtitle: '只有真实网络对象和足够样本才可解释为热点', explanationId: 'topology_poor_user_rate', kind: 'bar', points: hotspotPoints(filtered.networkHotspots, 'severity') },
+        { id: 'overview-leads', title: '机会与排除分层', subtitle: '按用户计数；A0/A2 不得进入直接营销', explanationId: 'lead_stage', kind: 'bar', points: leadStages },
+        { id: 'overview-hourly-rate', title: '典型日接入类型速率', subtitle: '按活跃用户加权的 7 日小时均值，Mbps', explanationId: 'typical_effective_rate', kind: 'line', points: typicalHourlyPoints(filtered.hourlyTrend, 'effective_mbps') },
       ],
     },
     {
@@ -266,9 +272,12 @@ function exportSections(filtered: ReturnType<typeof filteredDataset>): ExportSec
       title: pageCopy.apps.title,
       description: pageCopy.apps.description,
       charts: [
-        { id: 'apps-users', title: 'App 受影响用户', subtitle: '唯一差体验用户数', kind: 'bar', points: appPoints(filtered.appRank, 'poor_experience_users') },
-        { id: 'apps-ratio', title: 'App 差体验用户占比', subtitle: '差体验唯一用户 / App 观测唯一用户，单位 %', kind: 'bar', points: appPoints(filtered.appRank, 'poor_experience_user_pct') },
-        { id: 'apps-traffic', title: 'App 业务流量', subtitle: '视频下载 GB；游戏类需结合时长证据', kind: 'bar', points: appPoints(filtered.appRank, 'traffic_gb') },
+        { id: 'apps-users', title: 'App 持续差体验用户', subtitle: '满足持续性与最低样本规则的唯一用户', explanationId: 'app_affected_users', kind: 'bar', points: appPoints(filtered.appRank, 'persistent_poor_users') },
+        { id: 'apps-persistent-rate', title: 'App 持续差体验用户占比', subtitle: '持续差体验用户 / 合格用户，单位 %', explanationId: 'app_affected_user_rate', kind: 'bar', points: appPoints(filtered.appRank, 'persistent_poor_user_rate_pct') },
+        { id: 'apps-observation-rate', title: 'App 差体验观测占比', subtitle: '差体验观测 / 有效观测，单位 %', explanationId: 'app_poor_observation_rate', kind: 'bar', points: appPoints(filtered.appRank, 'poor_observation_rate_pct') },
+        { id: 'apps-ever-rate', title: 'App 曾受影响用户占比', subtitle: '至少异常一次的合格用户 / 合格用户，单位 %', explanationId: 'app_ever_affected_user_rate', kind: 'bar', points: appPoints(filtered.appRank, 'ever_affected_user_rate_pct') },
+        { id: 'apps-severe-rate', title: 'App 严重差体验用户占比', subtitle: '严重差体验用户 / 合格用户，单位 %', explanationId: 'app_severe_user_rate', kind: 'bar', points: appPoints(filtered.appRank, 'severe_poor_user_rate_pct') },
+        { id: 'apps-traffic', title: 'App 业务流量', subtitle: '视频下载 GB；游戏类需结合时长证据', explanationId: 'app_tcp_traffic', kind: 'bar', points: appPoints(filtered.appRank, 'traffic_gb') },
       ],
     },
     {
@@ -276,10 +285,10 @@ function exportSections(filtered: ReturnType<typeof filteredDataset>): ExportSec
       title: pageCopy.quality.title,
       description: pageCopy.quality.description,
       charts: [
-        { id: 'quality-users', title: '拓扑节点受影响用户', subtitle: 'BRAS / OLT / PON 粒度的差体验唯一用户', kind: 'bar', points: hotspotPoints(filtered.networkHotspots, 'users') },
-        { id: 'quality-ratio', title: '拓扑节点差体验率', subtitle: '差体验唯一用户 / 节点观测唯一用户，单位 %', kind: 'bar', points: hotspotPoints(filtered.networkHotspots, 'severity') },
-        { id: 'quality-network-rtt', title: '网络侧 RTT', subtitle: '节点平均 network-side RTT，单位 ms', kind: 'bar', points: hotspotPoints(filtered.networkHotspots, 'network_rtt_ms') },
-        { id: 'quality-home-rtt', title: '家庭侧 / Wi-Fi RTT', subtitle: '节点平均 subscriber-side RTT，单位 ms', kind: 'bar', points: hotspotPoints(filtered.networkHotspots, 'subscriber_rtt_ms') },
+        { id: 'quality-users', title: '可识别网络对象受影响用户', subtitle: '只统计真实 BRAS / OLT / PON；缺失值不作为节点', explanationId: 'topology_affected_users', kind: 'bar', points: hotspotPoints(filtered.networkHotspots, 'users') },
+        { id: 'quality-ratio', title: '网络 / 路径可疑聚集率', subtitle: '没有真实拓扑或样本不足时仅作证据，不确认热点', explanationId: 'topology_poor_user_rate', kind: 'bar', points: hotspotPoints(filtered.networkHotspots, 'severity') },
+        { id: 'quality-network-rtt', title: '网络侧 RTT', subtitle: '节点平均 network-side RTT，单位 ms', explanationId: 'network_side_rtt', kind: 'bar', points: hotspotPoints(filtered.networkHotspots, 'network_rtt_ms') },
+        { id: 'quality-home-rtt', title: '家庭侧 / Wi-Fi RTT', subtitle: '节点平均 subscriber-side RTT，单位 ms', explanationId: 'subscriber_side_rtt', kind: 'bar', points: hotspotPoints(filtered.networkHotspots, 'subscriber_rtt_ms') },
       ],
     },
     {
@@ -287,9 +296,9 @@ function exportSections(filtered: ReturnType<typeof filteredDataset>): ExportSec
       title: pageCopy.cable.title,
       description: pageCopy.cable.description,
       charts: [
-        { id: 'cable-rate', title: 'Cable / FTTH 典型日有效速率', subtitle: '按活跃用户加权的 7 日小时均值，Mbps', kind: 'line', points: typicalHourlyPoints(filtered.hourlyTrend, 'effective_mbps') },
-        { id: 'cable-rtt', title: 'Cable / FTTH 典型日 RTT', subtitle: '按活跃用户加权的 subscriber-side RTT，ms', kind: 'line', points: typicalHourlyPoints(filtered.hourlyTrend, 'subscriber_rtt_ms') },
-        { id: 'cable-loss', title: 'Cable / FTTH 典型日用户侧丢包', subtitle: '按活跃用户加权的 user-side downstream loss，%', kind: 'line', points: typicalHourlyPoints(filtered.hourlyTrend, 'user_loss_pct') },
+        { id: 'cable-rate', title: 'Cable / FTTH 典型日有效速率', subtitle: '按活跃用户加权的 7 日小时均值，Mbps', explanationId: 'typical_effective_rate', kind: 'line', points: typicalHourlyPoints(filtered.hourlyTrend, 'effective_mbps') },
+        { id: 'cable-rtt', title: 'Cable / FTTH 典型日 RTT', subtitle: '按活跃用户加权的 subscriber-side RTT，ms', explanationId: 'typical_subscriber_rtt', kind: 'line', points: typicalHourlyPoints(filtered.hourlyTrend, 'subscriber_rtt_ms') },
+        { id: 'cable-loss', title: 'Cable / FTTH 典型日用户侧丢包', subtitle: '按活跃用户加权的 user-side downstream loss，%', explanationId: 'typical_user_loss', kind: 'line', points: typicalHourlyPoints(filtered.hourlyTrend, 'user_loss_pct') },
       ],
     },
     {
@@ -297,9 +306,9 @@ function exportSections(filtered: ReturnType<typeof filteredDataset>): ExportSec
       title: pageCopy.users.title,
       description: pageCopy.users.description,
       charts: [
-        { id: 'users-demand', title: '用户需求分层', subtitle: '全量用户分群；评分不等同于可营销资格', kind: 'bar', points: cohortPoints(filtered.userSummary, 'demand_band') },
-        { id: 'users-traffic', title: '用户流量分层', subtitle: '全量用户按分析周期 TCP 流量分群', kind: 'bar', points: cohortPoints(filtered.userSummary, 'traffic_band') },
-        { id: 'users-bottleneck', title: '用户问题侧分布', subtitle: '全量用户按主要瓶颈侧分群', kind: 'bar', points: cohortPoints(filtered.userSummary, 'bottleneck_side') },
+        { id: 'users-demand', title: '用户需求分层', subtitle: '全量用户分群；评分不等同于可营销资格', explanationId: 'user_demand_band', kind: 'bar', points: cohortPoints(filtered.userSummary, 'demand_band') },
+        { id: 'users-traffic', title: '用户流量分层', subtitle: '全量用户按分析周期 TCP 流量分群', explanationId: 'user_traffic_band', kind: 'bar', points: cohortPoints(filtered.userSummary, 'traffic_band') },
+        { id: 'users-bottleneck', title: '用户问题侧分布', subtitle: '全量用户按主要瓶颈侧分群', explanationId: 'user_issue_side', kind: 'bar', points: cohortPoints(filtered.userSummary, 'bottleneck_side') },
       ],
     },
     {
@@ -307,9 +316,9 @@ function exportSections(filtered: ReturnType<typeof filteredDataset>): ExportSec
       title: pageCopy.leads.title,
       description: pageCopy.leads.description,
       charts: [
-        { id: 'leads-stage', title: '机会与排除分层', subtitle: '按唯一用户计数；A0 身份不足、A2 先修障、A1 待资格校验', kind: 'bar', points: leadStages },
-        { id: 'leads-share', title: '机会分层构成', subtitle: '当前分析运行中的用户分层占比', kind: 'donut', points: leadStages },
-        { id: 'leads-demand', title: '候选用户需求评分', subtitle: '评分用于排序；最终行动仍由问题侧与资格字段决定', kind: 'bar', points: userPoints(filtered.leadEvidence, 'demand_score') },
+        { id: 'leads-stage', title: '机会与排除分层', subtitle: '按唯一用户计数；A0 待外部资格数据、A2 先修障、A1 待资格校验', explanationId: 'lead_stage', kind: 'bar', points: leadStages },
+        { id: 'leads-share', title: '机会分层构成', subtitle: '当前分析运行中的用户分层占比', explanationId: 'lead_stage_share', kind: 'donut', points: leadStages },
+        { id: 'leads-demand', title: '候选用户需求评分', subtitle: '评分用于排序；最终行动仍由问题侧与资格字段决定', explanationId: 'lead_demand_score', kind: 'bar', points: userPoints(filtered.leadEvidence, 'demand_score') },
       ],
     },
   ];
@@ -363,7 +372,7 @@ function chartOption(kind: ChartKind, title: string, subtitle: string, incoming:
   };
 }
 
-function AnalyticsChart({ title, subtitle, kind, points, onSelect, height = 380 }: { title: string; subtitle: string; kind: ChartKind; points: ChartPoint[]; onSelect?: (row: MetricCard) => void; height?: number }) {
+function AnalyticsChart({ title, subtitle, explanationId, kind, points, onSelect, height = 380 }: { title: string; subtitle: string; explanationId: ChartExplanationId; kind: ChartKind; points: ChartPoint[]; onSelect?: (row: MetricCard) => void; height?: number }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const effectiveKind: ChartKind = kind === 'line' && new Set(points.map((point) => point.label)).size < 8 ? 'bar' : kind;
   const renderedPoints = useMemo(() => kind === 'line' && effectiveKind === 'bar'
@@ -391,7 +400,12 @@ function AnalyticsChart({ title, subtitle, kind, points, onSelect, height = 380 
       chart?.dispose();
     };
   }, [effectiveKind, height, onSelect, renderedPoints, subtitle, title]);
-  return <article className="analytics-card analytics-chart-card"><div className="analytics-chart" style={{ height }} ref={ref} /><footer><span>来源：DWS / ADS</span><span>{kind !== effectiveKind ? '时点不足 8 个，已降级为柱图' : `${points.length} data points`}</span></footer></article>;
+  const explanation = chartExplanationCatalog[explanationId];
+  return <article className="analytics-card analytics-chart-card">
+    <div className="analytics-chart" style={{ height }} ref={ref} />
+    <footer><span>来源：DWS / ADS</span><span>{kind !== effectiveKind ? '时点不足 8 个，已降级为柱图' : `${points.length} data points`}</span></footer>
+    <ChartExplanation {...explanation} />
+  </article>;
 }
 
 function KpiStrip({ items }: { items: Array<{ label: string; value: string; hint: string; tone?: string }> }) {
@@ -434,7 +448,7 @@ function PdfPreview({ report, onClose }: { report: PdfReport; onClose: () => voi
         {report.sections.map((section) => <section className="analytics-report-section" key={section.id}>
           <header><p className="eyebrow">{pageCopy[section.id].eyebrow}</p><h2>{section.title}</h2><p>{section.description}</p></header>
           {section.charts.length > 0
-            ? <div className="analytics-report-chart-grid">{section.charts.map((chart) => <AnalyticsChart key={chart.id} title={chart.title} subtitle={chart.subtitle} kind={chart.kind} points={chart.points} height={330} />)}</div>
+            ? <div className="analytics-report-chart-grid">{section.charts.map((chart) => <AnalyticsChart key={chart.id} title={chart.title} subtitle={chart.subtitle} explanationId={chart.explanationId} kind={chart.kind} points={chart.points} height={330} />)}</div>
             : <div className="analytics-report-empty">当前筛选条件下，本看板没有可导出的非空图表。</div>}
         </section>)}
       </main>
@@ -498,6 +512,11 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
     setPdfReport(null);
     setPdfPreviewOpen(false);
   }, [c.importBatchId, c.analysisRunId]);
+
+  useEffect(() => {
+    setAccess(c.analysisContext.access_type ?? 'ALL');
+    setKeyword(c.analysisContext.app_name ?? c.analysisContext.user_key ?? c.analysisContext.bras ?? '');
+  }, [c.analysisContext.access_type, c.analysisContext.app_name, c.analysisContext.user_key, c.analysisContext.bras]);
 
   useEffect(() => {
     taskGeneration.current += 1;
@@ -711,12 +730,28 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
   const kpis = [
     { label: '接入分类观测覆盖率', value: `${coverage.toFixed(1)}%`, hint: '已识别 Cable/FTTH 的用户小时观测 / 全部用户小时观测', tone: coverage < 90 ? 'warning' : 'normal' },
     { label: '问题 App', value: String(issueApps), hint: '当前筛选下差体验用户占比大于 0 的真实 App' },
-    { label: '严重网络热点', value: String(severeHotspots), hint: '主问题侧为 NETWORK_SIDE_SEVERE 的拓扑节点', tone: severeHotspots ? 'danger' : 'normal' },
+    { label: '网络侧可疑聚集', value: String(severeHotspots), hint: '主问题侧偏网络且存在可识别网络对象；仍需进一步验证', tone: severeHotspots ? 'danger' : 'normal' },
     { label: 'A1 候选', value: String(a1), hint: '仍需 CRM、覆盖和可触达资格校验' },
     { label: 'A2 先修障', value: String(a2), hint: '网络严重异常，禁止直接营销', tone: a2 ? 'warning' : 'normal' },
   ];
   const copy = pageCopy[activeView];
-  const selectEvidence = (row: MetricCard) => setSelectedEvidence(row);
+  const selectEvidence = (row: MetricCard) => {
+    const detail = parseMetricHint(row.hint);
+    const usable = (value?: string) => value && !['UNKNOWN', 'UNAVAILABLE', 'ALL', ''].includes(value.toUpperCase()) ? value : undefined;
+    c.applyAnalysisContext({
+      app_category: usable(detail.app_category),
+      app_name: usable(detail.app_name),
+      access_type: usable(detail.user_type ?? detail.access_type),
+      user_key: usable(detail.user_key),
+      bras: usable(detail.bras),
+      network_object: usable([usable(detail.bras), usable(detail.olt), usable(detail.pon)].filter(Boolean).join(' / ')),
+      issue_metric: usable(detail.issue_driver ?? detail.bottleneck),
+      issue_side: usable(detail.issue_side ?? detail.bottleneck),
+      hour_from: detail.hour_of_day === undefined ? undefined : Number(detail.hour_of_day),
+      hour_to: detail.hour_of_day === undefined ? undefined : Number(detail.hour_of_day),
+    });
+    setSelectedEvidence(row);
+  };
 
   const running = task.status === 'running' || task.status === 'stopping';
   const progress = task.total > 0 ? Math.round(task.completed / task.total * 100) : 0;
@@ -771,60 +806,63 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
     {!viewLoaded && !running && task.status !== 'stopped' && task.status !== 'empty' && <section className="analytics-load-gate"><div><p className="eyebrow">Ready on demand</p><h3>当前看板尚未加载</h3><p>{actionBusy ? '上一项操作仍在完成，结束后即可启动本页任务。' : `本页需要 ${viewDatasets[activeView].length} 个聚合数据集。只有点击按钮后才会查询 MySQL，不会在应用启动或切换页面时自动执行。`}</p></div><button type="button" className="primary-button" disabled={disabled || actionBusy} onClick={loadCurrentView}>开始加载 {copy.title}</button></section>}
     {(viewLoaded || running || task.status === 'partial' || task.status === 'stopped' || task.status === 'empty') && <>
     <section className="analytics-filter-bar" aria-label="分析筛选">
-      <label>接入类型<select value={access} onChange={(event) => setAccess(event.target.value)}><option value="ALL">全部</option><option value="CABLE">Cable</option><option value="FTTH">FTTH</option><option value="UNKNOWN">Unknown</option></select></label>
+      <label>接入类型<select value={access} onChange={(event) => setAccess(event.target.value)}><option value="ALL">全部</option><option value="CABLE">Cable</option><option value="FTTH">FTTH</option><option value="OTHER">Other</option></select></label>
       <label>搜索<input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="App、用户、BRAS、OLT、PON" /></label>
       <label>最小用户数<input type="number" min={0} value={minUsers} onChange={(event) => setMinUsers(Math.max(0, Number(event.target.value)))} /></label>
       <div className="filter-context"><span>Batch</span><strong>{c.batchDisplayName || c.importBatchId || '-'}</strong><small>{task.message}</small></div>
     </section>
     {failures.length > 0 && <section className="analytics-error-banner"><strong>部分数据集加载失败</strong>{failures.map((failure) => <span key={failure}>{failure}</span>)}</section>}
     {data.coverage.length > 0 && <section className="analytics-readiness-grid" aria-label="数据可用性说明">
-      <article className={classificationStale ? 'is-warning' : 'is-ready'}><span>接入分类口径</span><strong>未命中 IP → {accessDefault}</strong><small>{classificationStale ? `现有聚合仍包含 ${unknownHourlyRows} 条 UNKNOWN 小时记录；回到导入页高级步骤，先运行 RAW → CLEAN，再单独生成 DWS/ADS。不要使用会跳过 CLEAN 的续跑按钮。` : '规则命中优先，其次 CSV 字段，最后使用规则集默认值。'}</small></article>
+      <article className={classificationStale ? 'is-warning' : 'is-ready'}><span>接入分类口径</span><strong>Others（未命中显式 IP 规则）→ {accessDefault}</strong><small>{classificationStale ? `现有聚合仍包含 ${unknownHourlyRows} 条 UNKNOWN 小时记录，说明结果由旧规则生成；请在当前导入任务完成后按已发布规则重新生成 CLEAN/DWS/ADS。` : '显式 IP 网段优先；其余合法 IP 全部使用该规则版本中明确配置的 Others 映射。CSV 制式字段只保留为来源证据。'}</small></article>
       <article className={gameImported ? 'is-ready' : 'is-info'}><span>游戏数据覆盖</span><strong>{gameImported ? '已导入' : '本批次未导入'}</strong><small>{gameImported ? '游戏时长与 MOS 可用于本次分析。' : '游戏来自独立文件；本次不展示游戏时长/MOS，也不把缺失解释为 0。'}</small></article>
       {(activeView === 'quality' || activeView === 'overview') && <article className={topologyKnownRows > 0 ? 'is-warning' : 'is-info'}><span>网络拓扑覆盖</span><strong>{topologyKnownRows} 个含已知拓扑的聚合节点</strong><small>当前源数据 OLT/PON 缺失时，只能做问题侧与 BRAS 粒度判断，不能下钻到 OLT/PON。</small></article>}
     </section>}
     <KpiStrip items={kpis} />
 
     {activeView === 'overview' && <div className="analytics-layout">
-      <AnalyticsChart title="问题 App 影响用户" subtitle="唯一受影响用户；按真实 App 排序，点击查看证据" kind="bar" points={appPoints(filtered.appRank, 'poor_experience_users')} onSelect={selectEvidence} />
-      <AnalyticsChart title="网络热点差体验率" subtitle="差体验唯一用户 / 节点观测唯一用户；按拓扑节点排序" kind="bar" points={hotspotPoints(filtered.networkHotspots, 'severity')} onSelect={selectEvidence} />
-      <AnalyticsChart title="机会与排除分层" subtitle="按用户计数；A0/A2 不得进入直接营销" kind="bar" points={leadStages} onSelect={selectEvidence} />
-      <AnalyticsChart title="典型日接入类型速率" subtitle="按活跃用户加权的 7 日小时均值，Mbps" kind="line" points={typicalHourlyPoints(filtered.hourlyTrend, 'effective_mbps')} onSelect={selectEvidence} />
+      <AnalyticsChart title="问题 App 持续差体验用户" subtitle="满足持续性与最低样本规则的唯一用户；点击查看证据" explanationId="app_affected_users" kind="bar" points={appPoints(filtered.appRank, 'persistent_poor_users')} onSelect={selectEvidence} />
+      <AnalyticsChart title="网络 / 路径可疑聚集率" subtitle="只有真实网络对象和足够样本才可进一步确认热点" explanationId="topology_poor_user_rate" kind="bar" points={hotspotPoints(filtered.networkHotspots, 'severity')} onSelect={selectEvidence} />
+      <AnalyticsChart title="机会与排除分层" subtitle="按用户计数；A0/A2 不得进入直接营销" explanationId="lead_stage" kind="bar" points={leadStages} onSelect={selectEvidence} />
+      <AnalyticsChart title="典型日接入类型速率" subtitle="按活跃用户加权的 7 日小时均值，Mbps" explanationId="typical_effective_rate" kind="line" points={typicalHourlyPoints(filtered.hourlyTrend, 'effective_mbps')} onSelect={selectEvidence} />
       <AnalyticsEvidenceTable title="总览指标与来源" rows={data.kpis} />
     </div>}
 
     {activeView === 'apps' && <div className="analytics-layout">
-      <AnalyticsChart title="App 周期内受影响用户" subtitle="分析周期内至少一次触发差体验的唯一用户数" kind="bar" points={appPoints(filtered.appRank, 'poor_experience_users')} onSelect={selectEvidence} />
-      <AnalyticsChart title="App 周期内差体验用户占比" subtitle="周期内曾发生差体验的用户 / App 观测唯一用户，单位 %" kind="bar" points={appPoints(filtered.appRank, 'poor_experience_user_pct')} onSelect={selectEvidence} />
-      <AnalyticsChart title="App TCP 下载流量" subtitle="当前 TCP 文件的下载流量 GB；游戏时长仅在 Game 文件导入后提供" kind="bar" points={appPoints(filtered.appRank, 'traffic_gb')} onSelect={selectEvidence} />
+      <AnalyticsChart title="App 持续差体验用户" subtitle="满足持续性与最低样本规则的唯一用户数" explanationId="app_affected_users" kind="bar" points={appPoints(filtered.appRank, 'persistent_poor_users')} onSelect={selectEvidence} />
+      <AnalyticsChart title="App 持续差体验用户占比" subtitle="持续差体验用户 / 合格用户，单位 %" explanationId="app_affected_user_rate" kind="bar" points={appPoints(filtered.appRank, 'persistent_poor_user_rate_pct')} onSelect={selectEvidence} />
+      <AnalyticsChart title="App 差体验观测占比" subtitle="差体验观测 / 有效观测，单位 %" explanationId="app_poor_observation_rate" kind="bar" points={appPoints(filtered.appRank, 'poor_observation_rate_pct')} onSelect={selectEvidence} />
+      <AnalyticsChart title="App 曾受影响用户占比" subtitle="至少异常一次的合格用户 / 合格用户，单位 %" explanationId="app_ever_affected_user_rate" kind="bar" points={appPoints(filtered.appRank, 'ever_affected_user_rate_pct')} onSelect={selectEvidence} />
+      <AnalyticsChart title="App 严重差体验用户占比" subtitle="严重差体验用户 / 合格用户，单位 %" explanationId="app_severe_user_rate" kind="bar" points={appPoints(filtered.appRank, 'severe_poor_user_rate_pct')} onSelect={selectEvidence} />
+      <AnalyticsChart title="App TCP 下载流量" subtitle="当前 TCP 文件的下载流量 GB；游戏时长仅在 Game 文件导入后提供" explanationId="app_tcp_traffic" kind="bar" points={appPoints(filtered.appRank, 'traffic_gb')} onSelect={selectEvidence} />
       <AnalyticsEvidenceTable title="应用体验证据" rows={filtered.appRank} limit={220} />
     </div>}
 
     {activeView === 'quality' && <div className="analytics-layout">
-      <AnalyticsChart title="拓扑节点受影响用户" subtitle="BRAS / OLT / PON 粒度的差体验唯一用户" kind="bar" points={hotspotPoints(filtered.networkHotspots, 'users')} onSelect={selectEvidence} />
-      <AnalyticsChart title="拓扑节点差体验率" subtitle="差体验唯一用户 / 节点观测唯一用户，单位 %" kind="bar" points={hotspotPoints(filtered.networkHotspots, 'severity')} onSelect={selectEvidence} />
-      <AnalyticsChart title="家庭侧 / Wi-Fi RTT" subtitle="节点平均 subscriber-side RTT，单位 ms" kind="bar" points={hotspotPoints(filtered.networkHotspots, 'subscriber_rtt_ms')} onSelect={selectEvidence} />
-      <AnalyticsEvidenceTable title="网络热点行动证据" rows={filtered.networkHotspots} limit={240} />
+      <AnalyticsChart title="可识别网络对象受影响用户" subtitle="只统计真实 BRAS / OLT / PON；缺失值不作为网络对象" explanationId="topology_affected_users" kind="bar" points={hotspotPoints(filtered.networkHotspots, 'users')} onSelect={selectEvidence} />
+      <AnalyticsChart title="网络 / 路径可疑聚集率" subtitle="差体验用户 / 对象观测用户；当前证据不等同于已确认根因" explanationId="topology_poor_user_rate" kind="bar" points={hotspotPoints(filtered.networkHotspots, 'severity')} onSelect={selectEvidence} />
+      <AnalyticsChart title="家庭侧 / Wi-Fi RTT" subtitle="节点平均 subscriber-side RTT，单位 ms" explanationId="subscriber_side_rtt" kind="bar" points={hotspotPoints(filtered.networkHotspots, 'subscriber_rtt_ms')} onSelect={selectEvidence} />
+      <AnalyticsEvidenceTable title="网络 / 路径证据（非已确认根因）" rows={filtered.networkHotspots} limit={240} />
     </div>}
 
     {activeView === 'cable' && <div className="analytics-layout">
-      <AnalyticsChart title="Cable / FTTH 典型日有效速率" subtitle="按活跃用户加权的 7 日小时均值，Mbps" kind="line" points={typicalHourlyPoints(filtered.hourlyTrend, 'effective_mbps')} onSelect={selectEvidence} />
-      <AnalyticsChart title="Cable / FTTH 典型日 RTT" subtitle="按活跃用户加权的 subscriber-side RTT，ms" kind="line" points={typicalHourlyPoints(filtered.hourlyTrend, 'subscriber_rtt_ms')} onSelect={selectEvidence} />
-      <AnalyticsChart title="Cable / FTTH 典型日用户侧丢包" subtitle="按活跃用户加权的 user-side downstream loss，%" kind="line" points={typicalHourlyPoints(filtered.hourlyTrend, 'user_loss_pct')} onSelect={selectEvidence} />
+      <AnalyticsChart title="Cable / FTTH 典型日有效速率" subtitle="按活跃用户加权的 7 日小时均值，Mbps" explanationId="typical_effective_rate" kind="line" points={typicalHourlyPoints(filtered.hourlyTrend, 'effective_mbps')} onSelect={selectEvidence} />
+      <AnalyticsChart title="Cable / FTTH 典型日 RTT" subtitle="按活跃用户加权的 subscriber-side RTT，ms" explanationId="typical_subscriber_rtt" kind="line" points={typicalHourlyPoints(filtered.hourlyTrend, 'subscriber_rtt_ms')} onSelect={selectEvidence} />
+      <AnalyticsChart title="Cable / FTTH 典型日用户侧丢包" subtitle="按活跃用户加权的 user-side downstream loss，%" explanationId="typical_user_loss" kind="line" points={typicalHourlyPoints(filtered.hourlyTrend, 'user_loss_pct')} onSelect={selectEvidence} />
       <AnalyticsEvidenceTable title="接入对比小时证据" rows={filtered.hourlyTrend} limit={300} />
     </div>}
 
     {activeView === 'users' && <div className="analytics-layout">
-      <AnalyticsChart title="用户需求分层" subtitle="全量用户分群；评分用于发现需求，不等同于可营销资格" kind="bar" points={cohortPoints(filtered.userSummary, 'demand_band')} onSelect={selectEvidence} />
-      <AnalyticsChart title="用户流量分层" subtitle="全量用户按分析周期 TCP 流量分群" kind="bar" points={cohortPoints(filtered.userSummary, 'traffic_band')} onSelect={selectEvidence} />
-      <AnalyticsChart title="用户问题侧分布" subtitle="全量用户按主要瓶颈侧分群；游戏数据缺失不会记为零时长" kind="bar" points={cohortPoints(filtered.userSummary, 'bottleneck_side')} onSelect={selectEvidence} />
+      <AnalyticsChart title="用户需求分层" subtitle="全量用户分群；评分用于发现需求，不等同于可营销资格" explanationId="user_demand_band" kind="bar" points={cohortPoints(filtered.userSummary, 'demand_band')} onSelect={selectEvidence} />
+      <AnalyticsChart title="用户流量分层" subtitle="全量用户按分析周期 TCP 流量分群" explanationId="user_traffic_band" kind="bar" points={cohortPoints(filtered.userSummary, 'traffic_band')} onSelect={selectEvidence} />
+      <AnalyticsChart title="用户问题侧分布" subtitle="全量用户按主要瓶颈侧分群；游戏数据缺失不会记为零时长" explanationId="user_issue_side" kind="bar" points={cohortPoints(filtered.userSummary, 'bottleneck_side')} onSelect={selectEvidence} />
       <AnalyticsEvidenceTable title="用户画像证据" rows={filtered.userProfiles} limit={300} />
     </div>}
 
     {activeView === 'leads' && <div className="analytics-layout">
-      <AnalyticsChart title="机会与排除分层" subtitle="按唯一用户计数；A0 身份不足、A2 先修障、A1 待资格校验" kind="bar" points={leadStages} onSelect={selectEvidence} />
-      <AnalyticsChart title="机会分层构成" subtitle="展示当前分析运行中的用户分层占比" kind="donut" points={leadStages} onSelect={selectEvidence} />
-      <AnalyticsChart title="候选用户需求评分" subtitle="评分用于排序；最终行动仍由问题侧与资格字段决定" kind="bar" points={userPoints(filtered.leadEvidence, 'demand_score')} onSelect={selectEvidence} />
-      <AnalyticsEvidenceTable title="迁转机会证据" rows={filtered.leadEvidence} limit={400} />
+      <AnalyticsChart title="机会与排除分层" subtitle="按唯一用户计数；A0 待外部资格数据、A2 先修障、A1 待资格校验" explanationId="lead_stage" kind="bar" points={leadStages} onSelect={selectEvidence} />
+      <AnalyticsChart title="机会分层构成" subtitle="展示当前分析运行中的用户分层占比" explanationId="lead_stage_share" kind="donut" points={leadStages} onSelect={selectEvidence} />
+      <AnalyticsChart title="候选用户需求评分" subtitle="评分用于排序；最终行动仍由问题侧与资格字段决定" explanationId="lead_demand_score" kind="bar" points={userPoints(filtered.leadEvidence, 'demand_score')} onSelect={selectEvidence} />
+      <AnalyticsEvidenceTable title="体验驱动机会证据（非可直接营销名单）" rows={filtered.leadEvidence} limit={400} />
     </div>}
     </>}
     {selectedEvidence && <EvidenceDrawer row={selectedEvidence} onClose={() => setSelectedEvidence(null)} />}

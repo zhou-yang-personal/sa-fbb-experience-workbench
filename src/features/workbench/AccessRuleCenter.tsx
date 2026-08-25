@@ -27,6 +27,18 @@ const emptyForm: RuleForm = {
   notes: '',
 };
 
+const finalAccessTypes = ['CABLE', 'FTTH', 'OTHER'] as const;
+
+function configuredOthersAccessType(value: AccessRuleSetRow['default_access_type']) {
+  return finalAccessTypes.includes(value as typeof finalAccessTypes[number])
+    ? value as typeof finalAccessTypes[number]
+    : '';
+}
+
+function accessTypeLabel(value: AccessRuleSetRow['default_access_type']) {
+  return configuredOthersAccessType(value) || '未配置';
+}
+
 function countLabel(value: number) {
   return new Intl.NumberFormat('en-US').format(value);
 }
@@ -42,6 +54,8 @@ export function AccessRuleCenter({ c }: { c: WorkbenchController }) {
 
   const publishedSets = useMemo(() => ruleSets.filter((item) => item.status === 'published'), [ruleSets]);
   const activePublished = publishedSets[0];
+  const othersAccessType = configuredOthersAccessType(draft?.default_access_type ?? null);
+  const othersConfigured = Boolean(othersAccessType);
 
   async function loadDraft() {
     setMessage('正在读取 IP 接入规则…');
@@ -129,24 +143,28 @@ export function AccessRuleCenter({ c }: { c: WorkbenchController }) {
   }
 
   async function updateDefaultAccessType(defaultAccessType: string) {
-    if (!draft) return;
+    if (!draft || !configuredOthersAccessType(defaultAccessType)) return;
     const result = await c.runAction('access_rule_set_default_update', () => workbenchApi.updateAccessRuleDefault(c.settings, draft.rule_set_id, defaultAccessType));
     if (result) {
       setDraft(result as AccessRuleSetRow);
-      setMessage(`未命中 IP 已设置为 ${(result as AccessRuleSetRow).default_access_type}。`);
+      setMessage(`Others（未命中任何显式网段的 IP）已归类为 ${accessTypeLabel((result as AccessRuleSetRow).default_access_type)}。`);
       setValidation(null);
       setPreview(null);
     }
   }
 
   async function previewDraft() {
-    if (!draft || !c.importBatchId.trim()) return;
+    if (!draft || !c.importBatchId.trim() || !othersConfigured) return;
     const result = await c.runAction('access_rule_preview', () => workbenchApi.previewAccessRules(c.settings, draft.rule_set_id, c.importBatchId));
     if (result) setPreview(result as AccessRulePreviewResult);
   }
 
   async function publishDraft() {
     if (!draft) return;
+    if (!othersConfigured) {
+      setMessage('发布前必须配置 Others 最终归属的接入制式。');
+      return;
+    }
     const checked = await c.runAction('access_rule_validate_before_publish', () => workbenchApi.validateAccessRules(c.settings, draft.rule_set_id));
     if (!checked) return;
     setValidation(checked as AccessRuleValidationResult);
@@ -168,7 +186,7 @@ export function AccessRuleCenter({ c }: { c: WorkbenchController }) {
         <div>
           <p className="eyebrow">Configuration · Access classification</p>
           <h2>IP 段与接入类型</h2>
-          <p>Cable / FTTH 先由已发布 IP 规则识别，再回退到 CSV 原始字段与规则集默认类型。规则按版本绑定批次，不修改 RAW 数据。</p>
+          <p>上方规则识别明确 IP 网段；没有命中任何规则的剩余 IP 统一进入 Others，再按本版本的显式配置归入 Cable、FTTH 或其他制式。规则按版本绑定批次，不修改 RAW 数据。</p>
         </div>
         <button type="button" className="quiet-button" onClick={loadDraft}>刷新</button>
       </header>
@@ -178,7 +196,7 @@ export function AccessRuleCenter({ c }: { c: WorkbenchController }) {
         <article><span>规则数量</span><strong>{rules.length}</strong><small>{rules.filter((rule) => rule.enabled).length} enabled</small></article>
         <article><span>当前发布</span><strong>{activePublished ? `v${activePublished.version}` : '-'}</strong><small>{activePublished?.published_at ?? '尚未发布'}</small></article>
         <article><span>当前批次</span><strong>{c.importBatchId ? '已选择' : '未选择'}</strong><small>{c.batchDisplayName || '预览和应用需要批次'}</small></article>
-        <article><span>未命中默认</span><strong>{draft?.default_access_type ?? '-'}</strong><small>没有命中任何 IP 段时使用</small></article>
+        <article className={draft && !othersConfigured ? 'is-required' : ''}><span>Others 最终归类</span><strong>{draft ? accessTypeLabel(draft.default_access_type) : '-'}</strong><small>未命中上方任何 IP 规则的剩余集合</small></article>
       </section>
 
       <section className="access-rule-workspace">
@@ -204,23 +222,23 @@ export function AccessRuleCenter({ c }: { c: WorkbenchController }) {
 
         <aside className="access-rule-publish-panel">
           <div className="section-heading"><div><h3>验证与发布</h3><p>发布版本是批次分析的可追溯分类依据。</p></div></div>
-          <label>未命中 IP 默认归类
-            <select value={draft?.default_access_type ?? 'CABLE'} disabled={!draft} onChange={(event) => void updateDefaultAccessType(event.target.value)}>
-              <option value="CABLE">CABLE（仅配置 FTTH 网段时推荐）</option>
-              <option value="FTTH">FTTH（仅配置 Cable 网段时）</option>
-              <option value="OTHER">OTHER</option>
-              <option value="UNKNOWN">UNKNOWN（不自动归类）</option>
+          <label>Others 最终归属的接入制式 <span className="required-mark">必选</span>
+            <select value={othersAccessType} disabled={!draft} className={draft && !othersConfigured ? 'is-required' : ''} onChange={(event) => void updateDefaultAccessType(event.target.value)}>
+              <option value="" disabled>请选择 Others 最终归属</option>
+              <option value="CABLE">CABLE（当前业务：未命中 FTTH 的剩余 IP）</option>
+              <option value="FTTH">FTTH（未命中 Cable 等显式规则时）</option>
+              <option value="OTHER">OTHER（其他已确认接入制式）</option>
             </select>
           </label>
-          <small>优先级：命中 IP 规则 → CSV 接入字段 → 此默认值。你的场景只需录入 FTTH 网段，并将默认值保持为 CABLE。</small>
+          <small>Others 不是固定的第三种制式，而是“未命中上方任何显式 IP 网段”的剩余集合。它的最终归属属于规则版本，必须由用户配置，不能由系统写死。</small>
           <div className={`validation-callout ${validation?.valid ? 'is-valid' : validation ? 'is-invalid' : ''}`}>
-            <strong>{validation ? (validation.valid ? '可发布' : '需要修正') : '尚未验证'}</strong>
-            <span>{validation?.message ?? '先完成规则配置，再运行重叠和格式检查。'}</span>
+            <strong>{!othersConfigured ? '需要配置 Others' : validation ? (validation.valid ? '可发布' : '需要修正') : '尚未验证'}</strong>
+            <span>{!othersConfigured ? '请选择 Others 最终归属的接入制式；未配置的草稿不能发布。' : validation?.message ?? '先完成规则配置，再运行重叠和格式检查。'}</span>
           </div>
           <div className="stacked-actions">
             <button type="button" onClick={validateDraft} disabled={!draft}>验证草稿</button>
-            <button type="button" onClick={previewDraft} disabled={!draft || !c.importBatchId}>用当前批次预览</button>
-            <button type="button" className="primary-button" onClick={publishDraft} disabled={!draft}>发布规则版本</button>
+            <button type="button" onClick={previewDraft} disabled={!draft || !c.importBatchId || !othersConfigured}>用当前批次预览</button>
+            <button type="button" className="primary-button" onClick={publishDraft} disabled={!draft || !othersConfigured}>发布规则版本</button>
             <button type="button" onClick={applyPublishedToBatch} disabled={!activePublished || !c.importBatchId}>将已发布版本应用到当前批次</button>
           </div>
           {preview && <div className="preview-metrics">
@@ -228,8 +246,10 @@ export function AccessRuleCenter({ c }: { c: WorkbenchController }) {
             <div><span>识别覆盖率</span><strong>{preview.coverage_pct.toFixed(1)}%</strong></div>
             <div><span>Cable</span><strong>{countLabel(preview.cable_ip_count)}</strong></div>
             <div><span>FTTH</span><strong>{countLabel(preview.ftth_ip_count)}</strong></div>
-            <div><span>默认归类</span><strong>{countLabel(preview.fallback_ip_count)}</strong></div>
-            <div><span>未匹配</span><strong>{countLabel(preview.unmatched_ip_count)}</strong></div>
+            <div><span>Others 集合</span><strong>{countLabel(preview.fallback_ip_count)}</strong></div>
+            <div><span>Others 最终归类</span><strong>{othersAccessType || '未配置'}</strong></div>
+            <div><span>其他制式</span><strong>{countLabel(preview.other_ip_count)}</strong></div>
+            <div><span>仍未分类</span><strong>{countLabel(preview.unmatched_ip_count)}</strong></div>
           </div>}
         </aside>
       </section>

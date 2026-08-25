@@ -6,12 +6,14 @@ import { AnalyticsStructuredDeepDivePanel } from './AnalyticsStructuredDeepDiveP
 import { AnalyticsStructuredKpiPanel } from './AnalyticsStructuredKpiPanel';
 import { AnalyticsStructuredPagedPanel } from './AnalyticsStructuredPagedPanel';
 import { BatchSelector } from './BatchSelector';
+import { ExperienceInvestigationHub, type InvestigationHubView } from './ExperienceInvestigationHub';
 import type { WorkbenchController } from './useWorkbenchController';
 import { workbenchApi } from './workbenchApi';
 
-type AnalyticsView = 'overview' | 'apps' | 'quality' | 'cable' | 'users' | 'leads';
+type LegacyAnalyticsView = 'apps' | 'quality' | 'cable' | 'users' | 'leads';
+type AnalyticsView = LegacyAnalyticsView | InvestigationHubView;
 
-export function AnalysisWorkspace({ c, activeView, onOpenImport }: { c: WorkbenchController; activeView: AnalyticsView; onOpenImport: () => void }) {
+export function AnalysisWorkspace({ c, activeView, onOpenImport, onNavigate }: { c: WorkbenchController; activeView: AnalyticsView; onOpenImport: () => void; onNavigate: (view: InvestigationHubView) => void }) {
   const [batches, setBatches] = useState<BatchListItem[]>([]);
   const [tableRegistry, setTableRegistry] = useState<BatchTableRegistryRow[]>([]);
   const [moduleStatus, setModuleStatus] = useState<ModuleStatusRow[]>([]);
@@ -115,8 +117,10 @@ export function AnalysisWorkspace({ c, activeView, onOpenImport }: { c: Workbenc
             setTableRegistry([]);
             setModuleStatus([]);
             setStatusMessage('请选择批次；选择后不会自动执行分析。');
+            c.clearAnalysisContext();
             return;
           }
+          if (batch.import_batch_id !== c.importBatchId) c.clearAnalysisContext();
           c.setImportBatchId(batch.import_batch_id);
           c.setAnalysisRunId(batch.analysis_run_id ?? '');
           c.setDataType(batch.data_type as WorkbenchController['dataType']);
@@ -166,7 +170,9 @@ export function AnalysisWorkspace({ c, activeView, onOpenImport }: { c: Workbenc
         {resultsNotGenerated && <p className="muted-row status-failure-text">当前批次尚未完成分析结果生成，请回到数据导入，完成 CLEAN/DWS/ADS 后再查看。</p>}
       </article>
 
-      <AnalyticsDashboard c={c} activeView={activeView} batchContext={selectedBatch} onOpenImport={onOpenImport} />
+      {(['overview', 'findings', 'investigation', 'investigations'] as AnalyticsView[]).includes(activeView)
+        ? <ExperienceInvestigationHub c={c} view={activeView as InvestigationHubView} onNavigate={onNavigate} />
+        : <AnalyticsDashboard c={c} activeView={activeView as LegacyAnalyticsView} batchContext={selectedBatch} onOpenImport={onOpenImport} />}
 
       <details className="advanced-actions analytics-diagnostics" onToggle={(event) => setDiagnosticsOpen(event.currentTarget.open)}>
         <summary>高级分析与诊断（展开后才加载）</summary>

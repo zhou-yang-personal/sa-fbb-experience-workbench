@@ -64,12 +64,24 @@ Cable / FTTH 识别采用可追溯的版本规则：
 → 绑定 import_batch_id 和规则版本
 → RAW → DWD 时用 INET_ATON(local_ip_address) 匹配
 → 命中规则：IP_RULE / HIGH
-→ 未命中但源字段可识别：SOURCE_FIELD / MEDIUM
-→ 仍未识别：使用规则集 default_access_type / RULE_SET_DEFAULT / HIGH
-→ 只有默认值显式配置为 UNKNOWN 时：UNKNOWN / UNMATCHED / LOW
+→ 有效 IPv4 未命中：使用该规则版本显式配置的 Others / RULE_SET_OTHERS / HIGH
+→ 缺失或非法 IPv4：UNKNOWN / UNAVAILABLE_IP / LOW
 ```
 
-规则支持 CIDR 或起止 IPv4、启停、优先级、重叠阻断、未命中默认类型、最多 100,000 个不同 IP 的有界预览及原子发布。当前业务默认是“命中 FTTH 网段为 FTTH，其余为 Cable”，所以无需穷举 Cable 网段。每次 TCP / Game 导入都必须手动选择并确认一个已发布版本，后端校验后将该版本绑定到新批次，不自动选择“最新发布”。规则应用不修改 RAW；应用到历史批次后必须重跑 CLEAN / DWS / ADS。
+`Others` 是未命中任何显式 IP 网段的剩余有效 IPv4 集合，不是写死的第三种接入技术。规则草稿必须由用户明确选择 Others 最终归为 Cable、FTTH 或 Other；未配置或配置为 Unknown 的草稿不得预览、发布或绑定新批次。当前业务版本选择 Others → Cable，但这个选择只保存在规则版本中，不得成为 React、Rust、SQL 或数据库默认值。CSV `user_type` / `wan_type` 只保留为来源证据，不参与最终分类优先级。规则支持 CIDR 或起止 IPv4、启停、优先级、重叠阻断、最多 100,000 个不同 IP 的有界预览及原子发布。规则应用不修改 RAW；应用到历史批次后必须重跑 CLEAN / DWS / ADS。
+
+### 1.6 V2 体验指标与旁路聚合
+
+V2 App 分析采用版本化 `Experience Policy`，每个 `analysis_run` 同时绑定接入规则版本、Others 归类和体验策略版本。首轮公共粒度为用户 × App × 分析周期，并继续汇总为 App × 接入制式；看板只读对应 ADS，不扫描 RAW。
+
+必须区分：
+
+1. `Poor Observation Rate = 差体验观测 / 有效体验观测`。
+2. `Ever Affected User Rate = 至少一次差体验的合格用户 / 合格用户`。
+3. `Persistent Poor User Rate = 满足最低观测数、最低异常次数和用户差体验率门槛的用户 / 合格用户`。
+4. `Severe Poor User Rate = 满足独立严重阈值、最低严重次数和严重率门槛的用户 / 合格用户`。
+
+V2 表必须保留分子、分母、样本状态、策略版本和主要证据指标；`INSUFFICIENT_SAMPLE` 不得进入问题排名。缺失、未导入、样本不足和数值 0 是不同状态。当前手工脚本复用既有 DWD，为指定批次并排生成 V2 DWS/ADS，不覆盖旧分析运行，也不进行 Server IP 全量拆分。
 
 ### 1.5 看板总体口径与数据覆盖
 
@@ -985,3 +997,18 @@ meta_quality_check_result
 9. 实现 RAW → CLEAN SQL。
 10. 实现 CLEAN → DWS / ADS SQL。
 11. 实现 Overview / Experience / Cable-Fiber / Leads 四类核心看板。
+## 1.0.50 investigation architecture
+
+`WorkbenchController` owns a single persistent Analysis Context shared by the V2 overview, findings, legacy evidence pages and Investigation Workspace. Chart selections append dimensions to this context instead of creating isolated local filters.
+
+The V2 query path is ADS/DWS-first:
+
+1. `dws_user_app_period_experience_v2` supplies the four experience metrics and affected-user evidence.
+2. `ads_app_experience_v2` supplies explainable, sample-qualified App findings.
+3. `dws_user_app_hourly_experience_v2` and `ads_app_hourly_experience_v2` supply time drill-down.
+4. `meta_analysis_run_policy_binding` preserves the access-rule, Others mapping and experience-policy version used by the run.
+5. `meta_saved_investigation` stores only context and references, not copied fact data.
+
+Server IP remains controlled/on-demand and is not exploded globally. New CLEAN results retain the source field; a drill-down requires an explicit App, selects at most 200 priority affected users from DWS and parses at most 20,000 matching DWD observations. Network objects are only treated as topology when BRAS/OLT/PON contain real values; otherwise the UI reports limited localization capability.
+
+Run verification uses the latest earlier successful analysis only when access-rule ID/version, configured Others, App-mapping version and experience-policy ID/version are all identical. Missing compatible baselines and missing V2 observations are presented as non-comparable rather than zero change.

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
-import type { ActionState, DashboardChartGroup, DashboardOverview, EtlJobStepRow, ExecutionLogEntry, FinalLeadUserRow, ImportBatchResult, ImportDataType, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
+import type { ActionState, AnalysisContext, AnalysisContextKey, DashboardChartGroup, DashboardOverview, EtlJobStepRow, ExecutionLogEntry, FinalLeadUserRow, ImportBatchResult, ImportDataType, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
+import type { UiLanguage } from '../../shared/i18n';
 import { workbenchApi } from './workbenchApi';
 
 const defaultSettings: MySqlSettings = { host: '127.0.0.1', port: 3306, database: 'sa_vbp', user: 'root', secret: '123456', local_infile: true };
@@ -19,6 +20,8 @@ type PersistedWorkbenchContext = {
   analysisRunId?: unknown;
   outputPath?: unknown;
   exportFinalActions?: unknown;
+  language?: unknown;
+  analysisContext?: unknown;
 };
 
 export type WorkbenchController = {
@@ -61,6 +64,14 @@ export type WorkbenchController = {
   createBatch: (accessRuleSetId?: string) => Promise<ImportBatchResult | null>;
   clearPersistedContext: () => void;
   setOverview: Dispatch<SetStateAction<DashboardOverview | null>>;
+  language: UiLanguage;
+  setLanguage: Dispatch<SetStateAction<UiLanguage>>;
+  analysisContext: AnalysisContext;
+  analysisContextHistory: AnalysisContext[];
+  applyAnalysisContext: (patch: Partial<AnalysisContext>) => void;
+  removeAnalysisContext: (key: AnalysisContextKey) => void;
+  clearAnalysisContext: () => void;
+  backAnalysisContext: () => void;
 };
 
 function stringifyPreview(value: unknown) {
@@ -126,6 +137,26 @@ function safeStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
+function safeLanguage(value: unknown): UiLanguage {
+  return value === 'en-US' ? 'en-US' : 'zh-CN';
+}
+
+function safeAnalysisContext(value: unknown): AnalysisContext {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const candidate = value as Record<string, unknown>;
+  const result: AnalysisContext = {};
+  const stringKeys: AnalysisContextKey[] = ['data_type', 'app_category', 'app_name', 'access_type', 'date_from', 'date_to', 'issue_metric', 'issue_side', 'user_key', 'server_ip', 'bras', 'network_object', 'baseline_type', 'finding_id'];
+  for (const key of stringKeys) {
+    if (typeof candidate[key] === 'string' && candidate[key]) {
+      (result as Record<string, unknown>)[key] = candidate[key];
+    }
+  }
+  for (const key of ['hour_from', 'hour_to'] as const) {
+    if (typeof candidate[key] === 'number' && candidate[key] >= 0 && candidate[key] <= 23) result[key] = candidate[key];
+  }
+  return result;
+}
+
 function safeSettings(value: PersistedWorkbenchContext['settings']): MySqlSettings {
   return {
     host: safeString(value?.host, defaultSettings.host),
@@ -149,6 +180,9 @@ export function useWorkbenchController(): WorkbenchController {
   const [analysisRunId, setAnalysisRunId] = useState(safeString(persisted.analysisRunId, 'RUN_MANUAL_001'));
   const [outputPath, setOutputPath] = useState(safeString(persisted.outputPath, 'leads_export.csv'));
   const [exportFinalActions, setExportFinalActions] = useState<string[]>(safeStringArray(persisted.exportFinalActions));
+  const [language, setLanguage] = useState<UiLanguage>(safeLanguage(persisted.language));
+  const [analysisContext, setAnalysisContext] = useState<AnalysisContext>(safeAnalysisContext(persisted.analysisContext));
+  const [analysisContextHistory, setAnalysisContextHistory] = useState<AnalysisContext[]>([]);
   const [log, setLog] = useState<ExecutionLogEntry[]>([]);
   const [batch, setBatch] = useState<ImportBatchResult | null>(null);
   const [metrics, setMetrics] = useState<MetricCard[]>([]);
@@ -165,8 +199,41 @@ export function useWorkbenchController(): WorkbenchController {
 
   useEffect(() => {
     const { secret: _secret, ...persistableSettings } = settings;
-    writePersistedContext({ settings: persistableSettings, dataType, importMode, filePath, importBatchId, batchDisplayName, analysisRunId, outputPath, exportFinalActions });
-  }, [settings, dataType, importMode, filePath, importBatchId, batchDisplayName, analysisRunId, outputPath, exportFinalActions]);
+    writePersistedContext({ settings: persistableSettings, dataType, importMode, filePath, importBatchId, batchDisplayName, analysisRunId, outputPath, exportFinalActions, language, analysisContext });
+  }, [settings, dataType, importMode, filePath, importBatchId, batchDisplayName, analysisRunId, outputPath, exportFinalActions, language, analysisContext]);
+
+  function updateAnalysisContext(next: AnalysisContext) {
+    setAnalysisContextHistory((history) => [...history, analysisContext].slice(-30));
+    setAnalysisContext(next);
+  }
+
+  function applyAnalysisContext(patch: Partial<AnalysisContext>) {
+    const next = { ...analysisContext, ...patch };
+    for (const key of Object.keys(next) as AnalysisContextKey[]) {
+      const value = next[key];
+      if (value === '' || value === undefined || value === null) delete next[key];
+    }
+    if (JSON.stringify(next) !== JSON.stringify(analysisContext)) updateAnalysisContext(next);
+  }
+
+  function removeAnalysisContext(key: AnalysisContextKey) {
+    if (!(key in analysisContext)) return;
+    const next = { ...analysisContext };
+    delete next[key];
+    updateAnalysisContext(next);
+  }
+
+  function clearAnalysisContext() {
+    if (Object.keys(analysisContext).length) updateAnalysisContext({});
+  }
+
+  function backAnalysisContext() {
+    setAnalysisContextHistory((history) => {
+      const previous = history[history.length - 1];
+      if (previous) setAnalysisContext(previous);
+      return previous ? history.slice(0, -1) : history;
+    });
+  }
 
   function appendLog(entry: ExecutionLogEntry) { setLog((items) => [entry, ...items].slice(0, 400)); }
   function setActionState(label: string, state: ActionState) {
@@ -184,6 +251,9 @@ export function useWorkbenchController(): WorkbenchController {
     setAnalysisRunId('RUN_MANUAL_001');
     setOutputPath('leads_export.csv');
     setExportFinalActions([]);
+    setLanguage('zh-CN');
+    setAnalysisContext({});
+    setAnalysisContextHistory([]);
     setBatch(null);
     setMetrics([]);
     setOverview(null);
@@ -265,5 +335,5 @@ export function useWorkbenchController(): WorkbenchController {
     return null;
   }
 
-  return { settings, setSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, batchDisplayName, setBatchDisplayName, analysisRunId, setAnalysisRunId, outputPath, setOutputPath, exportFinalActions, setExportFinalActions, log, batch, setBatch, allMetrics, dashboardCharts, setDashboardCharts, etlSteps, setEtlSteps, leads, setLeads, finalLeads, setFinalLeads, effectiveSettings, actionStates, currentAction, lastActionMessage, runAction, loadMetrics, createBatch, clearPersistedContext, setOverview };
+  return { settings, setSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, batchDisplayName, setBatchDisplayName, analysisRunId, setAnalysisRunId, outputPath, setOutputPath, exportFinalActions, setExportFinalActions, log, batch, setBatch, allMetrics, dashboardCharts, setDashboardCharts, etlSteps, setEtlSteps, leads, setLeads, finalLeads, setFinalLeads, effectiveSettings, actionStates, currentAction, lastActionMessage, runAction, loadMetrics, createBatch, clearPersistedContext, setOverview, language, setLanguage, analysisContext, analysisContextHistory, applyAnalysisContext, removeAnalysisContext, clearAnalysisContext, backAnalysisContext };
 }

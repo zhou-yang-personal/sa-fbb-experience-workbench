@@ -247,7 +247,11 @@ export interface AccessRuleSetRow {
   rule_set_id: string;
   version: number;
   rule_set_name: string;
-  default_access_type: 'CABLE' | 'FTTH' | 'OTHER' | 'UNKNOWN' | string;
+  /**
+   * Final access type assigned to Others (IPs that match no explicit range).
+   * Drafts may leave this unset, but they cannot be published in that state.
+   */
+  default_access_type: 'CABLE' | 'FTTH' | 'OTHER' | null | string;
   status: 'draft' | 'published' | 'archived' | string;
   rule_count: number;
   published_at?: string;
@@ -283,6 +287,8 @@ export interface AccessRuleInput {
 
 export interface AccessRuleValidationResult {
   valid: boolean;
+  others_configured: boolean;
+  others_access_type?: 'CABLE' | 'FTTH' | 'OTHER' | null;
   rule_count: number;
   enabled_rule_count: number;
   conflict_count: number;
@@ -297,8 +303,205 @@ export interface AccessRulePreviewResult {
   ftth_ip_count: number;
   other_ip_count: number;
   fallback_ip_count: number;
+  others_ip_count: number;
   unmatched_ip_count: number;
   coverage_pct: number;
   sample_limit: number;
   message: string;
+}
+
+export type AnalysisBaselineType = 'PREVIOUS_COMPARABLE_RUN' | 'FTTH_PEER' | 'NON_PEAK' | 'POLICY_THRESHOLD';
+
+/**
+ * Shared investigation context. Empty values mean that the dimension is not
+ * constrained; batch and run remain owned by the workbench controller.
+ */
+export interface AnalysisContext {
+  data_type?: string;
+  app_category?: string;
+  app_name?: string;
+  access_type?: string;
+  date_from?: string;
+  date_to?: string;
+  hour_from?: number;
+  hour_to?: number;
+  issue_metric?: string;
+  issue_side?: string;
+  user_key?: string;
+  server_ip?: string;
+  bras?: string;
+  network_object?: string;
+  baseline_type?: AnalysisBaselineType;
+  finding_id?: string;
+}
+
+export type AnalysisContextKey = keyof AnalysisContext;
+
+export interface ExperienceStatusV2 {
+  analysis_run_id: string;
+  import_batch_id: string;
+  eligible_users: number;
+  valid_observations: number;
+  poor_observations: number;
+  poor_observation_rate_pct?: number;
+  ever_affected_users: number;
+  ever_affected_user_rate_pct?: number;
+  persistent_poor_users: number;
+  persistent_poor_user_rate_pct?: number;
+  severe_poor_users: number;
+  severe_poor_user_rate_pct?: number;
+  policy_id: string;
+  policy_version: number;
+  sample_status: string;
+}
+
+export interface ExperienceFinding {
+  finding_id: string;
+  finding_type: string;
+  title_zh: string;
+  title_en: string;
+  app_category?: string;
+  app_name?: string;
+  access_type?: string;
+  issue_metric?: string;
+  issue_side?: string;
+  baseline_type: string;
+  numerator: number;
+  denominator: number;
+  sample_size: number;
+  affected_users: number;
+  affected_user_rate_pct?: number;
+  poor_observation_rate_pct?: number;
+  severe_user_rate_pct?: number;
+  severity: string;
+  confidence: string;
+  main_driver?: string;
+  evidence_summary: string;
+  data_limitations?: string;
+  recommended_next_step: string;
+  rule_version: number;
+}
+
+export interface DataCoverageItemV2 {
+  dimension: string;
+  status: 'AVAILABLE' | 'NOT_IMPORTED' | 'UNAVAILABLE' | 'INSUFFICIENT_SAMPLE' | string;
+  available_rows: number;
+  total_rows: number;
+  coverage_pct?: number;
+  limitation?: string;
+}
+
+export interface RunVerificationV2 {
+  current_analysis_run_id: string;
+  current_import_batch_id: string;
+  previous_analysis_run_id?: string;
+  previous_import_batch_id?: string;
+  comparable: boolean;
+  comparison_reason: string;
+  current_poor_observation_rate_pct?: number;
+  previous_poor_observation_rate_pct?: number;
+  poor_observation_rate_delta_pct?: number;
+  current_persistent_poor_user_rate_pct?: number;
+  previous_persistent_poor_user_rate_pct?: number;
+  persistent_poor_user_rate_delta_pct?: number;
+  current_severe_poor_user_rate_pct?: number;
+  previous_severe_poor_user_rate_pct?: number;
+  severe_poor_user_rate_delta_pct?: number;
+}
+
+export interface InvestigationEvidenceRow {
+  user_key: string;
+  access_type: string;
+  app_category: string;
+  app_name: string;
+  valid_obs_rows: number;
+  poor_obs_rows: number;
+  poor_observation_rate_pct?: number;
+  persistent_poor_user: boolean;
+  severe_poor_user: boolean;
+  avg_vmos?: number;
+  avg_subscriber_rtt_ms?: number;
+  avg_network_rtt_ms?: number;
+  avg_user_loss_pct?: number;
+  avg_network_loss_pct?: number;
+}
+
+export interface InvestigationHourlyRow {
+  stat_date: string;
+  hour_of_day: number;
+  access_type: string;
+  eligible_users: number;
+  valid_obs_rows: number;
+  poor_obs_rows: number;
+  poor_observation_rate_pct?: number;
+  persistent_poor_users: number;
+  severe_poor_users: number;
+  sample_status: string;
+}
+
+export interface InvestigationServerIpRow {
+  server_ip: string;
+  observed_users: number;
+  observation_rows: number;
+  avg_subscriber_rtt_ms?: number;
+  avg_network_rtt_ms?: number;
+  avg_user_loss_pct?: number;
+  avg_network_loss_pct?: number;
+}
+
+export interface SavedInvestigation {
+  investigation_id: string;
+  import_batch_id: string;
+  analysis_run_id: string;
+  finding_id?: string;
+  title: string;
+  status: string;
+  context_json: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExperiencePolicyRow {
+  policy_id: string;
+  version: number;
+  policy_name: string;
+  status: string;
+  persistent_min_valid_obs: number;
+  persistent_min_poor_obs: number;
+  persistent_min_poor_rate_pct: number;
+  severe_user_min_valid_obs: number;
+  severe_user_min_severe_obs: number;
+  severe_user_min_severe_rate_pct: number;
+  minimum_app_eligible_users: number;
+  minimum_app_valid_obs: number;
+  finding_attention_persistent_user_rate_pct: number;
+  finding_severe_user_rate_pct: number;
+  notes?: string;
+  updated_at: string;
+}
+
+export interface AppExperienceProfileRow {
+  profile_id: string;
+  policy_id: string;
+  profile_code: string;
+  profile_name: string;
+  data_type: string;
+  app_category?: string;
+  priority: number;
+  enabled: boolean;
+  poor_vmos_below?: number;
+  poor_mos_below?: number;
+  poor_subscriber_rtt_ms_at_least?: number;
+  poor_network_rtt_ms_at_least?: number;
+  poor_user_loss_pct_at_least?: number;
+  poor_network_loss_pct_at_least?: number;
+  poor_jitter_ms_at_least?: number;
+  severe_vmos_below?: number;
+  severe_mos_below?: number;
+  severe_subscriber_rtt_ms_at_least?: number;
+  severe_network_rtt_ms_at_least?: number;
+  severe_user_loss_pct_at_least?: number;
+  severe_network_loss_pct_at_least?: number;
+  severe_jitter_ms_at_least?: number;
 }

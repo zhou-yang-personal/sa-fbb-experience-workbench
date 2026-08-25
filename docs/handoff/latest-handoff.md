@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.48
+1.0.50
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,28 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.50 update
+
+- New database migration: `009_investigation_workspace_schema.sql`.
+- New reusable tables: `dws_user_app_hourly_experience_v2`, `ads_app_hourly_experience_v2`; batch table registry now creates per-batch physical copies.
+- New commands: V2 status/findings/coverage, previous comparable-run verification, investigation user/hour/controlled Server-IP evidence, investigation save/list, experience policy/profile list/draft/update/clone/publish.
+- The user may still be running `database/sql/manual/reaggregate_current_batch_experience_v2.sql`. That script creates the period V2 tables only; do not interrupt it. Hourly V2 is materialized by the 1.0.50 App materialization path after the new binary/database initialization is used.
+- Linux validation cannot verify customer MySQL values or 13.2M-row runtime. Do not claim the hourly scan performance is proven until tested on the Windows dataset.
+- New CLEAN runs retain `server_ip`. Investigation parses it only after an App is selected, first limits the scope to 200 priority affected users through DWS, then reads at most 20,000 indexed DWD observations. Existing CLEAN tables gain the nullable column but do not retroactively recover values; rerun CLEAN before expecting Server-IP evidence.
+- Overview V2 compares against the latest earlier successful run only when access rule, Others, App mapping and experience-policy bindings are identical. If no such run exists, it reports not comparable instead of manufacturing a trend.
+
+- Access-rule drafts no longer inherit or default Others. Users explicitly map unmatched valid IPv4 addresses to Cable, FTTH or Other; missing/invalid IP remains unavailable, and CSV access fields are evidence only.
+- Analysis runs bind the access rule and published experience policy. V2 distinguishes poor observations, ever-affected users, persistent-poor users and severe-poor users with exact numerators, denominators and minimum-sample status.
+- App materialization produces V2 DWS/ADS and App queries prefer it. The existing App dashboard now exposes persistent, observation, ever-affected and severe views and excludes insufficient samples from problem charts.
+- Every current chart and PDF chart position has a reusable bilingual explanation block. The 1.0.50 primary navigation, Analysis Context and Investigation Workspace use the global Chinese/English switch; some legacy compatibility-page operational copy remains Chinese-first.
+- Version markers are synchronized to `1.0.50`, except `AGENTS.project.md`; project governance requires explicit user authorization before editing that file.
+
+### Current-batch SQL path
+
+- Run `database/migrations/008_experience_analysis_policy_schema.sql`, then `database/sql/manual/reaggregate_current_batch_experience_v2.sql` on the Windows MySQL database.
+- The manual job reads the existing DWD tables for `BATCH_7ae0c7d1c0a240ba833e366bf755397d`, expects the bound rule version to explicitly contain Others → Cable, writes `RUN_REAGG_V2_20260825`, and does not reimport RAW or overwrite `RUN_MANUAL_001`.
+- Linux source checks passed, but the 13,205,379-row MySQL run is not verified here because no database service is listening on `127.0.0.1:3306`. Save the command output as `experience-v2-reaggregate-result.txt` for result review.
 
 ## 1.0.48 update
 

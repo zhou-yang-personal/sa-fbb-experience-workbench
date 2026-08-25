@@ -64,15 +64,24 @@ fn resolve_access_rule_set(
     let Some(rule_set_id) = selected else {
         return Ok((None, None));
     };
-    let version: Option<i64> = conn
+    let published: Option<(i64, Option<String>)> = conn
         .exec_first(
-            "SELECT CAST(version AS SIGNED) FROM meta_access_rule_set WHERE rule_set_id=? AND status='published'",
+            "SELECT CAST(version AS SIGNED), default_access_type FROM meta_access_rule_set WHERE rule_set_id=? AND status='published'",
             (rule_set_id,),
         )
         .map_err(|err| format!("failed to validate selected access rule set: {err}"))?;
-    let version = version.ok_or_else(|| {
+    let (version, others_access_type) = published.ok_or_else(|| {
         format!("selected access rule set is missing or not published: {rule_set_id}")
     })?;
+    others_access_type
+        .as_deref()
+        .map(crate::access_rule_commands::normalize_others_access_type)
+        .transpose()?
+        .ok_or_else(|| {
+            format!(
+                "selected access rule set has no explicit Others mapping: {rule_set_id}; create and publish a corrected version"
+            )
+        })?;
     Ok((Some(rule_set_id.to_string()), Some(version)))
 }
 

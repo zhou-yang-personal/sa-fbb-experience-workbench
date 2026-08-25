@@ -5,7 +5,7 @@ SA FBB Experience Workbench 是一个本地 EXE 数据分析工作台，用于�
 当前版本：
 
 ```text
-1.0.48
+1.0.50
 ```
 
 ## 1. 核心目标
@@ -46,20 +46,32 @@ CSV 文件选择
 6. Phase 6：CRM、FTTH 覆盖、可触达状态融合，生成最终营销动作。
 7. Phase 7：导出、handoff、changelog、交付检查入口。
 
-## 4. 1.0.48 收口重点
+## 4. 1.0.50 收口重点
+
+- IP 规则版本把 `Others` 明确为“未命中任何显式网段的有效 IP 集合”，草稿必须由用户选择其最终接入制式；React、Rust、SQL 和数据库都不再默认写死 Cable，CSV 制式字段只保留为证据。
+- 新增版本化体验策略和 V2 App 聚合，区分差体验观测占比、曾受影响用户占比、持续差体验用户占比和严重差体验用户占比，并保留分子、分母、最低样本与策略版本。
+- App 看板优先读取 V2 ADS，用持续差体验而非“周期内任意一次异常”识别问题 App；样本不足不会进入问题图表，旧 ADS 仅作为兼容回退。
+- 六类看板及 PDF 图表接入统一中英文解释组件，说明图表问题、计算口径、解读方式和数据限制。
+- 提供当前批次的并排重聚合 SQL，复用既有 DWD，不重新导入 RAW、不覆盖 `RUN_MANUAL_001`，新结果写入 `RUN_REAGG_V2_20260825`。
+- 新主链为“体验状态 → 自动发现 → 问题调查 → 保存/继续调查”，跨页面保留 App、接入、时段、问题指标/侧、用户、网络对象和 Finding 条件。
+- 新增 `用户 × App × 小时` DWS 与 App 小时 ADS；调查页面下钻只读 DWS/ADS，不扫描 RAW。
+- 体验策略、持续性、严重性、最低样本、Finding 门槛和 App Profile 均支持草稿、编辑、复制类别 Profile 和不可变发布。
+- 网络页面改为“网络 / 路径证据”，缺失 OLT/PON 不再包装成热点；商业页面明确为体验驱动机会，不等同于可直接营销名单。
+
+## 5. 1.0.48 收口重点
 
 - IP 规则集新增“未命中默认接入类型”；默认按 Cable 处理，因此只配置 FTTH 网段即可完成 Cable / FTTH 二分，仍保留 `UNKNOWN` 作为可选的保守模式。
 - 看板新增 TCP / Game 数据覆盖说明；未导入独立 Game 文件时明确显示“未导入”，不再把游戏时长和 MOS 缺失解释为 0。
 - Lead 分层和用户分群改为查询完整 ADS 总体，避免用前 500/300 条明细推断总体；Cable / FTTH 趋势默认展示按活跃用户加权的典型 24 小时曲线。
 - 看板会识别“规则默认值已更新、旧聚合仍含 UNKNOWN”的状态，并提示复用当前批次重跑 CLEAN/DWS/ADS。
 
-## 5. 1.0.47 收口重点
+## 6. 1.0.47 收口重点
 
 - 六类决策看板新增“导出全部图表 PDF”显式任务，默认顺序查询 6 个 DWS/ADS 数据集并输出全部非空图表，不包含明细表格。
 - 报告锁定 `import_batch_id`、`analysis_run_id` 和当前筛选条件，封面记录本地 PC 生成时间、时区、数据来源、空图跳过项和查询失败项。
 - 导出任务提供数据集计划、进度、停止后续准备和可重复打开的报告预览；最终通过 Windows/WebView2 打印预览保存 PDF，不新增 PDF 依赖。
 
-## 6. 1.0.46 收口重点
+## 7. 1.0.46 收口重点
 
 - 历史批次可显式复用，跳过 CSV、RAW、Quality Gate 和 CLEAN，从完整 DWS/ADS 聚合续跑。
 - 续跑前检查原流水线与 MySQL 活动 SQL；同批次仍有查询时拒绝并发接管。
@@ -67,21 +79,21 @@ CSV 文件选择
 - 批次表准备、Module Ready 和常规 Registry 刷新不再执行隐式 `COUNT(*)` 扫描；可用性判断改用有界 `EXISTS` 查询。
 - `meta_analysis_run` 只在完整 DWS 与结构化 ADS 成功后标记成功，不再把基础用户日聚合误报为完整分析完成。
 
-## 7. 1.0.45 收口重点
+## 8. 1.0.45 收口重点
 
 - 历史批次列表明确区分 RAW 导入状态与完整流水线状态，并绑定该批次最新流水线的 `analysis_run_id`。
 - 选择历史批次时恢复对应的流水线状态和完整日志；无关联流水线时清除上一个批次的残留日志。
 - 看板查询返回空数组或全 0 KPI 时不再显示 `SUCCESS`，而是提示当前批次缺少可用 CLEAN/DWS/ADS 结果，并可直接返回导入页排查。
 - 流水线结束后的状态刷新不再自动触发 Registry 与模块大表诊断，降低日志页尾声阶段的额外等待。
 
-## 8. 1.0.44 收口重点
+## 9. 1.0.44 收口重点
 
 - 进入“系统诊断”不再自动访问 MySQL，必须由用户明确启动诊断任务。
 - Catalog、映射、质量、ETL、模块和 Registry 六项检查改为串行任务，展示当前步骤、进度、单项失败和停止后续检查入口。
 - 模块深度检查只刷新一次批次表计数，随后 Registry 读取缓存快照，避免一次诊断重复扫描大表。
 - Quality / ETL 高级排错和完整执行日志改为展开后才挂载，减少切页时的组件和 DOM 开销。
 
-## 9. 1.0.43 收口重点
+## 10. 1.0.43 收口重点
 
 - 流水线日志轮询改为单通道执行并按 `sequence` 去重，不再因重叠请求重复显示同一条日志；任务结束时补拉最终日志。
 - RAW 质量检查、CLEAN/DWD、DWS/ADS 等长步骤每 15 秒写入存活心跳、步骤耗时和阶段说明，避免大 SQL 执行期间静默。
@@ -90,48 +102,48 @@ CSV 文件选择
 - 状态与日志只读轮询不再每秒重复执行流水线 schema DDL，降低 MySQL 元数据锁和连接负担；离开导入页后仍可恢复最近一次任务监控。
 - 新产生的流水线时间统一以 UTC 写入数据库，流水线监控与执行日志按浏览器所在本地 PC 时区显示，并在界面和复制结果中标明时区。
 
-## 10. 1.0.42 收口重点
+## 11. 1.0.42 收口重点
 
 - 应用启动、恢复历史批次、选择批次和切换分析页时不再自动执行批次表准备、全表计数或看板查询。
 - 每个分析页由用户点击后按需加载；总览任务逐项执行并显示数据集计划、进度、当前步骤、失败结果和停止后续加载入口。
 - 高级分析与诊断只在用户展开后挂载，ECharts 只在图表真正显示时动态加载，降低首屏计算与脚本开销。
 
-## 11. 1.0.41 收口重点
+## 12. 1.0.41 收口重点
 
 - RAW 入库长步骤每 5 秒记录客户端已处理字节、源文件大小和完成百分比，不再在大文件导入期间表现为无响应。
 - 文件传输达到 100% 后明确标记“等待 MySQL 解析、索引更新与提交”；连续 30 秒无字节变化时给出分阶段诊断提示。
 - 新批次创建后立即绑定到流水线，因此导入未完成时也能看到批次 ID，并支持 `LOAD DATA` 与 Streaming INSERT 两种模式的字节进度。
 
-## 12. 1.0.40 收口重点
+## 13. 1.0.40 收口重点
 
 - 修复 Rust MySQL 客户端未注册 `LOCAL INFILE` 数据处理器、导致 MySQL 接收到空文件并返回 0 行且无 warning 的问题。
 - `LOAD DATA LOCAL INFILE` 现在以 1 MiB 缓冲流式传输用户当前选择的 CSV，不会把 1 GB+ 文件整体载入应用内存。
 - MySQL 发起的本地文件请求必须解析为当前选择文件的同一规范路径；其他路径会被拒绝，处理器在单次导入后立即移除。
 
-## 13. 1.0.39 收口重点
+## 14. 1.0.39 收口重点
 
 - RAW 导入不再接受“0 行成功”：LOAD DATA 与 Streaming INSERT 均验证批次物理表可见数据，0 行时在 RAW 步骤直接失败并返回分隔符、文件和 MySQL warning 证据。
 - CSV Probe、字段映射、LOAD DATA 和 Streaming INSERT 统一使用有界探测得到的逗号、Tab 或分号分隔符。
 - 数据画像改为查询批次物理 RAW 表；流水线失败后自动展示 RAW 状态和 Quality Gate 失败项。
 - 补齐客户 TCP 样例中的平均带宽和用户有效下载速率字段别名。
 
-## 14. 1.0.38 收口重点
+## 15. 1.0.38 收口重点
 
 - 历史批次支持按批次或批量删除，级联清理物理表、RAW/DWD/DWS/ADS 数据、分析结果和任务元数据；运行中任务禁止删除。
 - MySQL 密码默认填入 `123456`，允许用户覆盖且不把覆盖值持久化到 localStorage。
 - 修复 `ads_network_hotspot_rank` 的 utf8mb4 组合主键超过 InnoDB 3072 字节限制导致数据库初始化失败的问题。
 
-## 15. 1.0.37 收口重点
+## 16. 1.0.37 收口重点
 
 - 修复 Windows 桌面端 CSV 文件选择器：补齐 Tauri Dialog 后端插件和最小权限配置，文件选择失败时显示可诊断错误。
 - TCP / Game 每次导入必须手动选择并确认一个已发布 IP 规则版本；后端不再静默绑定最新版本。
 
-## 16. 1.0.36 收口重点
+## 17. 1.0.36 收口重点
 
 - 新增 GitHub Actions Windows 自动构建：任务分支和 `dev` 推送生成 30 天 Artifact，`v*` 标签自动发布 GitHub Release。
 - 自动构建依次执行前端类型检查、Rust 测试和 Tauri Windows MSI / NSIS EXE / portable EXE 打包。
 
-## 17. 1.0.35 收口重点
+## 18. 1.0.35 收口重点
 
 - 新增版本化 IPv4 网段配置，支持 Cable / FTTH / Other 草稿编辑、重叠校验、批次抽样预览、发布和批次绑定。
 - RAW → DWD 接入类型按“已发布 IP 规则优先、源字段回退、未匹配标记”分类，并保留规则版本和证据来源。
@@ -139,30 +151,30 @@ CSV 文件选择
 - App、网络拓扑和 Lead 看板改为真实业务粒度；A0 身份不足与 A2 先修障不会被表述为可直接营销名单。
 - 批次 SQL 统一绑定物理表；乱序 CSV 表头通过 MySQL 用户变量映射后仍走 `LOAD DATA LOCAL INFILE`，看板只读 DWS / ADS。
 
-## 18. 1.0.34 收口重点
+## 19. 1.0.34 收口重点
 
 - App / Hourly / Network / User / Lead 五类结构化查询命令已支持 materialized Analytics ADS 优先读取。
 - 如果目标 `analysis_run_id` 暂无物化 ADS 数据，或老库缺少 Analytics ADS base 表，查询会安全回退到原 DWS / Lead 表路径。
 - Evidence hint 中增加 `source=...`，便于区分当前结果来自物化 ADS 还是 fallback 聚合表。
 - 本轮继续保持前端只通过 Tauri command 访问后端，不直连 MySQL，不扫描 RAW。
 
-## 19. 1.0.33 收口重点
+## 20. 1.0.33 收口重点
 
 - 新增 `AnalyticsAdsActions.tsx`，在 Analysis Workspace 中提供结构化 ADS 物化操作入口。
 - App / Hourly / Network / User / Lead 五类结构化 ADS 物化命令均已注册到 Tauri。
 - `analyticsStructuredApi.ts` 已暴露五类物化 API，前端动作面板可触发对应命令。
 
-## 20. 1.0.32 收口重点
+## 21. 1.0.32 收口重点
 
 - 修复 `batch_tables.rs` 中被上一轮覆盖掉的公共 helper：`analysis_run_batch`、`table_exists`、`table_columns`，避免 Lead 查询和模块状态检查编译失败。
 - 新增并注册 `analytics_materialize_app_rank` 命令，可执行 `003b_analytics_app_rank.sql`，把 App Rank 从 DWS 物化到结构化 Analytics ADS 表。
 
-## 21. 1.0.31 收口重点
+## 22. 1.0.31 收口重点
 
 - 新增 `AnalyticsStructuredPagedPanel.tsx`，把 1.0.30 后端分页/过滤能力暴露为独立可操作面板。
 - `AnalysisWorkspace.tsx` 已接入分页结构化面板，用户可对 App、Hourly、Network、User、Lead 五类证据做后端分页、关键词、排序和阈值查询。
 
-## 22. 技术栈
+## 23. 技术栈
 
 ```text
 Frontend: React + TypeScript + Vite
@@ -174,7 +186,7 @@ CSV Import: LOAD DATA LOCAL INFILE + streaming INSERT fallback
 Package manager: npm
 ```
 
-## 23. 开发命令
+## 24. 开发命令
 
 ```bash
 npm install
@@ -185,6 +197,6 @@ npm run tauri:build
 cd src-tauri && cargo check
 ```
 
-## 24. 当前状态
+## 25. 当前状态
 
-1.0.48 修正接入分类与数据缺失口径：未命中 FTTH 规则的 IP 可由规则集默认归为 Cable，未导入 Game 文件时不再展示伪 0；Lead 和用户分布使用全量 ADS 聚合，Cable / FTTH 使用典型日曲线。真实 Windows/MySQL 重跑、PDF 视觉验收和 1 GB+ 性能基准仍需在目标 PC 验收。
+1.0.50 已完成 Others 显式配置、V2 四层体验口径、统一 Analysis Context、Overview V2、Auto Findings、Investigation Workspace、保存调查、用户/小时/受控 Server IP 下钻、同规则版本历史复验、数据覆盖语义、体验策略/App Profile 配置和中英文主链切换。真实 Windows/MySQL 1320 万行的最终性能与阈值分布仍需在本地数据环境验收。

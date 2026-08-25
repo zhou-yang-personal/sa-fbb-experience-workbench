@@ -14,7 +14,7 @@ pub struct AccessRuleSetRow {
     pub rule_set_id: String,
     pub version: i64,
     pub rule_set_name: String,
-    pub default_access_type: String,
+    pub default_access_type: Option<String>,
     pub status: String,
     pub rule_count: i64,
     pub published_at: Option<String>,
@@ -89,6 +89,8 @@ pub struct AccessRulePreviewRequest {
 #[derive(Debug, Clone, Serialize)]
 pub struct AccessRuleValidationResult {
     pub valid: bool,
+    pub others_configured: bool,
+    pub others_access_type: Option<String>,
     pub rule_count: i64,
     pub enabled_rule_count: i64,
     pub conflict_count: i64,
@@ -104,6 +106,7 @@ pub struct AccessRulePreviewResult {
     pub ftth_ip_count: i64,
     pub other_ip_count: i64,
     pub fallback_ip_count: i64,
+    pub others_ip_count: i64,
     pub unmatched_ip_count: i64,
     pub coverage_pct: f64,
     pub sample_limit: u64,
@@ -161,11 +164,13 @@ fn normalize_access_type(value: &str) -> Result<String, String> {
     }
 }
 
-fn normalize_default_access_type(value: &str) -> Result<String, String> {
+pub(crate) fn normalize_others_access_type(value: &str) -> Result<String, String> {
     let normalized = value.trim().to_ascii_uppercase();
     match normalized.as_str() {
-        "CABLE" | "FTTH" | "OTHER" | "UNKNOWN" => Ok(normalized),
-        _ => Err("default_access_type must be CABLE, FTTH, OTHER, or UNKNOWN".to_string()),
+        "CABLE" | "FTTH" | "OTHER" => Ok(normalized),
+        _ => Err(
+            "Others access type must be explicitly configured as CABLE, FTTH, or OTHER".to_string(),
+        ),
     }
 }
 
@@ -271,7 +276,7 @@ pub fn access_rule_get_or_create_draft(
         .unwrap_or(1);
     let rule_set_id = format!("ACCESS_{}", Uuid::new_v4().simple());
     conn.exec_drop(
-        "INSERT INTO meta_access_rule_set (rule_set_id, version, rule_set_name, default_access_type, status, notes) VALUES (?, ?, ?, 'CABLE', 'draft', 'Draft created from the latest published access rule set')",
+        "INSERT INTO meta_access_rule_set (rule_set_id, version, rule_set_name, default_access_type, status, notes) VALUES (?, ?, ?, NULL, 'draft', 'Draft requires an explicit Others mapping before publish')",
         (&rule_set_id, version, format!("Access classification v{version}")),
     )
     .map_err(|err| format!("failed to create access rule draft: {err}"))?;
@@ -282,11 +287,6 @@ pub fn access_rule_get_or_create_draft(
         )
         .map_err(|err| format!("failed to resolve published access rules: {err}"))?;
     if let Some(source_rule_set_id) = published {
-        conn.exec_drop(
-            "UPDATE meta_access_rule_set target JOIN meta_access_rule_set source ON source.rule_set_id=? SET target.default_access_type=source.default_access_type WHERE target.rule_set_id=?",
-            (&source_rule_set_id, &rule_set_id),
-        )
-        .map_err(|err| format!("failed to copy published access default into draft: {err}"))?;
         conn.exec_drop(
             "INSERT INTO dim_access_ip_range (rule_id, rule_set_id, rule_name, cidr, start_ip, end_ip, start_ip_num, end_ip_num, access_type, priority, enabled, notes) SELECT CONCAT('IPR_', REPLACE(UUID(),'-','')), ?, rule_name, cidr, start_ip, end_ip, start_ip_num, end_ip_num, access_type, priority, enabled, notes FROM dim_access_ip_range WHERE rule_set_id=?",
             (&rule_set_id, source_rule_set_id),
@@ -302,7 +302,7 @@ pub fn access_rule_set_default_update(
 ) -> Result<AccessRuleSetRow, String> {
     let mut conn = prepare(&req.settings)?;
     ensure_draft(&mut conn, &req.rule_set_id)?;
-    let default_access_type = normalize_default_access_type(&req.default_access_type)?;
+    let default_access_type = normalize_others_access_type(&req.default_access_type)?;
     conn.exec_drop(
         "UPDATE meta_access_rule_set SET default_access_type=?, updated_at=NOW() WHERE rule_set_id=? AND status='draft'",
         (&default_access_type, &req.rule_set_id),
@@ -436,14 +436,19 @@ fn validate_rule_set_internal(
         )
         .map_err(|err| format!("failed to validate access rules: {err}"))?
         .unwrap_or((0, 0, 0));
-    let invalid_default_count: i64 = conn
+    let others_access_type: Option<String> = conn
         .exec_first(
-            "SELECT CAST(COUNT(*) AS SIGNED) FROM meta_access_rule_set WHERE rule_set_id=? AND default_access_type NOT IN ('CABLE','FTTH','OTHER','UNKNOWN')",
+            "SELECT default_access_type FROM meta_access_rule_set WHERE rule_set_id=?",
             (rule_set_id,),
         )
         .map_err(|err| format!("failed to validate unmatched access default: {err}"))?
-        .unwrap_or(0);
-    invalid_rule_count += invalid_default_count;
+        .flatten();
+    let others_configured = others_access_type
+        .as_deref()
+        .is_some_and(|value| matches!(value, "CABLE" | "FTTH" | "OTHER"));
+    if !others_configured {
+        invalid_rule_count += 1;
+    }
     let conflict_count: i64 = conn
         .exec_first(
             "SELECT CAST(COUNT(*) AS SIGNED) FROM dim_access_ip_range a JOIN dim_access_ip_range b ON b.rule_set_id=a.rule_set_id AND b.rule_id>a.rule_id AND b.enabled=1 AND a.enabled=1 AND NOT (a.end_ip_num < b.start_ip_num OR a.start_ip_num > b.end_ip_num) WHERE a.rule_set_id=?",
@@ -451,9 +456,17 @@ fn validate_rule_set_internal(
         )
         .map_err(|err| format!("failed to detect access rule conflicts: {err}"))?
         .unwrap_or(0);
-    let valid = enabled_rule_count > 0 && invalid_rule_count == 0 && conflict_count == 0;
+    let valid = enabled_rule_count > 0
+        && others_configured
+        && invalid_rule_count == 0
+        && conflict_count == 0;
     let message = if valid {
-        format!("{enabled_rule_count} enabled IPv4 ranges are ready to publish")
+        format!(
+            "{enabled_rule_count} enabled IPv4 ranges and Others → {} are ready to publish",
+            others_access_type.as_deref().unwrap_or("UNCONFIGURED")
+        )
+    } else if !others_configured {
+        "Configure Others as CABLE, FTTH, or OTHER before publishing".to_string()
     } else if enabled_rule_count == 0 {
         "At least one enabled IPv4 range is required".to_string()
     } else {
@@ -461,6 +474,8 @@ fn validate_rule_set_internal(
     };
     Ok(AccessRuleValidationResult {
         valid,
+        others_configured,
+        others_access_type,
         rule_count,
         enabled_rule_count,
         conflict_count,
@@ -507,15 +522,23 @@ pub fn access_rule_publish(req: AccessRulePublishRequest) -> Result<AccessRuleSe
 #[tauri::command]
 pub fn access_rule_apply_to_batch(req: AccessRuleApplyBatchRequest) -> Result<CommandAck, String> {
     let mut conn = prepare(&req.settings)?;
-    let version: Option<i64> = conn
+    let published: Option<(i64, Option<String>)> = conn
         .exec_first(
-            "SELECT CAST(version AS SIGNED) FROM meta_access_rule_set WHERE rule_set_id=? AND status='published'",
+            "SELECT CAST(version AS SIGNED), default_access_type FROM meta_access_rule_set WHERE rule_set_id=? AND status='published'",
             (&req.rule_set_id,),
         )
         .map_err(|err| format!("failed to inspect published access rule set: {err}"))?;
-    let Some(version) = version else {
+    let Some((version, others_access_type)) = published else {
         return Err("only a published access rule set can be applied to a batch".to_string());
     };
+    let others_access_type = others_access_type
+        .as_deref()
+        .map(normalize_others_access_type)
+        .transpose()?
+        .ok_or_else(|| {
+            "published access rule set has no explicit Others mapping; create and publish a corrected version"
+                .to_string()
+        })?;
     conn.exec_drop(
         "UPDATE meta_import_batch SET access_rule_set_id=?, access_rule_set_version=?, message=CONCAT(COALESCE(message,''), '; access rules v', ?) WHERE import_batch_id=?",
         (&req.rule_set_id, version, version, &req.import_batch_id),
@@ -525,8 +548,8 @@ pub fn access_rule_apply_to_batch(req: AccessRuleApplyBatchRequest) -> Result<Co
         return Err(format!("import batch not found: {}", req.import_batch_id));
     }
     Ok(ack(format!(
-        "access rule set v{version} assigned to {}; rerun CLEAN/DWS/ADS to apply it",
-        req.import_batch_id
+        "access rule set v{version} (Others → {others_access_type}) assigned to {}; rerun CLEAN/DWS/ADS to apply it",
+        req.import_batch_id,
     )))
 }
 
@@ -556,8 +579,22 @@ pub fn access_rule_preview(
     let raw_table = batch_tables::resolve_table(&req.settings, &req.import_batch_id, raw_base)?;
     let safe_table = batch_tables::sanitize_identifier(&raw_table)?;
     let sample_limit = req.sample_limit.unwrap_or(50_000).clamp(100, 100_000);
+    let others_access_type: Option<String> = conn
+        .exec_first(
+            "SELECT default_access_type FROM meta_access_rule_set WHERE rule_set_id=?",
+            (&req.rule_set_id,),
+        )
+        .map_err(|err| format!("failed to inspect Others mapping for preview: {err}"))?
+        .flatten();
+    let others_access_type = others_access_type
+        .as_deref()
+        .map(normalize_others_access_type)
+        .transpose()?
+        .ok_or_else(|| {
+            "Configure Others as CABLE, FTTH, or OTHER before previewing classification".to_string()
+        })?;
     let sql = format!(
-        "WITH sample AS (SELECT TRIM(local_ip_address) AS ip_address, INET_ATON(TRIM(local_ip_address)) AS ip_num, CASE WHEN SUM(UPPER(TRIM(COALESCE(user_type,''))) LIKE '%FTTH%' OR UPPER(TRIM(COALESCE(user_type,''))) LIKE '%FIBER%')>0 THEN 'FTTH' WHEN SUM(UPPER(TRIM(COALESCE(user_type,''))) LIKE '%CABLE%' OR UPPER(TRIM(COALESCE(wan_type,''))) LIKE '%CABLE%')>0 THEN 'CABLE' ELSE 'UNKNOWN' END AS source_access_type FROM `{safe_table}` WHERE import_batch_id=? AND INET_ATON(TRIM(local_ip_address)) IS NOT NULL GROUP BY TRIM(local_ip_address), INET_ATON(TRIM(local_ip_address)) LIMIT {sample_limit}), classified AS (SELECT ipr.rule_id, sample_ip.source_access_type, COALESCE(ipr.access_type, NULLIF(sample_ip.source_access_type,'UNKNOWN'), rules.default_access_type, 'UNKNOWN') AS access_type FROM sample sample_ip JOIN meta_access_rule_set rules ON rules.rule_set_id=? LEFT JOIN dim_access_ip_range ipr ON ipr.rule_set_id=rules.rule_set_id AND ipr.enabled=1 AND sample_ip.ip_num BETWEEN ipr.start_ip_num AND ipr.end_ip_num) SELECT CAST(COUNT(*) AS SIGNED), CAST(COALESCE(SUM(access_type<>'UNKNOWN'),0) AS SIGNED), CAST(COALESCE(SUM(access_type='CABLE'),0) AS SIGNED), CAST(COALESCE(SUM(access_type='FTTH'),0) AS SIGNED), CAST(COALESCE(SUM(access_type='OTHER'),0) AS SIGNED), CAST(COALESCE(SUM(rule_id IS NULL AND source_access_type='UNKNOWN' AND access_type<>'UNKNOWN'),0) AS SIGNED), CAST(COALESCE(SUM(access_type='UNKNOWN'),0) AS SIGNED) FROM classified"
+        "WITH sample AS (SELECT TRIM(local_ip_address) AS ip_address, INET_ATON(TRIM(local_ip_address)) AS ip_num FROM `{safe_table}` WHERE import_batch_id=? AND INET_ATON(TRIM(local_ip_address)) IS NOT NULL GROUP BY TRIM(local_ip_address), INET_ATON(TRIM(local_ip_address)) LIMIT {sample_limit}), classified AS (SELECT ipr.rule_id, COALESCE(ipr.access_type, rules.default_access_type) AS access_type FROM sample sample_ip JOIN meta_access_rule_set rules ON rules.rule_set_id=? LEFT JOIN dim_access_ip_range ipr ON ipr.rule_set_id=rules.rule_set_id AND ipr.enabled=1 AND sample_ip.ip_num BETWEEN ipr.start_ip_num AND ipr.end_ip_num) SELECT CAST(COUNT(*) AS SIGNED), CAST(COALESCE(SUM(access_type IS NOT NULL),0) AS SIGNED), CAST(COALESCE(SUM(access_type='CABLE'),0) AS SIGNED), CAST(COALESCE(SUM(access_type='FTTH'),0) AS SIGNED), CAST(COALESCE(SUM(access_type='OTHER'),0) AS SIGNED), CAST(COALESCE(SUM(rule_id IS NULL),0) AS SIGNED), CAST(COALESCE(SUM(access_type IS NULL),0) AS SIGNED) FROM classified"
     );
     let (
         sample_ip_count,
@@ -583,16 +620,17 @@ pub fn access_rule_preview(
         ftth_ip_count,
         other_ip_count,
         fallback_ip_count,
+        others_ip_count: fallback_ip_count,
         unmatched_ip_count,
         coverage_pct,
         sample_limit,
-        message: "Preview counts distinct valid IPv4 addresses after applying explicit ranges and the rule-set default; it does not modify the batch".to_string(),
+        message: format!("Preview counts distinct valid IPv4 addresses using explicit ranges followed by Others → {others_access_type}; CSV access-type fields are evidence only and do not change classification; preview does not modify the batch"),
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_access_type, normalize_default_access_type, normalize_range};
+    use super::{normalize_access_type, normalize_others_access_type, normalize_range};
 
     #[test]
     fn cidr_is_normalized_to_network_bounds() {
@@ -608,6 +646,8 @@ mod tests {
     fn rejects_reversed_range_and_unknown_access_type() {
         assert!(normalize_range(None, Some("10.0.0.10"), Some("10.0.0.1")).is_err());
         assert!(normalize_access_type("dsl").is_err());
-        assert_eq!(normalize_default_access_type("unknown").unwrap(), "UNKNOWN");
+        assert_eq!(normalize_others_access_type("cable").unwrap(), "CABLE");
+        assert!(normalize_others_access_type("unknown").is_err());
+        assert!(normalize_others_access_type("").is_err());
     }
 }

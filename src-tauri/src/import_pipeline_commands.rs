@@ -1299,6 +1299,7 @@ fn run_resume_pipeline_job(
                 total_started,
                 || {
                     db::ping(&settings)?;
+                    crate::migrations::ensure_experience_policy_schema(&settings)?;
                     crate::batch_tables::ensure_batch_tables(&settings, &batch)?;
                     Ok(Some(format!(
                         "reusing batch={batch}; analysis_run_id={analysis_run_id}; RAW import skipped"

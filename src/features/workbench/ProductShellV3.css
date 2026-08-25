@@ -79,12 +79,27 @@
 .product-shell select:focus,
 .product-shell textarea:focus { outline: 3px solid rgba(21, 94, 239, .12); border-color: var(--brand); }
 
-.product-shell .context-bar { position: sticky; top: 0; z-index: 20; padding: 9px; margin: 12px 0 0; background: rgba(238, 241, 245, .94); backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 15px; }
+.product-shell .context-bar-shell { position: sticky; top: 0; z-index: 20; margin: 12px 0 0; padding: 9px; background: rgba(238, 241, 245, .96); backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 15px; }
+.product-shell .context-bar { margin: 0; }
 .product-shell .context-item { background: #fff; border-color: var(--line); box-shadow: none; }
 .product-shell .context-primary { background: var(--brand-soft); border-color: #b9ccff; }
 .product-shell .context-item span { color: #7a8494; }
 .product-shell .context-item strong { color: var(--ink); }
 .product-shell .context-item small { color: #475467; }
+.product-shell .analysis-context-strip { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 9px 3px 1px; border-top: 1px solid var(--line); margin-top: 8px; }
+.product-shell .analysis-context-label strong,
+.product-shell .analysis-context-label small { display: block; }
+.product-shell .analysis-context-label strong { font-size: 12px; }
+.product-shell .analysis-context-label small { margin-top: 2px; color: var(--muted); font-size: 10px; }
+.product-shell .analysis-context-chips { display: flex; min-width: 0; flex-wrap: wrap; gap: 6px; }
+.product-shell .analysis-context-chip { display: inline-flex; gap: 6px; align-items: center; min-height: 30px; padding: 5px 8px; color: #344054; background: #fff; border-color: #b9ccff; border-radius: 999px; }
+.product-shell .analysis-context-chip span { color: #667085; font-size: 10px; }
+.product-shell .analysis-context-chip strong { max-width: 180px; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.product-shell .analysis-context-chip b { color: #667085; font-size: 13px; }
+.product-shell .analysis-context-empty { color: var(--muted); font-size: 11px; }
+.product-shell .analysis-context-actions { display: flex; gap: 6px; align-items: center; }
+.product-shell .analysis-context-actions button,
+.product-shell .analysis-context-actions select { width: auto; min-height: 32px; padding: 6px 9px; font-size: 11px; }
 .product-shell .next-action-hint { color: var(--ink); background: #f5f8ff; border-color: #c7d7fe; }
 .product-shell .next-action-hint span { color: var(--brand); }
 .product-shell .next-action-hint strong { color: var(--ink); }
@@ -133,5 +148,7 @@
   .product-shell { grid-template-columns: 236px minmax(0, 1fr); }
   .product-shell > .content { padding: 20px; }
   .product-shell .context-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .product-shell .analysis-context-strip { grid-template-columns: 1fr; }
+  .product-shell .analysis-context-actions { justify-content: flex-start; }
   .product-shell .pipeline-monitor-health { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

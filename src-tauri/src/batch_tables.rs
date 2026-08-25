@@ -92,6 +92,24 @@ pub const TABLE_DEFS: &[TableDef] = &[
         data_type: "mixed",
     },
     TableDef {
+        logical: "dws_user_app_period_experience_v2",
+        base: "dws_user_app_period_experience_v2",
+        layer: "dws",
+        data_type: "mixed",
+    },
+    TableDef {
+        logical: "dws_app_access_period_experience_v2",
+        base: "dws_app_access_period_experience_v2",
+        layer: "dws",
+        data_type: "mixed",
+    },
+    TableDef {
+        logical: "dws_user_app_hourly_experience_v2",
+        base: "dws_user_app_hourly_experience_v2",
+        layer: "dws",
+        data_type: "mixed",
+    },
+    TableDef {
         logical: "ads_overview",
         base: "ads_dashboard_overview",
         layer: "ads",
@@ -160,6 +178,18 @@ pub const TABLE_DEFS: &[TableDef] = &[
     TableDef {
         logical: "ads_lead_evidence_detail",
         base: "ads_lead_evidence_detail",
+        layer: "ads",
+        data_type: "mixed",
+    },
+    TableDef {
+        logical: "ads_app_experience_v2",
+        base: "ads_app_experience_v2",
+        layer: "ads",
+        data_type: "mixed",
+    },
+    TableDef {
+        logical: "ads_app_hourly_experience_v2",
+        base: "ads_app_hourly_experience_v2",
         layer: "ads",
         data_type: "mixed",
     },

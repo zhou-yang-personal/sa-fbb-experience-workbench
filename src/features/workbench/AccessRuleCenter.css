@@ -4,6 +4,7 @@
 .workspace-page-header p:last-child { max-width: 850px; margin-bottom: 0; color: #667085; line-height: 1.55; }
 .access-rule-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
 .access-rule-summary article { padding: 16px; background: #fff; border: 1px solid #dce2ea; border-radius: 14px; }
+.access-rule-summary article.is-required { background: #fffaeb; border-color: #fedf89; }
 .access-rule-summary span,
 .access-rule-summary small { display: block; color: #667085; font-size: 12px; }
 .access-rule-summary strong { display: block; margin: 8px 0 5px; font-size: 23px; }
@@ -25,6 +26,8 @@
 .text-button { padding: 3px 6px !important; color: #155eef !important; border: 0 !important; box-shadow: none !important; }
 .access-rule-publish-panel { display: grid; gap: 15px; }
 .access-rule-publish-panel > label { display: grid; gap: 6px; color: #475467; font-size: 12px; font-weight: 600; }
+.required-mark { width: fit-content; padding: 2px 6px; color: #b54708; background: #fffaeb; border: 1px solid #fedf89; border-radius: 999px; font-size: 10px; }
+.access-rule-publish-panel select.is-required { color: #93370d; background: #fffcf5; border-color: #fdb022; }
 .access-rule-publish-panel > small { color: #667085; font-size: 11px; line-height: 1.45; }
 .validation-callout { display: grid; gap: 5px; padding: 13px; color: #475467; background: #f8fafc; border: 1px solid #e4e7ec; border-radius: 11px; }
 .validation-callout strong { font-size: 14px; }
