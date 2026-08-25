@@ -47,7 +47,13 @@ CSV 文件选择
 
 批次状态分为两个独立层次：`meta_import_batch.status` 只表示 RAW 入库状态，`meta_pipeline_run.status` 才表示 Quality Gate、CLEAN/DWD、DWS/ADS 和模块就绪的整体流水线状态。批次选择器必须解析该批次最新流水线，并同步它的 `analysis_run_id`；不得沿用上一个批次或更早分析运行的上下文。看板只有在至少一个必需数据集含有有效聚合证据时才可标记成功，空数组与全 0 KPI 结构属于“无分析结果”，需要引导用户返回导入页查看该批次流水线。
 
-系统诊断遵循同一任务模型：切换到诊断页只渲染轻量配置与空状态，不调用 MySQL。用户启动后，Catalog、映射失败项、质量失败项、ETL 失败项、模块深度检查和 Registry 快照按顺序执行；停止只跳过尚未开始的检查。模块深度检查负责一次性刷新表计数，Registry 随后只读取 `meta_batch_table_registry` 缓存，避免同一轮重复扫描批次大表。Quality / ETL 单步工具和完整执行日志仅在对应折叠区展开后挂载。
+系统诊断遵循同一任务模型：切换到诊断页只渲染轻量配置与空状态，不调用 MySQL。用户启动后，Catalog、映射失败项、质量失败项、ETL 失败项、模块深度检查和 Registry 快照按顺序执行；停止只跳过尚未开始的检查。常规模块深度检查使用批次表的有界 `EXISTS` 查询判断可用性，Registry 使用已缓存数值或 `information_schema.tables.table_rows` 估算，不在页面导航、批次准备或 Module Ready 时执行隐式大表精确 `COUNT(*)`。Quality / ETL 单步工具和完整执行日志仅在对应折叠区展开后挂载。
+
+### 1.4 全部图表 PDF 导出
+
+PDF 导出是独立的显式分析任务，不跟随页面切换自动运行。任务启动时锁定当前 `import_batch_id`、`analysis_run_id`、接入类型、关键词和最小用户数，随后顺序读取 KPI、App Rank、小时趋势、网络热点、用户画像和 Lead Evidence 六个 DWS/ADS 数据集。已开始的数据库语句不做虚假中断；停止操作只跳过后续数据集。
+
+报告按经营总览、应用体验、网络问题定位、Cable vs FTTH、用户洞察和迁转升套机会六个章节保留看板原有图表口径，共覆盖 20 个图表位置。当前筛选下为空的图不生成空白页，而是在封面列为已跳过；查询失败同样显式记录。报告只包含图表和必要的上下文元数据，不包含证据明细表。首版复用 Windows WebView2 打印预览保存 PDF，以 CSS 打印版式生成 A4 横向报告，不引入额外 PDF 运行库或修改依赖锁；无对话框的原生 `PrintToPdf` 可作为后续增强。
 
 ### 1.2 接入类型识别
 
@@ -59,10 +65,17 @@ Cable / FTTH 识别采用可追溯的版本规则：
 → RAW → DWD 时用 INET_ATON(local_ip_address) 匹配
 → 命中规则：IP_RULE / HIGH
 → 未命中但源字段可识别：SOURCE_FIELD / MEDIUM
-→ 均不可识别：UNKNOWN / UNMATCHED / LOW
+→ 仍未识别：使用规则集 default_access_type / RULE_SET_DEFAULT / HIGH
+→ 只有默认值显式配置为 UNKNOWN 时：UNKNOWN / UNMATCHED / LOW
 ```
 
-规则支持 CIDR 或起止 IPv4、启停、优先级、重叠阻断、最多 100,000 个不同 IP 的有界预览及原子发布。每次 TCP / Game 导入都必须手动选择并确认一个已发布版本，后端校验后将该版本绑定到新批次，不自动选择“最新发布”。规则应用不修改 RAW；应用到历史批次后必须重跑 CLEAN / DWS / ADS。
+规则支持 CIDR 或起止 IPv4、启停、优先级、重叠阻断、未命中默认类型、最多 100,000 个不同 IP 的有界预览及原子发布。当前业务默认是“命中 FTTH 网段为 FTTH，其余为 Cable”，所以无需穷举 Cable 网段。每次 TCP / Game 导入都必须手动选择并确认一个已发布版本，后端校验后将该版本绑定到新批次，不自动选择“最新发布”。规则应用不修改 RAW；应用到历史批次后必须重跑 CLEAN / DWS / ADS。
+
+### 1.5 看板总体口径与数据覆盖
+
+看板额外读取一个有界的数据覆盖状态：TCP / Game RAW 是否存在、CLEAN 是否就绪，以及绑定规则集的未命中默认类型。独立 Game 文件不存在时，游戏时长与 MOS 标记为不可用，不生成伪 0 图表或把 0 加入 Lead 判断解释。
+
+机会阶段和用户分布使用完整 ADS 表的 `GROUP BY` 聚合，明细分页只用于证据列表。Cable / FTTH 多日小时数据在图表层按 `active_users` 加权形成典型 24 小时曲线，避免 7 天 145 个时点拥挤；原始日期小时仍保留在证据表与导出数据中。
 
 ## 2. 参考基线与差异
 
@@ -170,6 +183,10 @@ src/
 流水线日志采用 `pipeline_run_id + sequence` 作为唯一有序游标。前台同一时刻只允许一个增量请求，按 sequence 去重并在终态后补拉一次最终日志；如果积压超过单页限制，连续分页追平而不是跳过。只读状态/日志轮询不执行 schema DDL，最近一次 pipeline ID 按 MySQL 上下文保存在本地，以便离开导入页后恢复监控。RAW 文件传输每 5 秒报告字节进度，质量检查、CLEAN/DWD、DWS/ADS、融合和模块检查等无法获得 MySQL 内部百分比的步骤每 15 秒写入存活心跳、步骤耗时和当前阶段说明。监控台分别展示轮询健康、日志静默时长、计划进度和筛选结果，45 秒无心跳时提示数据库繁忙或连接受阻，但不把“无百分比”误判为失败。新产生的 pipeline run、step 和 log 时间使用 `UTC_TIMESTAMP()` 写入 MySQL，API 返回带 `Z` 的 UTC 时间；前端统一通过浏览器 `Intl.DateTimeFormat` 转换为本地 PC 时区，并在复制文本中写入 IANA 时区名称。旧版 `DATETIME` 历史数据不携带时区元数据，因此仅从本版本新任务开始保证转换准确。
 
 恢复日志以当前选中批次为准，而不是只读取“本机最后一次 pipeline ID”。历史列表查询返回该批次最新的 `pipeline_run_id`、流水线状态、失败原因和 `analysis_run_id`；进入导入页或重新选择批次时从 sequence 0 分页恢复日志。若批次来自旧版或手工 RAW 导入且没有关联流水线，则清空上一批次的监控状态并明确提示没有可恢复日志。
+
+对于 RAW、Quality Gate 和 CLEAN 已有成功证据、但 DWS/ADS 不完整的批次，Import Center 提供“复用当前批次”显式任务。该任务不重读 CSV、不重建 RAW/CLEAN，从基础用户日聚合开始依次完成完整 DWS、基础 ADS、App Rank、小时趋势、网络热点、用户画像和 Lead Evidence，然后尝试 Final Lead 并刷新 Module Ready。后端在创建续跑任务前检查同批次流水线状态和 MySQL `PROCESSLIST`；只有用户明确确认原进程已退出且该批次无活动 SQL 时，才能接管遗留的 running 元数据。
+
+DWS/ADS 的可观测性细化为 8 个命名子阶段，每个子阶段写入开始、完成或失败日志，外层长步骤仍保持 15 秒存活心跳。`meta_analysis_run` 在基础用户日聚合完成后保持 `running`，只有完整 DWS 与五类结构化 ADS 均成功后才转为 `success`。
 
 ### 4.2 Data Quality
 

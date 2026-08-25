@@ -55,6 +55,12 @@ export interface ImportPipelineStartResult {
   status: ImportPipelineStatusValue | string;
 }
 
+export interface ImportPipelineResumeInput {
+  importBatchId: string;
+  analysisRunId?: string;
+  confirmOriginalProcessStopped?: boolean;
+}
+
 export interface ImportPipelineStepRow {
   step_index: number;
   step_name: string;
@@ -241,6 +247,7 @@ export interface AccessRuleSetRow {
   rule_set_id: string;
   version: number;
   rule_set_name: string;
+  default_access_type: 'CABLE' | 'FTTH' | 'OTHER' | 'UNKNOWN' | string;
   status: 'draft' | 'published' | 'archived' | string;
   rule_count: number;
   published_at?: string;
@@ -289,6 +296,7 @@ export interface AccessRulePreviewResult {
   cable_ip_count: number;
   ftth_ip_count: number;
   other_ip_count: number;
+  fallback_ip_count: number;
   unmatched_ip_count: number;
   coverage_pct: number;
   sample_limit: number;

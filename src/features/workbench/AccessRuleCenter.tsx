@@ -128,6 +128,17 @@ export function AccessRuleCenter({ c }: { c: WorkbenchController }) {
     if (result) setValidation(result as AccessRuleValidationResult);
   }
 
+  async function updateDefaultAccessType(defaultAccessType: string) {
+    if (!draft) return;
+    const result = await c.runAction('access_rule_set_default_update', () => workbenchApi.updateAccessRuleDefault(c.settings, draft.rule_set_id, defaultAccessType));
+    if (result) {
+      setDraft(result as AccessRuleSetRow);
+      setMessage(`未命中 IP 已设置为 ${(result as AccessRuleSetRow).default_access_type}。`);
+      setValidation(null);
+      setPreview(null);
+    }
+  }
+
   async function previewDraft() {
     if (!draft || !c.importBatchId.trim()) return;
     const result = await c.runAction('access_rule_preview', () => workbenchApi.previewAccessRules(c.settings, draft.rule_set_id, c.importBatchId));
@@ -157,7 +168,7 @@ export function AccessRuleCenter({ c }: { c: WorkbenchController }) {
         <div>
           <p className="eyebrow">Configuration · Access classification</p>
           <h2>IP 段与接入类型</h2>
-          <p>Cable / FTTH 先由已发布 IP 规则识别，再回退到 CSV 原始字段。规则按版本绑定批次，不修改 RAW 数据。</p>
+          <p>Cable / FTTH 先由已发布 IP 规则识别，再回退到 CSV 原始字段与规则集默认类型。规则按版本绑定批次，不修改 RAW 数据。</p>
         </div>
         <button type="button" className="quiet-button" onClick={loadDraft}>刷新</button>
       </header>
@@ -167,6 +178,7 @@ export function AccessRuleCenter({ c }: { c: WorkbenchController }) {
         <article><span>规则数量</span><strong>{rules.length}</strong><small>{rules.filter((rule) => rule.enabled).length} enabled</small></article>
         <article><span>当前发布</span><strong>{activePublished ? `v${activePublished.version}` : '-'}</strong><small>{activePublished?.published_at ?? '尚未发布'}</small></article>
         <article><span>当前批次</span><strong>{c.importBatchId ? '已选择' : '未选择'}</strong><small>{c.batchDisplayName || '预览和应用需要批次'}</small></article>
+        <article><span>未命中默认</span><strong>{draft?.default_access_type ?? '-'}</strong><small>没有命中任何 IP 段时使用</small></article>
       </section>
 
       <section className="access-rule-workspace">
@@ -192,6 +204,15 @@ export function AccessRuleCenter({ c }: { c: WorkbenchController }) {
 
         <aside className="access-rule-publish-panel">
           <div className="section-heading"><div><h3>验证与发布</h3><p>发布版本是批次分析的可追溯分类依据。</p></div></div>
+          <label>未命中 IP 默认归类
+            <select value={draft?.default_access_type ?? 'CABLE'} disabled={!draft} onChange={(event) => void updateDefaultAccessType(event.target.value)}>
+              <option value="CABLE">CABLE（仅配置 FTTH 网段时推荐）</option>
+              <option value="FTTH">FTTH（仅配置 Cable 网段时）</option>
+              <option value="OTHER">OTHER</option>
+              <option value="UNKNOWN">UNKNOWN（不自动归类）</option>
+            </select>
+          </label>
+          <small>优先级：命中 IP 规则 → CSV 接入字段 → 此默认值。你的场景只需录入 FTTH 网段，并将默认值保持为 CABLE。</small>
           <div className={`validation-callout ${validation?.valid ? 'is-valid' : validation ? 'is-invalid' : ''}`}>
             <strong>{validation ? (validation.valid ? '可发布' : '需要修正') : '尚未验证'}</strong>
             <span>{validation?.message ?? '先完成规则配置，再运行重叠和格式检查。'}</span>
@@ -207,6 +228,7 @@ export function AccessRuleCenter({ c }: { c: WorkbenchController }) {
             <div><span>识别覆盖率</span><strong>{preview.coverage_pct.toFixed(1)}%</strong></div>
             <div><span>Cable</span><strong>{countLabel(preview.cable_ip_count)}</strong></div>
             <div><span>FTTH</span><strong>{countLabel(preview.ftth_ip_count)}</strong></div>
+            <div><span>默认归类</span><strong>{countLabel(preview.fallback_ip_count)}</strong></div>
             <div><span>未匹配</span><strong>{countLabel(preview.unmatched_ip_count)}</strong></div>
           </div>}
         </aside>

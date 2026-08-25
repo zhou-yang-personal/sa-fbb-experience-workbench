@@ -1,5 +1,70 @@
 # CHANGELOG-dev
 
+## 1.0.48 - 2026-08-25
+
+### Added
+
+- Added a versioned unmatched-IP default to access rule sets. Existing and new sets default to Cable, so a user can configure only FTTH ranges while retaining UNKNOWN as an explicit conservative option.
+- Added bounded TCP/Game dataset coverage and access-classification context to every on-demand dashboard task.
+- Added full-population Lead stage and user cohort summaries from ADS instead of deriving totals from paginated evidence.
+
+### Changed
+
+- RAW-to-CLEAN access precedence is now IP rule, recognizable CSV source field, then rule-set default; previews include fallback-classified IPs in Cable/FTTH totals.
+- Missing Game input is shown as not imported and no longer presented as zero game activity.
+- Cable/FTTH charts use active-user-weighted typical-day curves; user charts use full demand, traffic and bottleneck cohorts; App labels clarify that poor users had at least one poor observation during the analysis period.
+- Project and application version markers were synchronized to `1.0.48`.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-25.
+- `cargo check` with isolated target directory: passed on 2026-08-25 with existing warnings only.
+- Live rerun of CLEAN/DWS/ADS against the 3.46 GiB Windows/MySQL batch and Windows PDF visual acceptance: pending.
+- Dependencies and committed lock files were not changed.
+
+## 1.0.47 - 2026-08-25
+
+### Added
+
+- Added “导出全部图表 PDF” as an explicit six-dataset task covering all 20 chart positions across the six decision dashboards while excluding evidence tables.
+- Added dataset progress, stop-after-current-query behavior, partial/empty/failure states and a reusable report preview.
+- Added an A4 landscape print report with batch, analysis run, filters, local PC time/timezone, DWS/ADS source and omitted/failed chart summaries.
+
+### Changed
+
+- Data loaded for PDF preparation is reused by the current dashboard session; application startup and page navigation remain query-free.
+- Project and application version markers were synchronized to `1.0.47`.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-25.
+- `npm run build`: passed on 2026-08-25; the existing ECharts chunk-size warning remains.
+- Targeted Rust test `critical_aliases_track_universal_video_contract`: passed; 1 test passed and 43 were filtered, with existing warnings only.
+- Windows WebView2 print-dialog behavior and visual inspection of a real multi-page PDF: not run in this Linux source environment.
+- Dependencies and lock files were not changed.
+
+## 1.0.46 - 2026-08-25
+
+### Added
+
+- Added an explicit “reuse current batch” pipeline that skips CSV/RAW/CLEAN work and resumes the complete DWS/ADS, optional Final Lead and Module Ready tail.
+- Added backend stale-run takeover validation with explicit confirmation and batch-specific MySQL active-statement detection.
+- Added named start/completion/error logs for eight DWS/ADS aggregate subtasks.
+
+### Changed
+
+- Automatic and manual complete-result paths now materialize all five structured ADS datasets: App Rank, hourly trend, network hotspot, user profile and Lead Evidence.
+- Normal Registry and module-readiness flows use cached/information-schema estimates plus bounded `EXISTS` checks instead of exact full-table `COUNT(*)` scans.
+- Base user-daily aggregation leaves `meta_analysis_run` running; success is recorded only after complete DWS and structured ADS materialization.
+- Project and application version markers were synchronized to `1.0.46`.
+
+### Verification
+
+- `npm run build`: passed on 2026-08-25; the existing ECharts chunk-size warning remains.
+- `cargo check --manifest-path src-tauri/Cargo.toml` with an isolated target directory: passed; existing dead-code and compatibility warnings remain.
+- `CARGO_TARGET_DIR=/home/g314vows/.cache/sa-fbb-cargo-test CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 CARGO_PROFILE_TEST_DEBUG=0 cargo test --manifest-path src-tauri/Cargo.toml --offline`: passed; 44 Rust tests passed and only existing warnings remain. An earlier temporary-filesystem attempt exhausted its quota before linking and was cleaned before the successful low-debug retry.
+- Live Windows/MySQL resume against the 3.46 GiB batch: not run in this environment.
+
 ## 1.0.45 - 2026-08-25
 
 ### Changed

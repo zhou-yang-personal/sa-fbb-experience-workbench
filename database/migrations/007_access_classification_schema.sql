@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS meta_access_rule_set (
   rule_set_id VARCHAR(64) NOT NULL PRIMARY KEY,
   version BIGINT NOT NULL,
   rule_set_name VARCHAR(255) NOT NULL,
+  default_access_type VARCHAR(32) NOT NULL DEFAULT 'CABLE',
   status VARCHAR(32) NOT NULL DEFAULT 'draft',
   notes TEXT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

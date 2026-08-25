@@ -12,7 +12,12 @@ SELECT
   params.analysis_run_id,
   params.import_batch_id,
   p.user_key,
-  COALESCE(MAX(p.user_type), 'UNKNOWN'),
+  CASE
+    WHEN SUM(p.user_type = 'CABLE') > 0 THEN 'CABLE'
+    WHEN SUM(p.user_type = 'FTTH') > 0 THEN 'FTTH'
+    WHEN SUM(p.user_type = 'OTHER') > 0 THEN 'OTHER'
+    ELSE 'UNKNOWN'
+  END,
   COUNT(DISTINCT p.stat_date),
   SUM(p.total_download_gb),
   SUM(p.total_game_hours),

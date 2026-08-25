@@ -24,6 +24,7 @@ export const workbenchApi = {
   accessRuleSets: (settings: MySqlSettings) => invoke<AccessRuleSetRow[]>('access_rule_list_sets', { settings }),
   accessRuleDraft: (settings: MySqlSettings) => invoke<AccessRuleSetRow>('access_rule_get_or_create_draft', { settings }),
   accessRules: (settings: MySqlSettings, ruleSetId: string) => invoke<AccessIpRangeRow[]>('access_rule_list', { settings, ruleSetId }),
+  updateAccessRuleDefault: (settings: MySqlSettings, ruleSetId: string, defaultAccessType: string) => invoke<AccessRuleSetRow>('access_rule_set_default_update', { req: { settings, rule_set_id: ruleSetId, default_access_type: defaultAccessType } }),
   saveAccessRule: (settings: MySqlSettings, input: AccessRuleInput) => invoke<AccessIpRangeRow>('access_rule_upsert', { req: {
     settings,
     rule_set_id: input.ruleSetId,
@@ -64,6 +65,8 @@ export const workbenchApi = {
     invoke<ImportCurrentFileResult>('import_current_file_atomic', { req: { settings, data_type: dataType, file_path: filePath, batch_display_name: batchDisplayName, mode, access_rule_set_id: accessRuleSetId?.trim() || undefined } }),
   pipelineStart: (settings: MySqlSettings, dataType: string, filePath: string, batchDisplayName: string, importMode: string, analysisRunId?: string, accessRuleSetId?: string) =>
     invoke<ImportPipelineStartResult>('import_pipeline_start', { req: { settings, data_type: dataType, file_path: filePath, batch_display_name: batchDisplayName, import_mode: importMode, analysis_run_id: analysisRunId, access_rule_set_id: accessRuleSetId?.trim() || undefined } }),
+  pipelineResume: (settings: MySqlSettings, importBatchId: string, analysisRunId?: string, confirmOriginalProcessStopped = false) =>
+    invoke<ImportPipelineStartResult>('import_pipeline_resume_batch', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId?.trim() || undefined, confirm_original_process_stopped: confirmOriginalProcessStopped } }),
   pipelineStatus: (settings: MySqlSettings, pipelineRunId: string) =>
     invoke<ImportPipelineStatus>('import_pipeline_get_status', { req: { settings, pipeline_run_id: pipelineRunId } }),
   pipelineLogs: (settings: MySqlSettings, pipelineRunId: string, afterSequence?: number) =>

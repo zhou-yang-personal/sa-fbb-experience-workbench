@@ -16,6 +16,7 @@ type Props = {
 
 const stepLabels: Record<string, string> = {
   start: '执行计划',
+  prepare_resume: '复用批次检查',
   prepare_environment: '导入准备',
   probe_csv: 'CSV 探测',
   import_current_file_atomic: '字段映射与 RAW 入库',

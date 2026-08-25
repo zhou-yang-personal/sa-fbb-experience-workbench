@@ -14,6 +14,7 @@ pub struct AccessRuleSetRow {
     pub rule_set_id: String,
     pub version: i64,
     pub rule_set_name: String,
+    pub default_access_type: String,
     pub status: String,
     pub rule_count: i64,
     pub published_at: Option<String>,
@@ -58,6 +59,13 @@ pub struct AccessRuleDeleteRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct AccessRuleSetDefaultRequest {
+    pub settings: MySqlSettings,
+    pub rule_set_id: String,
+    pub default_access_type: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct AccessRulePublishRequest {
     pub settings: MySqlSettings,
     pub rule_set_id: String,
@@ -95,6 +103,7 @@ pub struct AccessRulePreviewResult {
     pub cable_ip_count: i64,
     pub ftth_ip_count: i64,
     pub other_ip_count: i64,
+    pub fallback_ip_count: i64,
     pub unmatched_ip_count: i64,
     pub coverage_pct: f64,
     pub sample_limit: u64,
@@ -111,14 +120,15 @@ fn fetch_rule_set(
     rule_set_id: &str,
 ) -> Result<AccessRuleSetRow, String> {
     conn.exec_first(
-        "SELECT s.rule_set_id, CAST(s.version AS SIGNED), s.rule_set_name, s.status, CAST(COUNT(r.rule_id) AS SIGNED), DATE_FORMAT(s.published_at, '%Y-%m-%d %H:%i:%s'), DATE_FORMAT(s.updated_at, '%Y-%m-%d %H:%i:%s') FROM meta_access_rule_set s LEFT JOIN dim_access_ip_range r ON r.rule_set_id=s.rule_set_id WHERE s.rule_set_id=? GROUP BY s.rule_set_id, s.version, s.rule_set_name, s.status, s.published_at, s.updated_at",
+        "SELECT s.rule_set_id, CAST(s.version AS SIGNED), s.rule_set_name, s.default_access_type, s.status, CAST(COUNT(r.rule_id) AS SIGNED), DATE_FORMAT(s.published_at, '%Y-%m-%d %H:%i:%s'), DATE_FORMAT(s.updated_at, '%Y-%m-%d %H:%i:%s') FROM meta_access_rule_set s LEFT JOIN dim_access_ip_range r ON r.rule_set_id=s.rule_set_id WHERE s.rule_set_id=? GROUP BY s.rule_set_id, s.version, s.rule_set_name, s.default_access_type, s.status, s.published_at, s.updated_at",
         (rule_set_id,),
     )
     .map_err(|err| format!("failed to read access rule set: {err}"))?
-    .map(|(rule_set_id, version, rule_set_name, status, rule_count, published_at, updated_at)| AccessRuleSetRow {
+    .map(|(rule_set_id, version, rule_set_name, default_access_type, status, rule_count, published_at, updated_at)| AccessRuleSetRow {
         rule_set_id,
         version,
         rule_set_name,
+        default_access_type,
         status,
         rule_count,
         published_at,
@@ -148,6 +158,14 @@ fn normalize_access_type(value: &str) -> Result<String, String> {
     match normalized.as_str() {
         "CABLE" | "FTTH" | "OTHER" => Ok(normalized),
         _ => Err("access_type must be CABLE, FTTH, or OTHER".to_string()),
+    }
+}
+
+fn normalize_default_access_type(value: &str) -> Result<String, String> {
+    let normalized = value.trim().to_ascii_uppercase();
+    match normalized.as_str() {
+        "CABLE" | "FTTH" | "OTHER" | "UNKNOWN" => Ok(normalized),
+        _ => Err("default_access_type must be CABLE, FTTH, OTHER, or UNKNOWN".to_string()),
     }
 }
 
@@ -216,11 +234,12 @@ fn normalize_range(
 pub fn access_rule_list_sets(settings: MySqlSettings) -> Result<Vec<AccessRuleSetRow>, String> {
     let mut conn = prepare(&settings)?;
     conn.query_map(
-        "SELECT s.rule_set_id, CAST(s.version AS SIGNED), s.rule_set_name, s.status, CAST(COUNT(r.rule_id) AS SIGNED), DATE_FORMAT(s.published_at, '%Y-%m-%d %H:%i:%s'), DATE_FORMAT(s.updated_at, '%Y-%m-%d %H:%i:%s') FROM meta_access_rule_set s LEFT JOIN dim_access_ip_range r ON r.rule_set_id=s.rule_set_id GROUP BY s.rule_set_id, s.version, s.rule_set_name, s.status, s.published_at, s.updated_at ORDER BY s.version DESC",
-        |(rule_set_id, version, rule_set_name, status, rule_count, published_at, updated_at)| AccessRuleSetRow {
+        "SELECT s.rule_set_id, CAST(s.version AS SIGNED), s.rule_set_name, s.default_access_type, s.status, CAST(COUNT(r.rule_id) AS SIGNED), DATE_FORMAT(s.published_at, '%Y-%m-%d %H:%i:%s'), DATE_FORMAT(s.updated_at, '%Y-%m-%d %H:%i:%s') FROM meta_access_rule_set s LEFT JOIN dim_access_ip_range r ON r.rule_set_id=s.rule_set_id GROUP BY s.rule_set_id, s.version, s.rule_set_name, s.default_access_type, s.status, s.published_at, s.updated_at ORDER BY s.version DESC",
+        |(rule_set_id, version, rule_set_name, default_access_type, status, rule_count, published_at, updated_at)| AccessRuleSetRow {
             rule_set_id,
             version,
             rule_set_name,
+            default_access_type,
             status,
             rule_count,
             published_at,
@@ -252,7 +271,7 @@ pub fn access_rule_get_or_create_draft(
         .unwrap_or(1);
     let rule_set_id = format!("ACCESS_{}", Uuid::new_v4().simple());
     conn.exec_drop(
-        "INSERT INTO meta_access_rule_set (rule_set_id, version, rule_set_name, status, notes) VALUES (?, ?, ?, 'draft', 'Draft created from the latest published access rule set')",
+        "INSERT INTO meta_access_rule_set (rule_set_id, version, rule_set_name, default_access_type, status, notes) VALUES (?, ?, ?, 'CABLE', 'draft', 'Draft created from the latest published access rule set')",
         (&rule_set_id, version, format!("Access classification v{version}")),
     )
     .map_err(|err| format!("failed to create access rule draft: {err}"))?;
@@ -264,12 +283,32 @@ pub fn access_rule_get_or_create_draft(
         .map_err(|err| format!("failed to resolve published access rules: {err}"))?;
     if let Some(source_rule_set_id) = published {
         conn.exec_drop(
+            "UPDATE meta_access_rule_set target JOIN meta_access_rule_set source ON source.rule_set_id=? SET target.default_access_type=source.default_access_type WHERE target.rule_set_id=?",
+            (&source_rule_set_id, &rule_set_id),
+        )
+        .map_err(|err| format!("failed to copy published access default into draft: {err}"))?;
+        conn.exec_drop(
             "INSERT INTO dim_access_ip_range (rule_id, rule_set_id, rule_name, cidr, start_ip, end_ip, start_ip_num, end_ip_num, access_type, priority, enabled, notes) SELECT CONCAT('IPR_', REPLACE(UUID(),'-','')), ?, rule_name, cidr, start_ip, end_ip, start_ip_num, end_ip_num, access_type, priority, enabled, notes FROM dim_access_ip_range WHERE rule_set_id=?",
             (&rule_set_id, source_rule_set_id),
         )
         .map_err(|err| format!("failed to copy published access rules into draft: {err}"))?;
     }
     fetch_rule_set(&mut conn, &rule_set_id)
+}
+
+#[tauri::command]
+pub fn access_rule_set_default_update(
+    req: AccessRuleSetDefaultRequest,
+) -> Result<AccessRuleSetRow, String> {
+    let mut conn = prepare(&req.settings)?;
+    ensure_draft(&mut conn, &req.rule_set_id)?;
+    let default_access_type = normalize_default_access_type(&req.default_access_type)?;
+    conn.exec_drop(
+        "UPDATE meta_access_rule_set SET default_access_type=?, updated_at=NOW() WHERE rule_set_id=? AND status='draft'",
+        (&default_access_type, &req.rule_set_id),
+    )
+    .map_err(|err| format!("failed to update unmatched access default: {err}"))?;
+    fetch_rule_set(&mut conn, &req.rule_set_id)
 }
 
 #[tauri::command]
@@ -390,13 +429,21 @@ fn validate_rule_set_internal(
     conn: &mut mysql::PooledConn,
     rule_set_id: &str,
 ) -> Result<AccessRuleValidationResult, String> {
-    let (rule_count, enabled_rule_count, invalid_rule_count): (i64, i64, i64) = conn
+    let (rule_count, enabled_rule_count, mut invalid_rule_count): (i64, i64, i64) = conn
         .exec_first(
             "SELECT CAST(COUNT(*) AS SIGNED), CAST(COALESCE(SUM(enabled=1),0) AS SIGNED), CAST(COALESCE(SUM(start_ip_num>end_ip_num OR access_type NOT IN ('CABLE','FTTH','OTHER')),0) AS SIGNED) FROM dim_access_ip_range WHERE rule_set_id=?",
             (rule_set_id,),
         )
         .map_err(|err| format!("failed to validate access rules: {err}"))?
         .unwrap_or((0, 0, 0));
+    let invalid_default_count: i64 = conn
+        .exec_first(
+            "SELECT CAST(COUNT(*) AS SIGNED) FROM meta_access_rule_set WHERE rule_set_id=? AND default_access_type NOT IN ('CABLE','FTTH','OTHER','UNKNOWN')",
+            (rule_set_id,),
+        )
+        .map_err(|err| format!("failed to validate unmatched access default: {err}"))?
+        .unwrap_or(0);
+    invalid_rule_count += invalid_default_count;
     let conflict_count: i64 = conn
         .exec_first(
             "SELECT CAST(COUNT(*) AS SIGNED) FROM dim_access_ip_range a JOIN dim_access_ip_range b ON b.rule_set_id=a.rule_set_id AND b.rule_id>a.rule_id AND b.enabled=1 AND a.enabled=1 AND NOT (a.end_ip_num < b.start_ip_num OR a.start_ip_num > b.end_ip_num) WHERE a.rule_set_id=?",
@@ -500,15 +547,17 @@ pub fn access_rule_preview(
     let raw_base = match data_type.to_ascii_lowercase().as_str() {
         "tcp" => "raw_tcp_detail_import",
         "game" => "raw_game_detail_import",
-        _ => return Err(format!(
+        _ => {
+            return Err(format!(
             "access preview is only available for TCP or Game batches, not data_type={data_type}"
-        )),
+        ))
+        }
     };
     let raw_table = batch_tables::resolve_table(&req.settings, &req.import_batch_id, raw_base)?;
     let safe_table = batch_tables::sanitize_identifier(&raw_table)?;
     let sample_limit = req.sample_limit.unwrap_or(50_000).clamp(100, 100_000);
     let sql = format!(
-        "WITH sample AS (SELECT DISTINCT TRIM(local_ip_address) AS ip_address, INET_ATON(TRIM(local_ip_address)) AS ip_num FROM `{safe_table}` WHERE import_batch_id=? AND INET_ATON(TRIM(local_ip_address)) IS NOT NULL LIMIT {sample_limit}) SELECT CAST(COUNT(*) AS SIGNED), CAST(COALESCE(SUM(r.rule_id IS NOT NULL),0) AS SIGNED), CAST(COALESCE(SUM(r.access_type='CABLE'),0) AS SIGNED), CAST(COALESCE(SUM(r.access_type='FTTH'),0) AS SIGNED), CAST(COALESCE(SUM(r.access_type='OTHER'),0) AS SIGNED), CAST(COALESCE(SUM(r.rule_id IS NULL),0) AS SIGNED) FROM sample s LEFT JOIN dim_access_ip_range r ON r.rule_set_id=? AND r.enabled=1 AND s.ip_num BETWEEN r.start_ip_num AND r.end_ip_num"
+        "WITH sample AS (SELECT TRIM(local_ip_address) AS ip_address, INET_ATON(TRIM(local_ip_address)) AS ip_num, CASE WHEN SUM(UPPER(TRIM(COALESCE(user_type,''))) LIKE '%FTTH%' OR UPPER(TRIM(COALESCE(user_type,''))) LIKE '%FIBER%')>0 THEN 'FTTH' WHEN SUM(UPPER(TRIM(COALESCE(user_type,''))) LIKE '%CABLE%' OR UPPER(TRIM(COALESCE(wan_type,''))) LIKE '%CABLE%')>0 THEN 'CABLE' ELSE 'UNKNOWN' END AS source_access_type FROM `{safe_table}` WHERE import_batch_id=? AND INET_ATON(TRIM(local_ip_address)) IS NOT NULL GROUP BY TRIM(local_ip_address), INET_ATON(TRIM(local_ip_address)) LIMIT {sample_limit}), classified AS (SELECT ipr.rule_id, sample_ip.source_access_type, COALESCE(ipr.access_type, NULLIF(sample_ip.source_access_type,'UNKNOWN'), rules.default_access_type, 'UNKNOWN') AS access_type FROM sample sample_ip JOIN meta_access_rule_set rules ON rules.rule_set_id=? LEFT JOIN dim_access_ip_range ipr ON ipr.rule_set_id=rules.rule_set_id AND ipr.enabled=1 AND sample_ip.ip_num BETWEEN ipr.start_ip_num AND ipr.end_ip_num) SELECT CAST(COUNT(*) AS SIGNED), CAST(COALESCE(SUM(access_type<>'UNKNOWN'),0) AS SIGNED), CAST(COALESCE(SUM(access_type='CABLE'),0) AS SIGNED), CAST(COALESCE(SUM(access_type='FTTH'),0) AS SIGNED), CAST(COALESCE(SUM(access_type='OTHER'),0) AS SIGNED), CAST(COALESCE(SUM(rule_id IS NULL AND source_access_type='UNKNOWN' AND access_type<>'UNKNOWN'),0) AS SIGNED), CAST(COALESCE(SUM(access_type='UNKNOWN'),0) AS SIGNED) FROM classified"
     );
     let (
         sample_ip_count,
@@ -516,11 +565,12 @@ pub fn access_rule_preview(
         cable_ip_count,
         ftth_ip_count,
         other_ip_count,
+        fallback_ip_count,
         unmatched_ip_count,
-    ): (i64, i64, i64, i64, i64, i64) = conn
+    ): (i64, i64, i64, i64, i64, i64, i64) = conn
         .exec_first(sql, (&req.import_batch_id, &req.rule_set_id))
         .map_err(|err| format!("failed to preview access classification: {err}"))?
-        .unwrap_or((0, 0, 0, 0, 0, 0));
+        .unwrap_or((0, 0, 0, 0, 0, 0, 0));
     let coverage_pct = if sample_ip_count > 0 {
         classified_ip_count as f64 / sample_ip_count as f64 * 100.0
     } else {
@@ -532,16 +582,17 @@ pub fn access_rule_preview(
         cable_ip_count,
         ftth_ip_count,
         other_ip_count,
+        fallback_ip_count,
         unmatched_ip_count,
         coverage_pct,
         sample_limit,
-        message: "Preview counts distinct valid IPv4 addresses from a bounded RAW sample; it does not modify the batch".to_string(),
+        message: "Preview counts distinct valid IPv4 addresses after applying explicit ranges and the rule-set default; it does not modify the batch".to_string(),
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_access_type, normalize_range};
+    use super::{normalize_access_type, normalize_default_access_type, normalize_range};
 
     #[test]
     fn cidr_is_normalized_to_network_bounds() {
@@ -557,5 +608,6 @@ mod tests {
     fn rejects_reversed_range_and_unknown_access_type() {
         assert!(normalize_range(None, Some("10.0.0.10"), Some("10.0.0.1")).is_err());
         assert!(normalize_access_type("dsl").is_err());
+        assert_eq!(normalize_default_access_type("unknown").unwrap(), "UNKNOWN");
     }
 }

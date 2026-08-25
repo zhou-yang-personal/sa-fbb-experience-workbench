@@ -89,7 +89,7 @@ pub fn etl_start_clean_job(req: EtlRequest) -> Result<CommandAck, String> {
         }
     }
     let message = job_runner::run_job(&req.settings, &req.import_batch_id, "raw_to_clean", steps)?;
-    let _ = batch_tables::refresh_registry_counts(&req.settings, &req.import_batch_id);
+    let _ = batch_tables::refresh_registry_estimates(&req.settings, &req.import_batch_id);
     Ok(ack(message))
 }
 
@@ -271,7 +271,7 @@ pub fn etl_start_aggregate_job(req: EtlRequest) -> Result<CommandAck, String> {
         "REPLACE INTO meta_analysis_run (analysis_run_id, import_batch_id, run_type, status, started_at, message) VALUES (?, ?, 'base_aggregate', 'running', NOW(), 'aggregate started')",
         (&analysis_run_id, &req.import_batch_id),
     );
-    let message = job_runner::run_job(
+    let message = match job_runner::run_job(
         &req.settings,
         &req.import_batch_id,
         "base_aggregate",
@@ -282,13 +282,51 @@ pub fn etl_start_aggregate_job(req: EtlRequest) -> Result<CommandAck, String> {
             sql_template: "001_user_daily_profile.sql",
             sql: dws_sql,
         }],
-    )?;
+    ) {
+        Ok(message) => message,
+        Err(err) => {
+            let _ = mark_analysis_run_status(
+                &req.settings,
+                &analysis_run_id,
+                "failed",
+                &format!("base aggregate failed: {err}"),
+            );
+            return Err(err);
+        }
+    };
     let _ = conn.exec_drop(
-        "UPDATE meta_analysis_run SET status='success', finished_at=NOW(), message=? WHERE analysis_run_id=?",
-        (&message, &analysis_run_id),
+        "UPDATE meta_analysis_run SET status='running', finished_at=NULL, message=? WHERE analysis_run_id=?",
+        (
+            format!("base aggregate ready; complete DWS/ADS pending; {message}"),
+            &analysis_run_id,
+        ),
     );
-    let _ = batch_tables::refresh_registry_counts(&req.settings, &req.import_batch_id);
+    let _ = batch_tables::refresh_registry_estimates(&req.settings, &req.import_batch_id);
     Ok(ack(format!("analysis_run_id={analysis_run_id}; {message}")))
+}
+
+pub fn mark_analysis_run_status(
+    settings: &MySqlSettings,
+    analysis_run_id: &str,
+    status: &str,
+    message: &str,
+) -> Result<(), String> {
+    if !matches!(status, "running" | "success" | "failed" | "degraded") {
+        return Err(format!("unsupported analysis run status: {status}"));
+    }
+    let mut conn = db::conn(settings)?;
+    let finished_at = if matches!(status, "success" | "failed" | "degraded") {
+        "UTC_TIMESTAMP()"
+    } else {
+        "NULL"
+    };
+    conn.exec_drop(
+        format!(
+            "UPDATE meta_analysis_run SET status=?, finished_at={finished_at}, message=? WHERE analysis_run_id=?"
+        ),
+        (status, message, analysis_run_id),
+    )
+    .map_err(|err| format!("failed to update analysis run status: {err}"))
 }
 
 pub fn refresh_migration_leads(

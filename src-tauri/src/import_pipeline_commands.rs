@@ -4,8 +4,8 @@ use uuid::Uuid;
 use crate::db;
 use crate::models::{
     EtlRequest, ImportCurrentFileRequest, ImportPipelineLogRow, ImportPipelineLogsRequest,
-    ImportPipelineStartRequest, ImportPipelineStartResult, ImportPipelineStatus,
-    ImportPipelineStatusRequest, ImportPipelineStepRow, MySqlSettings,
+    ImportPipelineResumeRequest, ImportPipelineStartRequest, ImportPipelineStartResult,
+    ImportPipelineStatus, ImportPipelineStatusRequest, ImportPipelineStepRow, MySqlSettings,
 };
 use crate::sql_runner;
 
@@ -60,6 +60,40 @@ const PIPELINE_STEPS: &[PipelineStepDef] = &[
         name: "finish",
         label: "完成",
     },
+];
+
+const RESUME_PIPELINE_STEPS: &[PipelineStepDef] = &[
+    PipelineStepDef {
+        name: "prepare_resume",
+        label: "复用批次检查",
+    },
+    PipelineStepDef {
+        name: "dws_ads_aggregate",
+        label: "完整 DWS/ADS 聚合",
+    },
+    PipelineStepDef {
+        name: "final_fusion_optional",
+        label: "Final Lead 融合（可降级）",
+    },
+    PipelineStepDef {
+        name: "module_ready",
+        label: "Module Ready",
+    },
+    PipelineStepDef {
+        name: "finish",
+        label: "完成",
+    },
+];
+
+const AGGREGATE_SUBTASKS: &[&str] = &[
+    "base_user_daily",
+    "complete_dws",
+    "base_dashboards",
+    "app_rank",
+    "hourly_trend",
+    "network_hotspot",
+    "user_profile",
+    "lead_evidence",
 ];
 
 fn now_elapsed_ms(started: std::time::Instant) -> i64 {
@@ -364,17 +398,17 @@ fn update_run(
     elapsed_ms: i64,
 ) -> Result<(), String> {
     let mut conn = db::conn(settings)?;
-    let completed: Option<i64> = conn
+    let progress: Option<(i64, i64)> = conn
         .exec_first(
-            "SELECT CAST(COUNT(*) AS SIGNED) FROM meta_pipeline_step WHERE pipeline_run_id=? AND status IN ('success','skipped','degraded')",
+            "SELECT CAST(COUNT(*) AS SIGNED), CAST(COALESCE(MAX(r.total_steps), 0) AS SIGNED) FROM meta_pipeline_step s JOIN meta_pipeline_run r ON r.pipeline_run_id=s.pipeline_run_id WHERE s.pipeline_run_id=? AND s.status IN ('success','skipped','degraded')",
             (pipeline_run_id,),
         )
         .map_err(|err| format!("failed to count completed pipeline steps: {err}"))?;
-    let completed = completed.unwrap_or(0);
-    let percent = if PIPELINE_STEPS.is_empty() {
+    let (completed, total_steps) = progress.unwrap_or((0, 0));
+    let percent = if total_steps <= 0 {
         0.0
     } else {
-        completed as f64 / PIPELINE_STEPS.len() as f64 * 100.0
+        completed as f64 / total_steps as f64 * 100.0
     };
     let finished_expr = if matches!(status, "success" | "failed" | "degraded" | "canceled") {
         ", finished_at=COALESCE(finished_at, UTC_TIMESTAMP())"
@@ -601,6 +635,204 @@ where
     }
 }
 
+fn run_logged_subtask<F>(
+    settings: &MySqlSettings,
+    pipeline_run_id: &str,
+    subtask: &str,
+    label: &str,
+    total_started: std::time::Instant,
+    action: F,
+) -> Result<(), String>
+where
+    F: FnOnce() -> Result<crate::models::CommandAck, String>,
+{
+    let started = std::time::Instant::now();
+    append_log(
+        settings,
+        pipeline_run_id,
+        "info",
+        Some("dws_ads_aggregate"),
+        &format!("聚合子阶段开始：{label} [{subtask}]"),
+        now_elapsed_ms(total_started),
+    )?;
+    match action() {
+        Ok(result) => {
+            append_log(
+                settings,
+                pipeline_run_id,
+                "info",
+                Some("dws_ads_aggregate"),
+                &format!(
+                    "聚合子阶段完成：{label} [{subtask}]；耗时={} ms；{}",
+                    now_elapsed_ms(started),
+                    result.message
+                ),
+                now_elapsed_ms(total_started),
+            )?;
+            Ok(())
+        }
+        Err(err) => {
+            let _ = append_log(
+                settings,
+                pipeline_run_id,
+                "error",
+                Some("dws_ads_aggregate"),
+                &format!("聚合子阶段失败：{label} [{subtask}]；{err}"),
+                now_elapsed_ms(total_started),
+            );
+            Err(format!("aggregate subtask {subtask} failed: {err}"))
+        }
+    }
+}
+
+fn run_dws_ads_stage(
+    settings: &MySqlSettings,
+    pipeline_run_id: &str,
+    import_batch_id: &str,
+    analysis_run_id: &str,
+    total_started: std::time::Instant,
+) -> Result<String, String> {
+    let request = || EtlRequest {
+        settings: settings.clone(),
+        import_batch_id: import_batch_id.to_string(),
+        analysis_run_id: Some(analysis_run_id.to_string()),
+    };
+    let result = (|| {
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            AGGREGATE_SUBTASKS[0],
+            "用户日聚合",
+            total_started,
+            || crate::etl_commands::etl_start_aggregate_job(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            AGGREGATE_SUBTASKS[1],
+            "完整 DWS 聚合",
+            total_started,
+            || crate::phase_commands::etl_run_complete_aggregates(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            AGGREGATE_SUBTASKS[2],
+            "基础看板 ADS",
+            total_started,
+            || crate::phase_commands::ads_run_complete_dashboards(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            AGGREGATE_SUBTASKS[3],
+            "App Rank",
+            total_started,
+            || crate::analytics_ads_app::analytics_materialize_app_rank(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            AGGREGATE_SUBTASKS[4],
+            "小时趋势",
+            total_started,
+            || crate::ads_hour::ads_hour(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            AGGREGATE_SUBTASKS[5],
+            "网络热点",
+            total_started,
+            || crate::ads_net::ads_net(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            AGGREGATE_SUBTASKS[6],
+            "用户画像",
+            total_started,
+            || crate::ads_user::ads_user(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            AGGREGATE_SUBTASKS[7],
+            "Lead Evidence",
+            total_started,
+            || crate::ads_lead::ads_lead(request()),
+        )?;
+        Ok(format!(
+            "DWS/ADS ready: analysis_run_id={analysis_run_id}; subtasks={}",
+            AGGREGATE_SUBTASKS.len()
+        ))
+    })();
+    match result {
+        Ok(message) => {
+            crate::etl_commands::mark_analysis_run_status(
+                settings,
+                analysis_run_id,
+                "success",
+                &message,
+            )?;
+            Ok(message)
+        }
+        Err(err) => {
+            let _ = crate::etl_commands::mark_analysis_run_status(
+                settings,
+                analysis_run_id,
+                "failed",
+                &format!("complete DWS/ADS failed: {err}"),
+            );
+            Err(err)
+        }
+    }
+}
+
+fn run_final_fusion_stage(
+    settings: &MySqlSettings,
+    import_batch_id: &str,
+    analysis_run_id: &str,
+) -> Result<String, String> {
+    let request = || EtlRequest {
+        settings: settings.clone(),
+        import_batch_id: import_batch_id.to_string(),
+        analysis_run_id: Some(analysis_run_id.to_string()),
+    };
+    crate::phase_commands::leads_run_final_fusion(request())?;
+    crate::ads_lead::ads_lead(request())?;
+    let final_table = crate::batch_tables::resolve_table(
+        settings,
+        import_batch_id,
+        "ads_final_marketing_lead_user",
+    )?;
+    let mut conn = db::conn(settings)?;
+    if !crate::batch_tables::table_has_analysis_run(&mut conn, &final_table, analysis_run_id)? {
+        return Err("Final Lead not generated; likely missing CRM/coverage/reachability, SA Lead remains available".to_string());
+    }
+    Ok("Final Lead fusion ready".to_string())
+}
+
+fn run_module_ready_stage(
+    settings: &MySqlSettings,
+    import_batch_id: &str,
+    analysis_run_id: &str,
+) -> Result<String, String> {
+    crate::analysis_commands::analysis_prepare_batch_tables(
+        settings.clone(),
+        import_batch_id.to_string(),
+    )?;
+    let status = crate::analysis_commands::analysis_get_module_status(
+        settings.clone(),
+        import_batch_id.to_string(),
+        Some(analysis_run_id.to_string()),
+    )?;
+    Ok(format!(
+        "module ready refreshed without full-table counts: enabled={}",
+        status.iter().filter(|item| item.enabled).count()
+    ))
+}
+
 fn run_pipeline_job(
     req: ImportPipelineStartRequest,
     pipeline_run_id: String,
@@ -766,22 +998,14 @@ fn run_pipeline_job(
                     let batch = import_batch_id
                         .as_ref()
                         .ok_or_else(|| "missing import_batch_id before aggregate".to_string())?;
-                    let req = EtlRequest {
-                        settings: settings.clone(),
-                        import_batch_id: batch.clone(),
-                        analysis_run_id: Some(analysis_run_id.clone()),
-                    };
-                    crate::etl_commands::etl_start_aggregate_job(req.clone())?;
-                    crate::phase_commands::etl_run_complete_aggregates(req.clone())?;
-                    crate::phase_commands::ads_run_complete_dashboards(req.clone())?;
-                    crate::analytics_ads_app::analytics_materialize_app_rank(req.clone())?;
-                    crate::ads_hour::ads_hour(req.clone())?;
-                    crate::ads_net::ads_net(req.clone())?;
-                    crate::ads_user::ads_user(req.clone())?;
-                    crate::ads_lead::ads_lead(req)?;
-                    Ok(Some(format!(
-                        "DWS/ADS ready: analysis_run_id={analysis_run_id}"
-                    )))
+                    run_dws_ads_stage(
+                        &settings,
+                        &pipeline_run_id,
+                        batch,
+                        &analysis_run_id,
+                        total_started,
+                    )
+                    .map(Some)
                 },
             ),
             "final_fusion_optional" => run_observed_step(
@@ -794,36 +1018,9 @@ fn run_pipeline_job(
                     let batch = import_batch_id
                         .as_ref()
                         .ok_or_else(|| "missing import_batch_id before final fusion".to_string())?;
-                    crate::phase_commands::leads_run_final_fusion(EtlRequest {
-                        settings: settings.clone(),
-                        import_batch_id: batch.clone(),
-                        analysis_run_id: Some(analysis_run_id.clone()),
-                    })?;
-                    crate::ads_lead::ads_lead(EtlRequest {
-                        settings: settings.clone(),
-                        import_batch_id: batch.clone(),
-                        analysis_run_id: Some(analysis_run_id.clone()),
-                    })?;
-                    let final_table = crate::batch_tables::resolve_table(
-                        &settings,
-                        batch,
-                        "ads_final_marketing_lead_user",
-                    )?;
-                    let final_table = crate::batch_tables::sanitize_identifier(&final_table)?;
-                    let mut conn = db::conn(&settings)?;
-                    let final_rows: Option<i64> = conn
-                        .exec_first(
-                            format!(
-                                "SELECT CAST(COUNT(*) AS SIGNED) FROM `{final_table}` WHERE analysis_run_id=?"
-                            ),
-                            (&analysis_run_id,),
-                        )
-                        .map_err(|err| format!("failed to inspect Final Lead rows: {err}"))?;
-                    if final_rows.unwrap_or(0) <= 0 {
-                        return Err("Final Lead not generated; likely missing CRM/coverage/reachability, SA Lead remains available".to_string());
-                    }
+                    let message = run_final_fusion_stage(&settings, batch, &analysis_run_id)?;
                     final_fusion_status = "success".to_string();
-                    Ok(Some("Final Lead fusion ready".to_string()))
+                    Ok(Some(message))
                 },
             ),
             "module_ready" => run_observed_step(
@@ -836,23 +1033,7 @@ fn run_pipeline_job(
                     let batch = import_batch_id
                         .as_ref()
                         .ok_or_else(|| "missing import_batch_id before module ready".to_string())?;
-                    crate::analysis_commands::analysis_prepare_batch_tables(
-                        settings.clone(),
-                        batch.clone(),
-                    )?;
-                    crate::analysis_commands::batch_get_table_registry(
-                        settings.clone(),
-                        batch.clone(),
-                    )?;
-                    let status = crate::analysis_commands::analysis_get_module_status(
-                        settings.clone(),
-                        batch.clone(),
-                        Some(analysis_run_id.clone()),
-                    )?;
-                    Ok(Some(format!(
-                        "module ready refreshed: enabled={}",
-                        status.iter().filter(|item| item.enabled).count()
-                    )))
+                    run_module_ready_stage(&settings, batch, &analysis_run_id).map(Some)
                 },
             ),
             "finish" => run_observed_step(
@@ -935,6 +1116,359 @@ fn run_pipeline_job(
         final_message,
         now_elapsed_ms(total_started),
     );
+}
+
+fn active_batch_statements(
+    settings: &MySqlSettings,
+    import_batch_id: &str,
+) -> Result<Vec<String>, String> {
+    let mut conn = db::conn(settings)?;
+    let mut needles: Vec<String> = conn
+        .exec_map(
+            "SELECT physical_table_name FROM meta_batch_table_registry WHERE import_batch_id=?",
+            (import_batch_id,),
+            |name: String| name.to_ascii_lowercase(),
+        )
+        .unwrap_or_default();
+    needles.push(crate::batch_tables::batch_short_id(import_batch_id));
+    let rows: Vec<(u64, u64, Option<String>, Option<String>)> = conn
+        .query(
+            "SELECT ID, TIME, STATE, INFO FROM information_schema.PROCESSLIST WHERE DB=DATABASE() AND COMMAND<>'Sleep' AND ID<>CONNECTION_ID()",
+        )
+        .map_err(|err| format!("failed to inspect active MySQL statements: {err}"))?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(id, seconds, state, info)| {
+            let sql = info.unwrap_or_default();
+            let normalized = sql.to_ascii_lowercase();
+            needles
+                .iter()
+                .any(|needle| normalized.contains(needle))
+                .then(|| {
+                    format!(
+                        "connection={id}, seconds={seconds}, state={}, sql={}",
+                        state.unwrap_or_else(|| "-".to_string()),
+                        sql.chars().take(240).collect::<String>()
+                    )
+                })
+        })
+        .collect())
+}
+
+fn latest_job_status(
+    conn: &mut mysql::PooledConn,
+    import_batch_id: &str,
+    job_type: &str,
+) -> Result<Option<String>, String> {
+    conn.exec_first(
+        "SELECT status FROM meta_etl_job WHERE import_batch_id=? AND job_type=? ORDER BY started_at DESC LIMIT 1",
+        (import_batch_id, job_type),
+    )
+    .map_err(|err| format!("failed to inspect {job_type} readiness: {err}"))
+}
+
+fn insert_resume_pipeline_run(
+    req: &ImportPipelineResumeRequest,
+    pipeline_run_id: &str,
+    analysis_run_id: &str,
+) -> Result<(), String> {
+    ensure_pipeline_schema(&req.settings)?;
+    let mut conn = db::conn(&req.settings)?;
+    let batch: Option<(String, String, String, String, i64)> = conn
+        .exec_first(
+            "SELECT data_type, source_file_name, COALESCE(NULLIF(batch_display_name,''), source_file_name), status, CAST(COALESCE(imported_rows,0) AS SIGNED) FROM meta_import_batch WHERE import_batch_id=?",
+            (&req.import_batch_id,),
+        )
+        .map_err(|err| format!("failed to inspect reusable batch: {err}"))?;
+    let Some((data_type, source_file_name, batch_display_name, raw_status, imported_rows)) = batch
+    else {
+        return Err(format!("import batch not found: {}", req.import_batch_id));
+    };
+    if raw_status.to_ascii_lowercase() != "success" || imported_rows <= 0 {
+        return Err(format!(
+            "batch is not reusable: raw_status={raw_status}, imported_rows={imported_rows}"
+        ));
+    }
+    for job_type in ["quality_gate", "raw_to_clean"] {
+        let status = latest_job_status(&mut conn, &req.import_batch_id, job_type)?;
+        if !matches!(status.as_deref(), Some("success")) {
+            return Err(format!(
+                "batch is not ready to resume from DWS/ADS: latest {job_type} status={}",
+                status.unwrap_or_else(|| "missing".to_string())
+            ));
+        }
+    }
+    let active_pipeline: Option<String> = conn
+        .exec_first(
+            "SELECT pipeline_run_id FROM meta_pipeline_run WHERE import_batch_id=? AND status IN ('pending','running') ORDER BY updated_at DESC LIMIT 1",
+            (&req.import_batch_id,),
+        )
+        .map_err(|err| format!("failed to inspect active pipeline: {err}"))?;
+    if active_pipeline.is_some() && !req.confirm_original_process_stopped.unwrap_or(false) {
+        return Err(format!(
+            "batch still has active pipeline {}; wait for completion, or close the original EXE and explicitly confirm stale takeover",
+            active_pipeline.as_deref().unwrap_or("unknown")
+        ));
+    }
+    let active_sql = active_batch_statements(&req.settings, &req.import_batch_id)?;
+    if !active_sql.is_empty() {
+        return Err(format!(
+            "resume rejected because MySQL is still executing this batch: {}",
+            active_sql.join(" | ")
+        ));
+    }
+    if let Some(active_pipeline) = active_pipeline {
+        conn.exec_drop(
+            "UPDATE meta_pipeline_step SET error_message=CASE WHEN status='running' THEN 'stale pipeline superseded by explicit batch resume' ELSE error_message END, status=CASE WHEN status='running' THEN 'failed' ELSE 'skipped' END, finished_at=UTC_TIMESTAMP(), message='原应用进程已退出；用户确认无活动 SQL 后由新续跑任务接管。' WHERE pipeline_run_id=? AND status IN ('pending','running')",
+            (&active_pipeline,),
+        )
+        .map_err(|err| format!("failed to close stale pipeline steps: {err}"))?;
+        conn.exec_drop(
+            "UPDATE meta_pipeline_run SET status='failed', finished_at=UTC_TIMESTAMP(), updated_at=UTC_TIMESTAMP(), message='stale pipeline superseded by explicit batch resume', error_message='original process confirmed stopped; no active batch SQL found' WHERE pipeline_run_id=? AND status IN ('pending','running')",
+            (&active_pipeline,),
+        )
+        .map_err(|err| format!("failed to close stale pipeline: {err}"))?;
+    }
+    conn.exec_drop(
+        "INSERT INTO meta_pipeline_run (pipeline_run_id, import_batch_id, analysis_run_id, data_type, source_file_name, batch_display_name, status, total_steps, completed_steps, percent, message, created_at, updated_at) SELECT ?, ?, ?, ?, ?, ?, 'pending', ?, 0, 0, 'existing batch resume queued', UTC_TIMESTAMP(), UTC_TIMESTAMP() WHERE NOT EXISTS (SELECT 1 FROM meta_pipeline_run WHERE import_batch_id=? AND status IN ('pending','running'))",
+        (
+            pipeline_run_id,
+            &req.import_batch_id,
+            analysis_run_id,
+            data_type,
+            source_file_name,
+            batch_display_name,
+            RESUME_PIPELINE_STEPS.len() as i32,
+            &req.import_batch_id,
+        ),
+    )
+    .map_err(|err| format!("failed to create resume pipeline: {err}"))?;
+    if conn.affected_rows() == 0 {
+        return Err(
+            "resume rejected because another pipeline became active for this batch".to_string(),
+        );
+    }
+    for (index, step) in RESUME_PIPELINE_STEPS.iter().enumerate() {
+        conn.exec_drop(
+            "INSERT INTO meta_pipeline_step (pipeline_run_id, step_index, step_name, step_label, status, message) VALUES (?, ?, ?, ?, 'pending', 'waiting')",
+            (pipeline_run_id, (index + 1) as i32, step.name, step.label),
+        )
+        .map_err(|err| format!("failed to create resume step {}: {err}", step.name))?;
+    }
+    append_log(
+        &req.settings,
+        pipeline_run_id,
+        "info",
+        Some("start"),
+        &format!(
+            "existing batch resume plan created; import_batch_id={}; RAW import will be skipped",
+            req.import_batch_id
+        ),
+        0,
+    )
+}
+
+fn run_resume_pipeline_job(
+    req: ImportPipelineResumeRequest,
+    pipeline_run_id: String,
+    analysis_run_id: String,
+) {
+    let total_started = std::time::Instant::now();
+    let settings = req.settings.clone();
+    let batch = req.import_batch_id.clone();
+    let mut degraded = false;
+    let mut final_fusion_status = "pending".to_string();
+    let _ = update_run(
+        &settings,
+        &pipeline_run_id,
+        "running",
+        Some("prepare_resume"),
+        Some("existing batch resume running; CSV and RAW import are skipped"),
+        None,
+        None,
+        0,
+    );
+    for (idx, step) in RESUME_PIPELINE_STEPS.iter().copied().enumerate() {
+        let step_index = (idx + 1) as i32;
+        let result = match step.name {
+            "prepare_resume" => run_observed_step(
+                &settings,
+                &pipeline_run_id,
+                step_index,
+                step,
+                total_started,
+                || {
+                    db::ping(&settings)?;
+                    crate::batch_tables::ensure_batch_tables(&settings, &batch)?;
+                    Ok(Some(format!(
+                        "reusing batch={batch}; analysis_run_id={analysis_run_id}; RAW import skipped"
+                    )))
+                },
+            ),
+            "dws_ads_aggregate" => run_observed_step(
+                &settings,
+                &pipeline_run_id,
+                step_index,
+                step,
+                total_started,
+                || {
+                    run_dws_ads_stage(
+                        &settings,
+                        &pipeline_run_id,
+                        &batch,
+                        &analysis_run_id,
+                        total_started,
+                    )
+                    .map(Some)
+                },
+            ),
+            "final_fusion_optional" => run_observed_step(
+                &settings,
+                &pipeline_run_id,
+                step_index,
+                step,
+                total_started,
+                || {
+                    let message = run_final_fusion_stage(&settings, &batch, &analysis_run_id)?;
+                    final_fusion_status = "success".to_string();
+                    Ok(Some(message))
+                },
+            ),
+            "module_ready" => run_observed_step(
+                &settings,
+                &pipeline_run_id,
+                step_index,
+                step,
+                total_started,
+                || run_module_ready_stage(&settings, &batch, &analysis_run_id).map(Some),
+            ),
+            "finish" => run_observed_step(
+                &settings,
+                &pipeline_run_id,
+                step_index,
+                step,
+                total_started,
+                || Ok(Some("existing batch resume finished".to_string())),
+            ),
+            _ => Ok(Some("unknown resume step skipped".to_string())),
+        };
+        match result {
+            Ok(_) => {}
+            Err((PipelineOutcome::Degraded, err)) => {
+                degraded = true;
+                final_fusion_status = "degraded".to_string();
+                let _ = append_log(
+                    &settings,
+                    &pipeline_run_id,
+                    "warning",
+                    Some(step.name),
+                    &format!("optional step degraded and resume continues: {err}"),
+                    now_elapsed_ms(total_started),
+                );
+            }
+            Err((PipelineOutcome::Failed, err)) => {
+                let _ = fail_remaining_steps(
+                    &settings,
+                    &pipeline_run_id,
+                    step_index,
+                    "前序续跑步骤失败，后续步骤已跳过。",
+                );
+                let _ = update_run(
+                    &settings,
+                    &pipeline_run_id,
+                    "failed",
+                    Some(step.name),
+                    Some("existing batch resume failed"),
+                    Some(&err),
+                    Some(&final_fusion_status),
+                    now_elapsed_ms(total_started),
+                );
+                let _ = append_log(
+                    &settings,
+                    &pipeline_run_id,
+                    "error",
+                    Some(step.name),
+                    &format!("existing batch resume failed: {err}"),
+                    now_elapsed_ms(total_started),
+                );
+                return;
+            }
+        }
+    }
+    let final_status = if degraded { "degraded" } else { "success" };
+    let final_message = if degraded {
+        "existing batch resume finished with Final Lead degraded; base and structured ADS are available"
+    } else {
+        "existing batch resume finished successfully"
+    };
+    let _ = update_run(
+        &settings,
+        &pipeline_run_id,
+        final_status,
+        Some("finish"),
+        Some(final_message),
+        None,
+        Some(&final_fusion_status),
+        now_elapsed_ms(total_started),
+    );
+    let _ = append_log(
+        &settings,
+        &pipeline_run_id,
+        if degraded { "warning" } else { "info" },
+        Some("finish"),
+        final_message,
+        now_elapsed_ms(total_started),
+    );
+}
+
+#[tauri::command]
+pub fn import_pipeline_resume_batch(
+    req: ImportPipelineResumeRequest,
+) -> Result<ImportPipelineStartResult, String> {
+    if req.import_batch_id.trim().is_empty() {
+        return Err("import_batch_id is required".to_string());
+    }
+    let analysis_run_id = if let Some(value) = req
+        .analysis_run_id
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+    {
+        value
+    } else {
+        let mut conn = db::conn(&req.settings)?;
+        let pipeline_analysis_run = conn
+            .exec_first::<String, _, _>(
+                "SELECT analysis_run_id FROM meta_pipeline_run WHERE import_batch_id=? AND analysis_run_id IS NOT NULL AND analysis_run_id<>'' ORDER BY updated_at DESC, created_at DESC LIMIT 1",
+                (&req.import_batch_id,),
+            )
+            .map_err(|err| format!("failed to resolve reusable pipeline analysis run: {err}"))?;
+        let fallback_analysis_run = if pipeline_analysis_run.is_none() {
+            conn.exec_first::<String, _, _>(
+                "SELECT analysis_run_id FROM meta_analysis_run WHERE import_batch_id=? ORDER BY started_at DESC LIMIT 1",
+                (&req.import_batch_id,),
+            )
+            .map_err(|err| format!("failed to resolve reusable analysis run: {err}"))?
+        } else {
+            None
+        };
+        pipeline_analysis_run
+            .or(fallback_analysis_run)
+            .unwrap_or_else(|| format!("RUN_{}", Uuid::new_v4().simple()))
+    };
+    let pipeline_run_id = format!("PIPE_{}", Uuid::new_v4().simple());
+    insert_resume_pipeline_run(&req, &pipeline_run_id, &analysis_run_id)?;
+    let task_req = req.clone();
+    let task_pipeline_run_id = pipeline_run_id.clone();
+    let task_analysis_run_id = analysis_run_id.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        run_resume_pipeline_job(task_req, task_pipeline_run_id, task_analysis_run_id);
+    });
+    Ok(ImportPipelineStartResult {
+        pipeline_run_id,
+        import_batch_id: Some(req.import_batch_id),
+        analysis_run_id,
+        status: "running".to_string(),
+    })
 }
 
 #[tauri::command]
@@ -1069,7 +1603,8 @@ pub fn import_pipeline_get_logs(
 mod tests {
     use super::{
         final_status_for_step_failure, pipeline_plan, raw_import_heartbeat_message,
-        raw_import_stall_hint, step_heartbeat_message, PipelineOutcome,
+        raw_import_stall_hint, step_heartbeat_message, PipelineOutcome, AGGREGATE_SUBTASKS,
+        RESUME_PIPELINE_STEPS,
     };
 
     #[test]
@@ -1090,6 +1625,43 @@ mod tests {
                 "final_fusion_optional",
                 "module_ready",
                 "finish",
+            ]
+        );
+    }
+
+    #[test]
+    fn resume_plan_skips_raw_and_keeps_complete_analysis_tail() {
+        let names = RESUME_PIPELINE_STEPS
+            .iter()
+            .map(|step| step.name)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec![
+                "prepare_resume",
+                "dws_ads_aggregate",
+                "final_fusion_optional",
+                "module_ready",
+                "finish",
+            ]
+        );
+        assert!(!names.contains(&"import_current_file_atomic"));
+        assert!(!names.contains(&"raw_to_clean"));
+    }
+
+    #[test]
+    fn aggregate_stage_materializes_all_structured_dashboards() {
+        assert_eq!(
+            AGGREGATE_SUBTASKS,
+            [
+                "base_user_daily",
+                "complete_dws",
+                "base_dashboards",
+                "app_rank",
+                "hourly_trend",
+                "network_hotspot",
+                "user_profile",
+                "lead_evidence",
             ]
         );
     }

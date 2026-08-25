@@ -18,12 +18,15 @@ function etlReq(settings: MySqlSettings, importBatchId: string, analysisRunId: s
 }
 
 export const analyticsStructuredApi = {
+  coverage: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<MetricCard[]>('analytics_get_data_coverage', req(settings, importBatchId, analysisRunId)),
   kpis: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, query?: StructuredAnalyticsQuery) => invoke<MetricCard[]>('analytics_get_kpi_summary', req(settings, importBatchId, analysisRunId, query)),
   appRank: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, query?: StructuredAnalyticsQuery) => invoke<MetricCard[]>('analytics_get_app_rank', req(settings, importBatchId, analysisRunId, query)),
   hourlyTrend: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, query?: StructuredAnalyticsQuery) => invoke<MetricCard[]>('analytics_get_hourly_trend', req(settings, importBatchId, analysisRunId, query)),
   networkHotspots: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, query?: StructuredAnalyticsQuery) => invoke<MetricCard[]>('analytics_get_network_hotspots', req(settings, importBatchId, analysisRunId, query)),
   userProfiles: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, query?: StructuredAnalyticsQuery) => invoke<MetricCard[]>('analytics_get_user_profiles', req(settings, importBatchId, analysisRunId, query)),
+  userSummary: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<MetricCard[]>('analytics_get_user_summary', req(settings, importBatchId, analysisRunId)),
   leadEvidence: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, query?: StructuredAnalyticsQuery) => invoke<MetricCard[]>('analytics_get_lead_evidence_page', req(settings, importBatchId, analysisRunId, query)),
+  leadSummary: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<MetricCard[]>('analytics_get_lead_stage_summary', req(settings, importBatchId, analysisRunId)),
   materializeAppRank: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<CommandAck>('analytics_materialize_app_rank', etlReq(settings, importBatchId, analysisRunId)),
   materializeHourly: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<CommandAck>('ads_hour', etlReq(settings, importBatchId, analysisRunId)),
   materializeUser: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<CommandAck>('ads_user', etlReq(settings, importBatchId, analysisRunId)),

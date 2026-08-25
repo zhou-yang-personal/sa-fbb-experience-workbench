@@ -81,10 +81,10 @@ WITH params AS (
     r.account_key AS user_account,
     r.mac_key AS user_mac,
     r.source_user_type,
-    COALESCE(ar.access_type, r.source_user_type, 'UNKNOWN') AS user_type,
+    COALESCE(ar.access_type, NULLIF(r.source_user_type, 'UNKNOWN'), ars.default_access_type, 'UNKNOWN') AS user_type,
     r.ip_key AS local_ip_address,
-    CASE WHEN ar.rule_id IS NOT NULL THEN 'IP_RULE' WHEN r.source_user_type <> 'UNKNOWN' THEN 'SOURCE_FIELD' ELSE 'UNMATCHED' END AS access_type_source,
-    CASE WHEN ar.rule_id IS NOT NULL THEN 'HIGH' WHEN r.source_user_type <> 'UNKNOWN' THEN 'MEDIUM' ELSE 'LOW' END AS access_type_confidence,
+    CASE WHEN ar.rule_id IS NOT NULL THEN 'IP_RULE' WHEN r.source_user_type <> 'UNKNOWN' THEN 'SOURCE_FIELD' WHEN ars.default_access_type <> 'UNKNOWN' THEN 'RULE_SET_DEFAULT' ELSE 'UNMATCHED' END AS access_type_source,
+    CASE WHEN ar.rule_id IS NOT NULL THEN 'HIGH' WHEN r.source_user_type <> 'UNKNOWN' THEN 'MEDIUM' WHEN ars.default_access_type <> 'UNKNOWN' THEN 'HIGH' ELSE 'LOW' END AS access_type_confidence,
     ar.rule_id AS access_rule_id,
     b.access_rule_set_version,
     COALESCE(NULLIF(TRIM(m.standard_app_name), ''), NULLIF(TRIM(r.universal_video_applications), ''), 'UNKNOWN_APP') AS app_name,
@@ -104,6 +104,7 @@ WITH params AS (
   FROM parsed r
   LEFT JOIN dim_app_mapping m ON m.raw_app_name = r.universal_video_applications
   LEFT JOIN meta_import_batch b ON b.import_batch_id = r.import_batch_id
+  LEFT JOIN meta_access_rule_set ars ON ars.rule_set_id = b.access_rule_set_id
   LEFT JOIN dim_access_ip_range ar ON ar.rule_set_id = b.access_rule_set_id AND ar.enabled = 1 AND r.ip_num BETWEEN ar.start_ip_num AND ar.end_ip_num
 )
 SELECT

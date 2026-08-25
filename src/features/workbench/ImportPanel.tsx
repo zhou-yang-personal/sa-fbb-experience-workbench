@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AccessRuleSetRow, ActionState, BatchListItem, BatchTableRegistryRow, CsvProbeResult, ImportBatchResult, ImportDataType, ImportPipelineLogRow, ImportPipelineStatus, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
 import { ActionButton } from './ActionButton';
+import { analyticsStructuredApi } from './analyticsStructuredApi';
 import { BatchSelector } from './BatchSelector';
 import { selectCsvFile } from './fileDialogs';
 import { mappingApi } from './mappingApi';
@@ -138,6 +139,7 @@ export function ImportPanel(props: Props) {
   const [historyStatus, setHistoryStatus] = useState('正在读取历史批次…');
   const [selectedRuleSetId, setSelectedRuleSetId] = useState('');
   const [accessRuleConfirmed, setAccessRuleConfirmed] = useState(false);
+  const [staleTakeoverConfirmed, setStaleTakeoverConfirmed] = useState(false);
   const [accessRuleMessage, setAccessRuleMessage] = useState('TCP / Game 导入前必须手动选择并确认一个已发布 IP 规则版本。');
   const lastLogSeqRef = useRef(0);
   const pipelinePollInFlightRef = useRef(new Set<string>());
@@ -407,6 +409,61 @@ export function ImportPanel(props: Props) {
     });
   }
 
+  async function resumeCurrentBatch() {
+    if (!importBatchId.trim()) {
+      setStatusMessage('请先在历史批次中选择要复用的批次。');
+      return;
+    }
+    if (pipelineRunning && !staleTakeoverConfirmed) {
+      setStatusMessage('该批次仍显示有运行中任务。请等待完成；只有原 EXE 已退出时才能确认接管。');
+      return;
+    }
+    if (staleTakeoverConfirmed) {
+      const confirmed = window.confirm(
+        '仅当原 EXE 已退出、且 MySQL 中该批次活动 SQL 已结束时才能接管。后端仍会检查并拒绝并发执行。确认继续？',
+      );
+      if (!confirmed) {
+        setStatusMessage('已取消批次接管。');
+        return;
+      }
+    }
+    await runAction('import_pipeline_resume_batch', async () => {
+      const started = await workbenchApi.pipelineResume(
+        settings,
+        importBatchId,
+        props.analysisRunId.trim() || undefined,
+        staleTakeoverConfirmed,
+      );
+      pipelineGenerationRef.current += 1;
+      setPipelineLogs([]);
+      setPipelinePollingError('');
+      setPipelineLastPollAt(null);
+      setPipelineLastLogAt(null);
+      setPipelineAutoRefresh(true);
+      setRegistry([]);
+      setModuleStatus([]);
+      lastLogSeqRef.current = 0;
+      setPipelineRunId(started.pipeline_run_id);
+      storePipelineRunId(settings, started.pipeline_run_id);
+      setAnalysisRunId(started.analysis_run_id);
+      setPipelineStatus({
+        pipeline_run_id: started.pipeline_run_id,
+        status: started.status,
+        current_step: 'prepare_resume',
+        percent: 0,
+        elapsed_ms: 0,
+        import_batch_id: started.import_batch_id ?? importBatchId,
+        analysis_run_id: started.analysis_run_id,
+        final_fusion_status: 'pending',
+        message: '已启动批次复用；跳过 CSV、RAW、Quality Gate 与 CLEAN，从完整 DWS/ADS 续跑。',
+        steps: [],
+      });
+      setStaleTakeoverConfirmed(false);
+      setStatusMessage(`批次复用任务已启动：${started.pipeline_run_id}`);
+      return started;
+    });
+  }
+
   useEffect(() => {
     void refreshPublishedRuleSets();
   }, [requiresAccessRules, settings.host, settings.port, settings.database, settings.user, settings.secret]);
@@ -583,7 +640,7 @@ export function ImportPanel(props: Props) {
     await runAction('etl_start_clean_job', () => workbenchApi.clean(settings, importBatchId));
     const jobs = await loadMetrics('etl_get_recent_jobs', () => workbenchApi.jobs(settings, importBatchId));
     setEtlJobs(jobs);
-    const nextRegistry = await workbenchApi.batchTableRegistry(settings, importBatchId);
+    const nextRegistry = await workbenchApi.cachedBatchTableRegistry(settings, importBatchId);
     setRegistry(nextRegistry);
     return jobs;
   }
@@ -593,8 +650,10 @@ export function ImportPanel(props: Props) {
       await workbenchApi.aggregate(settings, importBatchId, analysisRunId);
       await workbenchApi.completeAggregates(settings, importBatchId, analysisRunId);
       await workbenchApi.completeDashboards(settings, importBatchId, analysisRunId);
+      await materializeStructuredAds();
       try {
         await workbenchApi.fuse(settings, importBatchId, analysisRunId);
+        await analyticsStructuredApi.materializeLead(settings, importBatchId, analysisRunId);
       } catch (error) {
         return { status: 'basic_dashboards_ready_final_fusion_degraded', final_fusion: error instanceof Error ? error.message : String(error) };
       }
@@ -602,19 +661,27 @@ export function ImportPanel(props: Props) {
     });
     const jobs = await loadMetrics('etl_get_recent_jobs', () => workbenchApi.jobs(settings, importBatchId));
     setEtlJobs(jobs);
-    const nextRegistry = await workbenchApi.batchTableRegistry(settings, importBatchId);
+    const nextRegistry = await workbenchApi.cachedBatchTableRegistry(settings, importBatchId);
     setRegistry(nextRegistry);
     return jobs;
   }
 
   async function refreshModuleReady() {
     const prepared = await workbenchApi.prepareBatchTables(settings, importBatchId);
-    const nextRegistry = await workbenchApi.batchTableRegistry(settings, importBatchId);
+    const nextRegistry = await workbenchApi.cachedBatchTableRegistry(settings, importBatchId);
     const status = await workbenchApi.moduleStatus(settings, importBatchId, analysisRunId);
     setRegistry(nextRegistry);
     setModuleStatus(status);
     setStatusMessage(`模块可用性已刷新：enabled=${status.filter((item) => item.enabled).length}`);
     return { prepared, registry: nextRegistry, status };
+  }
+
+  async function materializeStructuredAds() {
+    await analyticsStructuredApi.materializeAppRank(settings, importBatchId, analysisRunId);
+    await analyticsStructuredApi.materializeHourly(settings, importBatchId, analysisRunId);
+    await analyticsStructuredApi.materializeNetwork(settings, importBatchId, analysisRunId);
+    await analyticsStructuredApi.materializeUser(settings, importBatchId, analysisRunId);
+    await analyticsStructuredApi.materializeLead(settings, importBatchId, analysisRunId);
   }
 
   async function generateAnalyzableBatch() {
@@ -624,15 +691,17 @@ export function ImportPanel(props: Props) {
       await workbenchApi.aggregate(settings, importBatchId, analysisRunId);
       await workbenchApi.completeAggregates(settings, importBatchId, analysisRunId);
       await workbenchApi.completeDashboards(settings, importBatchId, analysisRunId);
+      await materializeStructuredAds();
       let finalFusion = 'success';
       try {
         await workbenchApi.fuse(settings, importBatchId, analysisRunId);
+        await analyticsStructuredApi.materializeLead(settings, importBatchId, analysisRunId);
       } catch (error) {
         finalFusion = `degraded: ${error instanceof Error ? error.message : String(error)}`;
       }
       const quality = await qualityApi.allResults(settings, importBatchId);
       const jobs = await workbenchApi.jobs(settings, importBatchId);
-      const nextRegistry = await workbenchApi.batchTableRegistry(settings, importBatchId);
+      const nextRegistry = await workbenchApi.cachedBatchTableRegistry(settings, importBatchId);
       const status = await workbenchApi.moduleStatus(settings, importBatchId, analysisRunId);
       setQualityRows(quality);
       setEtlJobs(jobs);
@@ -710,7 +779,7 @@ export function ImportPanel(props: Props) {
             <div className="access-rule-confirmation-head">
               <div>
                 <span>本次导入的接入识别规则</span>
-                <strong>{selectedRuleSet ? `v${selectedRuleSet.version} · ${selectedRuleSet.rule_set_name}` : '尚未选择'}</strong>
+                <strong>{selectedRuleSet ? `v${selectedRuleSet.version} · ${selectedRuleSet.rule_set_name} · 未命中→${selectedRuleSet.default_access_type}` : '尚未选择'}</strong>
                 <small>{accessRuleMessage}</small>
               </div>
               <div className="action-row">
@@ -726,7 +795,7 @@ export function ImportPanel(props: Props) {
                   setAccessRuleConfirmed(false);
                 }}>
                   <option value="">请选择，不自动使用最新版本</option>
-                  {publishedRuleSets.map((item) => <option key={item.rule_set_id} value={item.rule_set_id}>v{item.version} · {item.rule_set_name} · {item.rule_count} 条</option>)}
+                  {publishedRuleSets.map((item) => <option key={item.rule_set_id} value={item.rule_set_id}>v{item.version} · {item.rule_set_name} · {item.rule_count} 条 · 未命中→{item.default_access_type}</option>)}
                 </select>
               </label>
               <label className="access-rule-confirmation-check">
@@ -780,6 +849,7 @@ export function ImportPanel(props: Props) {
         onRefresh={refreshHistoryBatches}
         onDeleteBatches={deleteHistoryBatches}
         onSelectBatch={(selected) => {
+          setStaleTakeoverConfirmed(false);
           if (!selected) {
             setImportBatchId('');
             setBatchDisplayName('');
@@ -800,6 +870,43 @@ export function ImportPanel(props: Props) {
           void restorePipelineForBatch(selected);
         }}
       />
+      <section className="panel form-panel">
+        <div className="step-card-head">
+          <div>
+            <h3>复用当前批次继续分析</h3>
+            <p className="muted-row">适用于 RAW、Quality Gate 和 CLEAN 已成功，但聚合或看板产物未完整的批次。不会再读 CSV，也不会重新导入 RAW。</p>
+          </div>
+          <span className="step-badge">Resume</span>
+        </div>
+        <div className="summary-pills">
+          <span className="status-pill">batch {importBatchId || '-'}</span>
+          <span className="status-pill">analysis {props.analysisRunId || '自动复用最新'}</span>
+          <span className="status-pill">skip CSV / RAW / CLEAN</span>
+          <span className="status-pill">8 个聚合子阶段</span>
+        </div>
+        {pipelineRunning && (
+          <label className="access-rule-confirmation-check" style={{ marginTop: 12 }}>
+            <input
+              type="checkbox"
+              checked={staleTakeoverConfirmed}
+              onChange={(event) => setStaleTakeoverConfirmed(event.target.checked)}
+            />
+            <span>原 EXE 已退出，我需要接管遗留的 running 状态。后端将检查 MySQL 活动 SQL，仍在执行时必定拒绝。</span>
+          </label>
+        )}
+        <div className="primary-action-row" style={{ marginTop: 12 }}>
+          <ActionButton
+            actionKey="import_pipeline_resume_batch"
+            actionStates={actionStates}
+            primary
+            label="复用当前批次继续生成完整看板"
+            disabled={!importBatchId || (pipelineRunning && !staleTakeoverConfirmed)}
+            onClick={resumeCurrentBatch}
+            title={pipelineRunning && !staleTakeoverConfirmed ? '当前任务仍在运行；不要并发启动' : undefined}
+          />
+        </div>
+        <p className="muted-row">执行范围：用户日聚合 → 完整 DWS → 基础 ADS → App Rank → 小时趋势 → 网络热点 → 用户画像 → Lead Evidence → Final Lead（可降级）→ Module Ready。</p>
+      </section>
       <PipelineLogMonitor
         logs={pipelineLogs}
         status={pipelineStatus}

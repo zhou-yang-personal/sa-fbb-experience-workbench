@@ -25,6 +25,7 @@ pub fn init_database(settings: &MySqlSettings) -> Result<String, String> {
     let access_rows = sql_runner::execute_script(settings, ACCESS_SCHEMA)?;
     let mut conn = crate::db::conn(settings)?;
     ensure_access_columns_for_table(&mut conn, "meta_import_batch")?;
+    ensure_access_columns_for_table(&mut conn, "meta_access_rule_set")?;
     ensure_access_columns_for_table(&mut conn, "dwd_tcp_detail_clean")?;
     ensure_access_columns_for_table(&mut conn, "dwd_game_detail_clean")?;
     let seed_rows = sql_runner::execute_script(settings, APP_MAPPING_SEED)?;
@@ -37,6 +38,7 @@ pub fn ensure_access_schema(settings: &MySqlSettings) -> Result<(), String> {
     sql_runner::execute_script(settings, ACCESS_SCHEMA)?;
     let mut conn = crate::db::conn(settings)?;
     ensure_access_columns_for_table(&mut conn, "meta_import_batch")?;
+    ensure_access_columns_for_table(&mut conn, "meta_access_rule_set")?;
     ensure_access_columns_for_table(&mut conn, "dwd_tcp_detail_clean")?;
     ensure_access_columns_for_table(&mut conn, "dwd_game_detail_clean")
 }
@@ -61,6 +63,11 @@ pub fn ensure_access_columns_for_table(
             ("access_rule_set_id", "VARCHAR(64) NULL"),
             ("access_rule_set_version", "BIGINT NULL"),
         ]
+    } else if table == "meta_access_rule_set" {
+        &[(
+            "default_access_type",
+            "VARCHAR(32) NOT NULL DEFAULT 'CABLE' AFTER rule_set_name",
+        )]
     } else if table.starts_with("dwd_tcp_detail_clean")
         || table.starts_with("dwd_game_detail_clean")
     {

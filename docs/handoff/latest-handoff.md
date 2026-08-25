@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.45
+1.0.48
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,48 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.48 update
+
+- Access rule sets now include `default_access_type`. The classification order is explicit IP range, recognizable CSV field, then rule-set default. The migrated/default value is Cable, matching the operating assumption that configured ranges identify FTTH and all remaining valid IPs are Cable.
+- Access preview counts fallback-classified IPs in Cable/FTTH totals and reports the fallback population separately. Applying the corrected semantics to an existing batch requires rerunning CLEAN/DWS/ADS, not reimporting the CSV.
+- Dashboard readiness distinguishes missing Game input from zero game use and warns when existing hourly ADS still contains UNKNOWN even though the bound rule set now has a non-UNKNOWN default.
+- Lead stage charts now query a full ADS group summary rather than counting the first 500 evidence rows. User distribution charts query full-population demand, traffic and bottleneck cohorts instead of the first 300 profiles.
+- Cable/FTTH trend charts show an active-user-weighted typical 24-hour profile while retaining dated hourly evidence in the table.
+- Version markers are synchronized to `1.0.48`.
+
+### Current-batch next action
+
+- Reuse `BATCH_7ae0c7d1c0a240ba833e366bf755397d`; do not reimport the 3.46 GiB CSV. With no same-batch SQL active, open the import page's advanced steps, run `RAW → CLEAN`, then `单独生成 DWS/ADS`. Do not use the ordinary resume button for this correction because that path intentionally skips CLEAN.
+- Game metrics remain intentionally unavailable until the separate Game file is imported and included in an analyzable batch.
+
+## 1.0.47 update
+
+- Added an explicit all-dashboard PDF task that serially queries the six structured DWS/ADS datasets and prepares every non-empty chart from the six decision views; evidence tables are excluded.
+- The export locks batch ID, analysis run ID and active filters, reports per-dataset progress, supports stop-after-current-query, and records local PC generation time/timezone plus omitted-chart and query-failure evidence.
+- Added a print-only A4 landscape report preview. Windows/WebView2 opens the familiar print flow so the user can save through Microsoft Print to PDF without a new runtime dependency or lock-file change.
+- Export-loaded datasets are reused by the current dashboard session, while navigation and application startup remain query-free.
+- Version markers are synchronized to `1.0.47`.
+
+### PDF validation boundary
+
+- Type checking, the production frontend build and the targeted Rust version/mapping test pass in the source environment.
+- The Windows WebView2 print dialog, ECharts canvas pagination and a real multi-page PDF must still be visually accepted on the target PC/EXE.
+
+## 1.0.46 update
+
+- Added an explicit existing-batch resume pipeline. It validates successful RAW, latest Quality Gate and CLEAN jobs, skips CSV/RAW work, and reruns the complete DWS/ADS, optional Final Lead and Module Ready tail.
+- A stale takeover requires explicit user confirmation and is rejected while MySQL `PROCESSLIST` still contains SQL for any physical table in that batch. The current 1.0.41 process must not be interrupted while its query remains active.
+- DWS/ADS now emits start/completion/error records for eight named aggregate subtasks and materializes App Rank, hourly trend, network hotspot, user profile and Lead Evidence in both automatic and manual full-result paths.
+- Normal batch-table preparation, Registry refresh and Module Ready checks no longer execute exact `COUNT(*)` scans. Registry uses cached/estimated counts and readiness uses bounded `EXISTS` checks.
+- `meta_analysis_run` stays `running` after base user-daily aggregation and becomes `success` only after complete DWS and structured ADS materialization; failures are recorded as `failed`.
+- Version markers are synchronized to `1.0.46`, including the project checklist baseline.
+
+### Live-batch handoff boundary
+
+- Batch `BATCH_7ae0c7d1c0a240ba833e366bf755397d` was observed running under the old 1.0.41 executable at `dws_ads_aggregate`; no write or interruption was performed from this source workspace.
+- Do not start a resume task until the original EXE has exited and MySQL has no statement referencing the batch physical-table suffix. Then run 1.0.48, select the same batch and use the explicit resume action.
+- Windows/MySQL validation against the 3.46 GiB source batch remains outstanding.
 
 ## 1.0.45 update
 

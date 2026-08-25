@@ -317,7 +317,6 @@ fn final_lead_readiness_text(
     conn: &mut mysql::PooledConn,
     import_batch_id: &str,
     analysis_run_id: Option<&String>,
-    registry_map: &HashMap<String, (String, i64)>,
 ) -> Result<String, String> {
     let base = "ads_final_marketing_lead_user";
     let physical = batch_tables::resolve_table(settings, import_batch_id, base)?;
@@ -326,24 +325,14 @@ fn final_lead_readiness_text(
             "Final Lead not ready / degraded due to missing CRM/coverage/reachability".to_string(),
         );
     }
-    let registry_rows = registry_map.get(base).map(|(_, rows)| *rows).unwrap_or(0);
-    if registry_rows <= 0 {
+    if !batch_tables::table_has_rows(conn, &physical)? {
         return Ok(
             "Final Lead not generated/degraded due to missing CRM/coverage/reachability"
                 .to_string(),
         );
     }
     if let Some(run_id) = analysis_run_id.filter(|value| !value.trim().is_empty()) {
-        let table = batch_tables::sanitize_identifier(&physical)?;
-        let count: Option<i64> = conn
-            .exec_first(
-                format!("SELECT CAST(COUNT(*) AS SIGNED) FROM `{table}` WHERE analysis_run_id=?"),
-                (run_id,),
-            )
-            .map_err(|err| {
-                format!("failed to check Final Lead analysis_run_id for {physical}: {err}")
-            })?;
-        if count.unwrap_or(0) <= 0 {
+        if !batch_tables::table_has_analysis_run(conn, &physical, run_id)? {
             return Ok(format!(
                 "Final Lead not generated for current analysis_run_id={run_id}; SA Lead remains available"
             ));
@@ -466,11 +455,8 @@ pub fn analysis_prepare_batch_tables(
     import_batch_id: String,
 ) -> Result<Vec<MetricCard>, String> {
     let metrics = batch_tables::ensure_batch_tables(&settings, &import_batch_id)?;
-    let mut registry_metrics = batch_tables::refresh_registry_counts(&settings, &import_batch_id)?;
-    let mut combined = Vec::with_capacity(metrics.len() + registry_metrics.len());
-    combined.extend(metrics);
-    combined.append(&mut registry_metrics);
-    Ok(combined)
+    batch_tables::refresh_registry_estimates(&settings, &import_batch_id)?;
+    Ok(metrics)
 }
 
 #[tauri::command]
@@ -479,7 +465,7 @@ pub fn batch_get_table_registry(
     import_batch_id: String,
 ) -> Result<Vec<BatchTableRegistryRow>, String> {
     batch_tables::ensure_batch_tables(&settings, &import_batch_id)?;
-    let _ = batch_tables::refresh_registry_counts(&settings, &import_batch_id);
+    let _ = batch_tables::refresh_registry_estimates(&settings, &import_batch_id);
     let mut conn = db::conn(&settings)?;
     query_batch_table_registry(&mut conn, &import_batch_id)
 }
@@ -526,7 +512,7 @@ pub fn analysis_get_module_status(
     let batch_data_type =
         fetch_batch_data_type(&settings, &import_batch_id)?.unwrap_or_else(|| "mixed".to_string());
     batch_tables::ensure_batch_tables(&settings, &import_batch_id)?;
-    let _ = batch_tables::refresh_registry_counts(&settings, &import_batch_id);
+    let _ = batch_tables::refresh_registry_estimates(&settings, &import_batch_id);
     let mut registry_conn = db::conn(&settings)?;
     let registry_rows = query_batch_table_registry(&mut registry_conn, &import_batch_id)?;
     drop(registry_conn);
@@ -556,10 +542,9 @@ pub fn analysis_get_module_status(
         let mut empty_run_tables: Vec<String> = Vec::new();
         for (base, physical) in spec.required_tables.iter().zip(table_names.iter()) {
             let exists = batch_tables::table_exists(&mut conn, physical)?;
-            let rows = registry_map.get(*base).map(|(_, rows)| *rows).unwrap_or(0);
             if !exists {
                 missing_tables.push(format!("{base}->{physical}"));
-            } else if rows <= 0 {
+            } else if !batch_tables::table_has_rows(&mut conn, physical)? {
                 empty_tables.push(format!("{base}->{physical}"));
             }
         }
@@ -574,10 +559,7 @@ pub fn analysis_get_module_status(
             {
                 let physical = batch_tables::resolve_table(&settings, &import_batch_id, base)?;
                 if batch_tables::table_exists(&mut conn, &physical)? {
-                    let table = batch_tables::sanitize_identifier(&physical)?;
-                    let count: Option<i64> = conn.exec_first(format!("SELECT CAST(COUNT(*) AS SIGNED) FROM `{table}` WHERE analysis_run_id=?"), (run_id,))
-                        .map_err(|err| format!("failed to check analysis_run_id for {physical}: {err}"))?;
-                    if count.unwrap_or(0) <= 0 {
+                    if !batch_tables::table_has_analysis_run(&mut conn, &physical, run_id)? {
                         empty_run_tables.push(format!("{base}->{physical}"));
                     }
                 }
@@ -630,7 +612,6 @@ pub fn analysis_get_module_status(
                 &mut conn,
                 &import_batch_id,
                 analysis_run_id.as_ref(),
-                &registry_map,
             )?)
         } else {
             None

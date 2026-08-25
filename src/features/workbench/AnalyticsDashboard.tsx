@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ECharts } from 'echarts';
-import type { BatchListItem, MetricCard } from '../../shared/types';
+import type { BatchListItem, MetricCard, MySqlSettings } from '../../shared/types';
 import { AnalyticsEvidenceTable } from './AnalyticsEvidenceTable';
 import { analyticsStructuredApi } from './analyticsStructuredApi';
 import { parseMetricHint } from './analyticsStructuredCharts';
@@ -10,12 +10,15 @@ type ChartKind = 'bar' | 'line' | 'donut';
 export type AnalyticsTab = 'overview' | 'apps' | 'quality' | 'cable' | 'users' | 'leads';
 
 type StructuredDataset = {
+  coverage: MetricCard[];
   kpis: MetricCard[];
   appRank: MetricCard[];
   hourlyTrend: MetricCard[];
   networkHotspots: MetricCard[];
   userProfiles: MetricCard[];
+  userSummary: MetricCard[];
   leadEvidence: MetricCard[];
+  leadSummary: MetricCard[];
 };
 
 type DatasetKey = keyof StructuredDataset;
@@ -36,31 +39,67 @@ type ChartPoint = {
   source?: MetricCard;
 };
 
+type ExportChartSpec = {
+  id: string;
+  title: string;
+  subtitle: string;
+  kind: ChartKind;
+  points: ChartPoint[];
+};
+
+type ExportSection = {
+  id: AnalyticsTab;
+  title: string;
+  description: string;
+  charts: ExportChartSpec[];
+};
+
+type PdfReport = {
+  batchId: string;
+  batchName: string;
+  analysisRunId: string;
+  generatedAt: string;
+  timeZone: string;
+  filterSummary: string;
+  sections: ExportSection[];
+  omittedCharts: string[];
+  failures: string[];
+};
+
 const emptyDataset: StructuredDataset = {
+  coverage: [],
   kpis: [],
   appRank: [],
   hourlyTrend: [],
   networkHotspots: [],
   userProfiles: [],
+  userSummary: [],
   leadEvidence: [],
+  leadSummary: [],
 };
 
 const viewDatasets: Record<AnalyticsTab, DatasetKey[]> = {
-  overview: ['kpis', 'appRank', 'networkHotspots', 'leadEvidence', 'hourlyTrend'],
-  apps: ['appRank'],
-  quality: ['networkHotspots'],
-  cable: ['hourlyTrend'],
-  users: ['userProfiles'],
-  leads: ['leadEvidence'],
+  overview: ['coverage', 'kpis', 'appRank', 'networkHotspots', 'leadSummary', 'hourlyTrend'],
+  apps: ['coverage', 'appRank'],
+  quality: ['coverage', 'networkHotspots'],
+  cable: ['coverage', 'hourlyTrend'],
+  users: ['coverage', 'userSummary', 'userProfiles'],
+  leads: ['coverage', 'leadSummary', 'leadEvidence'],
 };
 
+const allDatasetKeys: DatasetKey[] = ['coverage', 'kpis', 'appRank', 'hourlyTrend', 'networkHotspots', 'userSummary', 'userProfiles', 'leadSummary', 'leadEvidence'];
+const allAnalyticsTabs: AnalyticsTab[] = ['overview', 'apps', 'quality', 'cable', 'users', 'leads'];
+
 const datasetLabels: Record<DatasetKey, string> = {
+  coverage: '数据覆盖状态',
   kpis: '总览指标',
   appRank: '应用体验排行',
   hourlyTrend: '小时趋势',
   networkHotspots: '网络热点',
   userProfiles: '用户画像',
+  userSummary: '用户全量分群',
   leadEvidence: '迁转机会证据',
+  leadSummary: '机会全量分层',
 };
 
 function hasMeaningfulEvidence(key: DatasetKey, rows: MetricCard[]) {
@@ -130,6 +169,29 @@ function hourlyPoints(rows: MetricCard[], key: string): ChartPoint[] {
   }).filter((row) => row.label && Number.isFinite(row.value));
 }
 
+function typicalHourlyPoints(rows: MetricCard[], key: string): ChartPoint[] {
+  const grouped = new Map<string, { weighted: number; users: number; source: MetricCard }>();
+  rows.forEach((row) => {
+    const detail = parseMetricHint(row.hint);
+    const hour = String(detail.hour ?? '').padStart(2, '0');
+    const series = detail.user_type || 'UNKNOWN';
+    const users = Math.max(0, fromHint(row, 'users'));
+    const value = fromHint(row, key);
+    if (!hour || !Number.isFinite(value) || users <= 0) return;
+    const mapKey = `${hour}|${series}`;
+    const current = grouped.get(mapKey);
+    grouped.set(mapKey, {
+      weighted: (current?.weighted ?? 0) + value * users,
+      users: (current?.users ?? 0) + users,
+      source: current?.source ?? row,
+    });
+  });
+  return [...grouped.entries()].map(([mapKey, item]) => {
+    const [hour, series] = mapKey.split('|');
+    return { label: `${hour}:00`, series, value: item.weighted / item.users, source: item.source };
+  }).sort((left, right) => left.label.localeCompare(right.label));
+}
+
 function userPoints(rows: MetricCard[], key: string): ChartPoint[] {
   return rows.map((row) => ({
     label: textFromHint(row, 'user_key', row.label),
@@ -144,9 +206,19 @@ function leadStagePoints(rows: MetricCard[]): ChartPoint[] {
   rows.forEach((row) => {
     const stage = textFromHint(row, 'lead_type', 'UNKNOWN');
     const current = grouped.get(stage);
-    grouped.set(stage, { count: (current?.count ?? 0) + 1, source: current?.source ?? row });
+    const users = parseMetricHint(row.hint).users === undefined ? 1 : fromHint(row, 'users');
+    grouped.set(stage, { count: (current?.count ?? 0) + users, source: current?.source ?? row });
   });
   return [...grouped.entries()].map(([label, item]) => ({ label, value: item.count, source: item.source }));
+}
+
+function cohortPoints(rows: MetricCard[], summaryType: string): ChartPoint[] {
+  return rows.filter((row) => textFromHint(row, 'summary_type') === summaryType).map((row) => ({
+    label: `${textFromHint(row, 'segment', row.label)} · ${textFromHint(row, 'user_type', 'UNKNOWN')}`,
+    value: fromHint(row, 'users'),
+    series: textFromHint(row, 'user_type', 'UNKNOWN'),
+    source: row,
+  })).filter((row) => row.value > 0);
 }
 
 function filterRows(rows: MetricCard[], access: string, keyword: string, minUsers: number) {
@@ -161,6 +233,86 @@ function filterRows(rows: MetricCard[], access: string, keyword: string, minUser
     const populationMatches = minUsers <= 0 || population === undefined || users >= minUsers;
     return accessMatches && keywordMatches && populationMatches;
   });
+}
+
+function filteredDataset(data: StructuredDataset, access: string, keyword: string, minUsers: number) {
+  return {
+    appRank: filterRows(data.appRank, access, keyword, minUsers),
+    hourlyTrend: filterRows(data.hourlyTrend, access, keyword, minUsers),
+    networkHotspots: filterRows(data.networkHotspots, access, keyword, minUsers),
+    userSummary: filterRows(data.userSummary, access, keyword, minUsers),
+    userProfiles: filterRows(data.userProfiles, access, keyword, minUsers),
+    leadSummary: filterRows(data.leadSummary, access, keyword, minUsers),
+    leadEvidence: filterRows(data.leadEvidence, access, keyword, minUsers),
+  };
+}
+
+function exportSections(filtered: ReturnType<typeof filteredDataset>): ExportSection[] {
+  const leadStages = leadStagePoints(filtered.leadSummary);
+  return [
+    {
+      id: 'overview',
+      title: pageCopy.overview.title,
+      description: pageCopy.overview.description,
+      charts: [
+        { id: 'overview-app-users', title: '问题 App 影响用户', subtitle: '唯一受影响用户；按真实 App 排序', kind: 'bar', points: appPoints(filtered.appRank, 'poor_experience_users') },
+        { id: 'overview-hotspots', title: '网络热点差体验率', subtitle: '差体验唯一用户 / 节点观测唯一用户', kind: 'bar', points: hotspotPoints(filtered.networkHotspots, 'severity') },
+        { id: 'overview-leads', title: '机会与排除分层', subtitle: '按用户计数；A0/A2 不得进入直接营销', kind: 'bar', points: leadStages },
+        { id: 'overview-hourly-rate', title: '典型日接入类型速率', subtitle: '按活跃用户加权的 7 日小时均值，Mbps', kind: 'line', points: typicalHourlyPoints(filtered.hourlyTrend, 'effective_mbps') },
+      ],
+    },
+    {
+      id: 'apps',
+      title: pageCopy.apps.title,
+      description: pageCopy.apps.description,
+      charts: [
+        { id: 'apps-users', title: 'App 受影响用户', subtitle: '唯一差体验用户数', kind: 'bar', points: appPoints(filtered.appRank, 'poor_experience_users') },
+        { id: 'apps-ratio', title: 'App 差体验用户占比', subtitle: '差体验唯一用户 / App 观测唯一用户，单位 %', kind: 'bar', points: appPoints(filtered.appRank, 'poor_experience_user_pct') },
+        { id: 'apps-traffic', title: 'App 业务流量', subtitle: '视频下载 GB；游戏类需结合时长证据', kind: 'bar', points: appPoints(filtered.appRank, 'traffic_gb') },
+      ],
+    },
+    {
+      id: 'quality',
+      title: pageCopy.quality.title,
+      description: pageCopy.quality.description,
+      charts: [
+        { id: 'quality-users', title: '拓扑节点受影响用户', subtitle: 'BRAS / OLT / PON 粒度的差体验唯一用户', kind: 'bar', points: hotspotPoints(filtered.networkHotspots, 'users') },
+        { id: 'quality-ratio', title: '拓扑节点差体验率', subtitle: '差体验唯一用户 / 节点观测唯一用户，单位 %', kind: 'bar', points: hotspotPoints(filtered.networkHotspots, 'severity') },
+        { id: 'quality-network-rtt', title: '网络侧 RTT', subtitle: '节点平均 network-side RTT，单位 ms', kind: 'bar', points: hotspotPoints(filtered.networkHotspots, 'network_rtt_ms') },
+        { id: 'quality-home-rtt', title: '家庭侧 / Wi-Fi RTT', subtitle: '节点平均 subscriber-side RTT，单位 ms', kind: 'bar', points: hotspotPoints(filtered.networkHotspots, 'subscriber_rtt_ms') },
+      ],
+    },
+    {
+      id: 'cable',
+      title: pageCopy.cable.title,
+      description: pageCopy.cable.description,
+      charts: [
+        { id: 'cable-rate', title: 'Cable / FTTH 典型日有效速率', subtitle: '按活跃用户加权的 7 日小时均值，Mbps', kind: 'line', points: typicalHourlyPoints(filtered.hourlyTrend, 'effective_mbps') },
+        { id: 'cable-rtt', title: 'Cable / FTTH 典型日 RTT', subtitle: '按活跃用户加权的 subscriber-side RTT，ms', kind: 'line', points: typicalHourlyPoints(filtered.hourlyTrend, 'subscriber_rtt_ms') },
+        { id: 'cable-loss', title: 'Cable / FTTH 典型日用户侧丢包', subtitle: '按活跃用户加权的 user-side downstream loss，%', kind: 'line', points: typicalHourlyPoints(filtered.hourlyTrend, 'user_loss_pct') },
+      ],
+    },
+    {
+      id: 'users',
+      title: pageCopy.users.title,
+      description: pageCopy.users.description,
+      charts: [
+        { id: 'users-demand', title: '用户需求分层', subtitle: '全量用户分群；评分不等同于可营销资格', kind: 'bar', points: cohortPoints(filtered.userSummary, 'demand_band') },
+        { id: 'users-traffic', title: '用户流量分层', subtitle: '全量用户按分析周期 TCP 流量分群', kind: 'bar', points: cohortPoints(filtered.userSummary, 'traffic_band') },
+        { id: 'users-bottleneck', title: '用户问题侧分布', subtitle: '全量用户按主要瓶颈侧分群', kind: 'bar', points: cohortPoints(filtered.userSummary, 'bottleneck_side') },
+      ],
+    },
+    {
+      id: 'leads',
+      title: pageCopy.leads.title,
+      description: pageCopy.leads.description,
+      charts: [
+        { id: 'leads-stage', title: '机会与排除分层', subtitle: '按唯一用户计数；A0 身份不足、A2 先修障、A1 待资格校验', kind: 'bar', points: leadStages },
+        { id: 'leads-share', title: '机会分层构成', subtitle: '当前分析运行中的用户分层占比', kind: 'donut', points: leadStages },
+        { id: 'leads-demand', title: '候选用户需求评分', subtitle: '评分用于排序；最终行动仍由问题侧与资格字段决定', kind: 'bar', points: userPoints(filtered.leadEvidence, 'demand_score') },
+      ],
+    },
+  ];
 }
 
 function chartOption(kind: ChartKind, title: string, subtitle: string, incoming: ChartPoint[]) {
@@ -251,10 +403,54 @@ function EvidenceDrawer({ row, onClose }: { row: MetricCard; onClose: () => void
   return <div className="analytics-evidence-drawer-backdrop" role="presentation" onClick={onClose}><aside className="analytics-evidence-drawer" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Evidence</p><h3>{row.label}</h3></div><button type="button" onClick={onClose}>关闭</button></header><div className="analytics-evidence-kv">{Object.entries(detail).map(([key, value]) => <div key={key}><span>{key}</span><strong>{value}</strong></div>)}</div></aside></div>;
 }
 
+function PdfPreview({ report, onClose }: { report: PdfReport; onClose: () => void }) {
+  const chartCount = report.sections.reduce((sum, section) => sum + section.charts.length, 0);
+  return <div className="analytics-pdf-preview-backdrop" role="presentation" onClick={onClose}>
+    <div className="analytics-pdf-preview-dialog" role="dialog" aria-modal="true" aria-label="全部图表 PDF 预览" onClick={(event) => event.stopPropagation()}>
+      <header className="analytics-pdf-preview-toolbar">
+        <div><strong>全部图表报告已就绪</strong><span>{chartCount} 张图 · 不包含明细表格</span></div>
+        <div><button type="button" onClick={onClose}>关闭预览</button><button type="button" className="primary-button" onClick={() => window.print()}>打开打印 / 保存 PDF</button></div>
+      </header>
+      <main className="analytics-print-report">
+        <section className="analytics-report-cover">
+          <p className="eyebrow">SA FBB Experience Workbench</p>
+          <h1>应用体验分析图表报告</h1>
+          <p>按当前批次与筛选条件生成，默认包含六类决策看板中的全部非空图表，不包含明细表格。</p>
+          <dl>
+            <div><dt>批次</dt><dd>{report.batchName}</dd></div>
+            <div><dt>import_batch_id</dt><dd>{report.batchId}</dd></div>
+            <div><dt>analysis_run_id</dt><dd>{report.analysisRunId}</dd></div>
+            <div><dt>筛选条件</dt><dd>{report.filterSummary}</dd></div>
+            <div><dt>本地生成时间</dt><dd>{report.generatedAt}</dd></div>
+            <div><dt>本地时区</dt><dd>{report.timeZone}</dd></div>
+            <div><dt>数据来源</dt><dd>DWS / ADS 聚合结果</dd></div>
+            <div><dt>报告内容</dt><dd>{chartCount} 张图表 · 0 张明细表</dd></div>
+          </dl>
+          {(report.omittedCharts.length > 0 || report.failures.length > 0) && <aside>
+            {report.omittedCharts.length > 0 && <p><strong>无数据已跳过：</strong>{report.omittedCharts.join('、')}</p>}
+            {report.failures.length > 0 && <p><strong>查询失败未纳入：</strong>{report.failures.join('；')}</p>}
+          </aside>}
+        </section>
+        {report.sections.map((section) => <section className="analytics-report-section" key={section.id}>
+          <header><p className="eyebrow">{pageCopy[section.id].eyebrow}</p><h2>{section.title}</h2><p>{section.description}</p></header>
+          {section.charts.length > 0
+            ? <div className="analytics-report-chart-grid">{section.charts.map((chart) => <AnalyticsChart key={chart.id} title={chart.title} subtitle={chart.subtitle} kind={chart.kind} points={chart.points} height={330} />)}</div>
+            : <div className="analytics-report-empty">当前筛选条件下，本看板没有可导出的非空图表。</div>}
+        </section>)}
+      </main>
+    </div>
+  </div>;
+}
+
 export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }: { c: WorkbenchController; activeView: AnalyticsTab; batchContext?: BatchListItem; onOpenImport: () => void }) {
   const [data, setData] = useState<StructuredDataset>(emptyDataset);
   const [loadedViews, setLoadedViews] = useState<Partial<Record<AnalyticsTab, string>>>({});
   const [task, setTask] = useState<DashboardTask>({ status: 'idle', completed: 0, total: 0, message: '等待用户启动加载。' });
+  const [exportTask, setExportTask] = useState<DashboardTask>({ status: 'idle', completed: 0, total: allDatasetKeys.length, message: '需要时可导出六类看板中的全部图表。' });
+  const [exportFailures, setExportFailures] = useState<string[]>([]);
+  const [exportFailedDatasetKeys, setExportFailedDatasetKeys] = useState<DatasetKey[]>([]);
+  const [pdfReport, setPdfReport] = useState<PdfReport | null>(null);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [failures, setFailures] = useState<string[]>([]);
   const [failedDatasetKeys, setFailedDatasetKeys] = useState<DatasetKey[]>([]);
   const [emptyDatasetKeys, setEmptyDatasetKeys] = useState<DatasetKey[]>([]);
@@ -269,19 +465,26 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
   const viewLoaded = loadedViews[activeView] === contextKey;
   const stopRequested = useRef(false);
   const taskGeneration = useRef(0);
+  const exportStopRequested = useRef(false);
+  const exportGeneration = useRef(0);
 
-  function loadDataset(key: DatasetKey) {
-    if (key === 'kpis') return analyticsStructuredApi.kpis(c.effectiveSettings, c.importBatchId, c.analysisRunId);
-    if (key === 'appRank') return analyticsStructuredApi.appRank(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 200 });
-    if (key === 'hourlyTrend') return analyticsStructuredApi.hourlyTrend(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 500, sortBy: 'hour' });
-    if (key === 'networkHotspots') return analyticsStructuredApi.networkHotspots(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 200, sortBy: 'users' });
-    if (key === 'userProfiles') return analyticsStructuredApi.userProfiles(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 300, sortBy: 'demand' });
-    return analyticsStructuredApi.leadEvidence(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 500, sortBy: 'demand' });
+  function loadDataset(key: DatasetKey, importBatchId = c.importBatchId, analysisRunId = c.analysisRunId, settings: MySqlSettings = c.effectiveSettings) {
+    if (key === 'coverage') return analyticsStructuredApi.coverage(settings, importBatchId, analysisRunId);
+    if (key === 'kpis') return analyticsStructuredApi.kpis(settings, importBatchId, analysisRunId);
+    if (key === 'appRank') return analyticsStructuredApi.appRank(settings, importBatchId, analysisRunId, { pageSize: 200 });
+    if (key === 'hourlyTrend') return analyticsStructuredApi.hourlyTrend(settings, importBatchId, analysisRunId, { pageSize: 500, sortBy: 'hour' });
+    if (key === 'networkHotspots') return analyticsStructuredApi.networkHotspots(settings, importBatchId, analysisRunId, { pageSize: 200, sortBy: 'users' });
+    if (key === 'userSummary') return analyticsStructuredApi.userSummary(settings, importBatchId, analysisRunId);
+    if (key === 'userProfiles') return analyticsStructuredApi.userProfiles(settings, importBatchId, analysisRunId, { pageSize: 300, sortBy: 'demand' });
+    if (key === 'leadSummary') return analyticsStructuredApi.leadSummary(settings, importBatchId, analysisRunId);
+    return analyticsStructuredApi.leadEvidence(settings, importBatchId, analysisRunId, { pageSize: 500, sortBy: 'demand' });
   }
 
   useEffect(() => {
     taskGeneration.current += 1;
     stopRequested.current = true;
+    exportGeneration.current += 1;
+    exportStopRequested.current = true;
     setData(emptyDataset);
     setFailures([]);
     setFailedDatasetKeys([]);
@@ -289,6 +492,11 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
     setDatasetCounts({});
     setLoadedViews({});
     setTask({ status: 'idle', completed: 0, total: 0, message: disabled ? '请先选择批次并填写 analysis_run_id。' : '上下文已就绪，等待用户启动加载。' });
+    setExportTask({ status: 'idle', completed: 0, total: allDatasetKeys.length, message: disabled ? '请先选择批次并填写 analysis_run_id。' : '需要时可导出六类看板中的全部图表。' });
+    setExportFailures([]);
+    setExportFailedDatasetKeys([]);
+    setPdfReport(null);
+    setPdfPreviewOpen(false);
   }, [c.importBatchId, c.analysisRunId]);
 
   useEffect(() => {
@@ -370,18 +578,127 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
     setTask((current) => ({ ...current, status: 'stopping', message: '停止请求已接收；当前查询完成后不再加载后续数据集。' }));
   }
 
-  const filtered = useMemo(() => ({
-    appRank: filterRows(data.appRank, access, keyword, minUsers),
-    hourlyTrend: filterRows(data.hourlyTrend, access, keyword, minUsers),
-    networkHotspots: filterRows(data.networkHotspots, access, keyword, minUsers),
-    userProfiles: filterRows(data.userProfiles, access, keyword, minUsers),
-    leadEvidence: filterRows(data.leadEvidence, access, keyword, minUsers),
-  }), [access, data, keyword, minUsers]);
+  async function preparePdfReport() {
+    if (disabled || actionBusy || exportTask.status === 'running' || exportTask.status === 'stopping') return;
+    const requestedBatchId = c.importBatchId.trim();
+    const requestedAnalysisRunId = c.analysisRunId.trim();
+    const requestedContext = `${requestedBatchId}::${requestedAnalysisRunId}`;
+    const requestedSettings = c.effectiveSettings;
+    const requestedBatchName = c.batchDisplayName || batchContext?.batch_display_name || batchContext?.source_file_name || requestedBatchId;
+    const requestedFilters = { access, keyword, minUsers };
+    const generation = exportGeneration.current + 1;
+    exportGeneration.current = generation;
+    exportStopRequested.current = false;
+    setPdfReport(null);
+    setPdfPreviewOpen(false);
+    setExportFailures([]);
+    setExportFailedDatasetKeys([]);
+    setExportTask({ status: 'running', completed: 0, total: allDatasetKeys.length, current: allDatasetKeys[0], message: `正在准备：${datasetLabels[allDatasetKeys[0]]}` });
 
-  const leadStages = useMemo(() => leadStagePoints(filtered.leadEvidence), [filtered.leadEvidence]);
+    const result = await c.runAction('analytics_export_all_charts_pdf', async () => {
+      const nextData: StructuredDataset = { ...emptyDataset };
+      const nextFailures: string[] = [];
+      const failedKeys: DatasetKey[] = [];
+      let completed = 0;
+      for (const key of allDatasetKeys) {
+        if (exportStopRequested.current || generation !== exportGeneration.current) break;
+        setExportTask({ status: 'running', completed, total: allDatasetKeys.length, current: key, message: `正在查询并准备：${datasetLabels[key]}` });
+        try {
+          nextData[key] = await loadDataset(key, requestedBatchId, requestedAnalysisRunId, requestedSettings);
+        } catch (error) {
+          const failure = `${datasetLabels[key]}: ${error instanceof Error ? error.message : String(error)}`;
+          nextFailures.push(failure);
+          failedKeys.push(key);
+          setExportFailures((current) => [...current, failure]);
+          setExportFailedDatasetKeys((current) => [...current, key]);
+        }
+        completed += 1;
+        setExportTask({
+          status: exportStopRequested.current ? 'stopping' : 'running',
+          completed,
+          total: allDatasetKeys.length,
+          message: exportStopRequested.current ? '当前查询结束后将停止准备报告。' : `已完成 ${completed}/${allDatasetKeys.length} 个数据集。`,
+        });
+      }
+      return { data: nextData, completed, failures: nextFailures, failedKeys, stopped: exportStopRequested.current };
+    }) as { data: StructuredDataset; completed: number; failures: string[]; failedKeys: DatasetKey[]; stopped: boolean } | null;
+
+    if (generation !== exportGeneration.current) return;
+    if (!result) {
+      setExportTask({ status: 'failure', completed: 0, total: allDatasetKeys.length, message: '报告准备失败，请查看执行日志后重试。' });
+      return;
+    }
+    if (result.stopped) {
+      setExportTask({ status: 'stopped', completed: result.completed, total: allDatasetKeys.length, message: `已停止报告准备；完成 ${result.completed}/${allDatasetKeys.length} 个数据集。` });
+      return;
+    }
+
+    setData(result.data);
+    setDatasetCounts(allDatasetKeys.reduce<Partial<Record<DatasetKey, number>>>((counts, key) => ({ ...counts, [key]: result.data[key].length }), {}));
+    c.setOverview({ metrics: result.data.kpis });
+    const failedSet = new Set(result.failedKeys);
+    setLoadedViews((current) => {
+      const next = { ...current };
+      allAnalyticsTabs.forEach((tab) => {
+        const keys = viewDatasets[tab];
+        if (keys.every((key) => !failedSet.has(key)) && keys.some((key) => hasMeaningfulEvidence(key, result.data[key]))) next[tab] = requestedContext;
+      });
+      return next;
+    });
+
+    const preparedSections = exportSections(filteredDataset(result.data, requestedFilters.access, requestedFilters.keyword, requestedFilters.minUsers));
+    const omittedCharts = preparedSections.flatMap((section) => section.charts.filter((chart) => chart.points.length === 0).map((chart) => `${section.title} / ${chart.title}`));
+    const sections = preparedSections.map((section) => ({ ...section, charts: section.charts.filter((chart) => chart.points.length > 0) }));
+    const chartCount = sections.reduce((sum, section) => sum + section.charts.length, 0);
+    if (chartCount === 0) {
+      setExportTask({ status: 'empty', completed: result.completed, total: allDatasetKeys.length, message: '查询完成，但当前筛选条件下没有可导出的非空图表。' });
+      return;
+    }
+    const now = new Date();
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '本地时区';
+    const filterSummary = `接入类型=${requestedFilters.access}；关键词=${requestedFilters.keyword.trim() || '无'}；最小用户数=${requestedFilters.minUsers}`;
+    setPdfReport({
+      batchId: requestedBatchId,
+      batchName: requestedBatchName,
+      analysisRunId: requestedAnalysisRunId,
+      generatedAt: now.toLocaleString(),
+      timeZone,
+      filterSummary,
+      sections,
+      omittedCharts,
+      failures: result.failures,
+    });
+    setPdfPreviewOpen(true);
+    const partial = result.failures.length > 0 || omittedCharts.length > 0;
+    setExportTask({
+      status: partial ? 'partial' : 'success',
+      completed: result.completed,
+      total: allDatasetKeys.length,
+      message: `报告已准备 ${chartCount} 张图表${omittedCharts.length ? `，跳过 ${omittedCharts.length} 张空图` : ''}${result.failures.length ? `，${result.failures.length} 个查询失败` : ''}。`,
+    });
+  }
+
+  function stopPdfPreparation() {
+    exportStopRequested.current = true;
+    setExportTask((current) => ({ ...current, status: 'stopping', message: '停止请求已接收；当前查询结束后不再准备后续数据集。' }));
+  }
+
+  const filtered = useMemo(() => filteredDataset(data, access, keyword, minUsers), [access, data, keyword, minUsers]);
+
+  const leadStages = useMemo(() => leadStagePoints(filtered.leadSummary), [filtered.leadSummary]);
   const knownHourlyUsers = filtered.hourlyTrend.reduce((sum, row) => sum + (textFromHint(row, 'user_type') === 'UNKNOWN' ? 0 : fromHint(row, 'users')), 0);
   const allHourlyUsers = filtered.hourlyTrend.reduce((sum, row) => sum + fromHint(row, 'users'), 0);
   const coverage = allHourlyUsers > 0 ? knownHourlyUsers / allHourlyUsers * 100 : 0;
+  const gameDataset = data.coverage.find((row) => row.label === 'Game Dataset');
+  const gameImported = gameDataset?.value === 'AVAILABLE';
+  const accessClassification = data.coverage.find((row) => row.label === 'Access Classification');
+  const accessDefault = accessClassification?.value || 'UNKNOWN';
+  const unknownHourlyRows = data.hourlyTrend.filter((row) => textFromHint(row, 'user_type') === 'UNKNOWN').length;
+  const classificationStale = accessDefault !== 'UNKNOWN' && unknownHourlyRows > 0;
+  const topologyKnownRows = data.networkHotspots.filter((row) => {
+    const detail = parseMetricHint(row.hint);
+    return detail.bras !== 'UNKNOWN' || detail.olt !== 'UNKNOWN' || detail.pon !== 'UNKNOWN';
+  }).length;
   const a1 = leadStages.find((stage) => stage.label.startsWith('A1_'))?.value ?? 0;
   const a2 = leadStages.find((stage) => stage.label.startsWith('A2_'))?.value ?? 0;
   const issueApps = new Set(filtered.appRank.filter((row) => fromHint(row, 'poor_experience_user_pct') > 0).map((row) => textFromHint(row, 'app_name', row.label))).size;
@@ -403,14 +720,19 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
 
   const running = task.status === 'running' || task.status === 'stopping';
   const progress = task.total > 0 ? Math.round(task.completed / task.total * 100) : 0;
+  const exportRunning = exportTask.status === 'running' || exportTask.status === 'stopping';
+  const exportProgress = exportTask.total > 0 ? Math.round(exportTask.completed / exportTask.total * 100) : 0;
   const loadButtonLabel = task.status === 'partial' || task.status === 'failure' || task.status === 'stopped'
     ? '重试当前看板'
     : viewLoaded ? '重新加载当前看板' : '加载当前看板';
 
   return <section className="analytics-dashboard analytics-dashboard-v3">
-    <header className="workspace-page-header analytics-page-header"><div><p className="eyebrow">{copy.eyebrow}</p><h2>{copy.title}</h2><p>{copy.description}</p></div>{running
-      ? <button type="button" className="danger-button" onClick={stopLoading} disabled={task.status === 'stopping'}>{task.status === 'stopping' ? '正在停止…' : '停止后续加载'}</button>
-      : <button type="button" className="primary-button" disabled={disabled || actionBusy} onClick={loadCurrentView}>{loadButtonLabel}</button>}</header>
+    <header className="workspace-page-header analytics-page-header"><div><p className="eyebrow">{copy.eyebrow}</p><h2>{copy.title}</h2><p>{copy.description}</p></div><div className="analytics-header-actions">
+      <button type="button" disabled={disabled || actionBusy || running || exportRunning} onClick={preparePdfReport}>{exportRunning ? `准备 PDF ${exportProgress}%` : '导出全部图表 PDF'}</button>
+      {running
+        ? <button type="button" className="danger-button" onClick={stopLoading} disabled={task.status === 'stopping'}>{task.status === 'stopping' ? '正在停止…' : '停止后续加载'}</button>
+        : <button type="button" className="primary-button" disabled={disabled || actionBusy || exportRunning} onClick={loadCurrentView}>{loadButtonLabel}</button>}
+    </div></header>
     <section className={`analytics-task-card task-${task.status}`} aria-live="polite">
       <div className="analytics-task-head"><div><span>按需分析任务</span><strong>{task.message}</strong></div><span className="analytics-task-status">{task.status.toUpperCase()}</span></div>
       <div className="analytics-task-progress"><span style={{ width: `${progress}%` }} /></div>
@@ -422,6 +744,21 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
         return <span key={key} className={className}>{failed ? '!' : empty ? '○' : index < task.completed ? '✓' : index + 1} {datasetLabels[key]}{count !== undefined ? ` · ${count} rows${empty && count > 0 ? ' / all 0' : ''}` : ''}</span>;
       })}</div>
       <small>切换页面不会自动发起查询；停止操作会等待当前数据库请求结束，再跳过剩余步骤。</small>
+    </section>
+    <section className={`analytics-task-card analytics-export-task task-${exportTask.status}`} aria-live="polite">
+      <div className="analytics-task-head"><div><span>全部图表 PDF</span><strong>{exportTask.message}</strong></div><span className="analytics-task-status">{exportTask.status.toUpperCase()}</span></div>
+      <div className="analytics-task-progress"><span style={{ width: `${exportProgress}%` }} /></div>
+      <div className="analytics-task-plan">{allDatasetKeys.map((key, index) => {
+        const failed = exportFailedDatasetKeys.includes(key);
+        const className = failed ? 'is-failed' : index < exportTask.completed ? 'is-complete' : exportTask.current === key && exportRunning ? 'is-running' : '';
+        return <span key={key} className={className}>{failed ? '!' : index < exportTask.completed ? '✓' : index + 1} {datasetLabels[key]}</span>;
+      })}</div>
+      {exportFailures.length > 0 && <div className="analytics-export-failures">{exportFailures.map((failure, index) => <span key={`${index}-${failure}`}>{failure}</span>)}</div>}
+      <div className="analytics-export-task-actions">
+        <small>这是独立的显式任务：锁定当前批次、analysis_run_id 与筛选条件，顺序查询聚合数据；不会导出明细表。</small>
+        {exportRunning && <button type="button" className="danger-button" onClick={stopPdfPreparation} disabled={exportTask.status === 'stopping'}>{exportTask.status === 'stopping' ? '正在停止…' : '停止后续准备'}</button>}
+        {!exportRunning && pdfReport && <button type="button" onClick={() => setPdfPreviewOpen(true)}>再次打开报告预览</button>}
+      </div>
     </section>
     {task.status === 'empty' && <section className="analytics-empty-result-banner">
       <div>
@@ -440,42 +777,46 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
       <div className="filter-context"><span>Batch</span><strong>{c.batchDisplayName || c.importBatchId || '-'}</strong><small>{task.message}</small></div>
     </section>
     {failures.length > 0 && <section className="analytics-error-banner"><strong>部分数据集加载失败</strong>{failures.map((failure) => <span key={failure}>{failure}</span>)}</section>}
+    {data.coverage.length > 0 && <section className="analytics-readiness-grid" aria-label="数据可用性说明">
+      <article className={classificationStale ? 'is-warning' : 'is-ready'}><span>接入分类口径</span><strong>未命中 IP → {accessDefault}</strong><small>{classificationStale ? `现有聚合仍包含 ${unknownHourlyRows} 条 UNKNOWN 小时记录；回到导入页高级步骤，先运行 RAW → CLEAN，再单独生成 DWS/ADS。不要使用会跳过 CLEAN 的续跑按钮。` : '规则命中优先，其次 CSV 字段，最后使用规则集默认值。'}</small></article>
+      <article className={gameImported ? 'is-ready' : 'is-info'}><span>游戏数据覆盖</span><strong>{gameImported ? '已导入' : '本批次未导入'}</strong><small>{gameImported ? '游戏时长与 MOS 可用于本次分析。' : '游戏来自独立文件；本次不展示游戏时长/MOS，也不把缺失解释为 0。'}</small></article>
+      {(activeView === 'quality' || activeView === 'overview') && <article className={topologyKnownRows > 0 ? 'is-warning' : 'is-info'}><span>网络拓扑覆盖</span><strong>{topologyKnownRows} 个含已知拓扑的聚合节点</strong><small>当前源数据 OLT/PON 缺失时，只能做问题侧与 BRAS 粒度判断，不能下钻到 OLT/PON。</small></article>}
+    </section>}
     <KpiStrip items={kpis} />
 
     {activeView === 'overview' && <div className="analytics-layout">
       <AnalyticsChart title="问题 App 影响用户" subtitle="唯一受影响用户；按真实 App 排序，点击查看证据" kind="bar" points={appPoints(filtered.appRank, 'poor_experience_users')} onSelect={selectEvidence} />
       <AnalyticsChart title="网络热点差体验率" subtitle="差体验唯一用户 / 节点观测唯一用户；按拓扑节点排序" kind="bar" points={hotspotPoints(filtered.networkHotspots, 'severity')} onSelect={selectEvidence} />
       <AnalyticsChart title="机会与排除分层" subtitle="按用户计数；A0/A2 不得进入直接营销" kind="bar" points={leadStages} onSelect={selectEvidence} />
-      <AnalyticsChart title="接入类型小时速率" subtitle="平均有效下载速率 Mbps；至少 8 个时点时用于趋势判断" kind="line" points={hourlyPoints(filtered.hourlyTrend, 'effective_mbps')} onSelect={selectEvidence} />
+      <AnalyticsChart title="典型日接入类型速率" subtitle="按活跃用户加权的 7 日小时均值，Mbps" kind="line" points={typicalHourlyPoints(filtered.hourlyTrend, 'effective_mbps')} onSelect={selectEvidence} />
       <AnalyticsEvidenceTable title="总览指标与来源" rows={data.kpis} />
     </div>}
 
     {activeView === 'apps' && <div className="analytics-layout">
-      <AnalyticsChart title="App 受影响用户" subtitle="唯一差体验用户数；不同接入类型分别保留在证据中" kind="bar" points={appPoints(filtered.appRank, 'poor_experience_users')} onSelect={selectEvidence} />
-      <AnalyticsChart title="App 差体验用户占比" subtitle="差体验唯一用户 / App 观测唯一用户，单位 %" kind="bar" points={appPoints(filtered.appRank, 'poor_experience_user_pct')} onSelect={selectEvidence} />
-      <AnalyticsChart title="App 业务流量" subtitle="视频下载 GB；游戏类同时查看证据中的 duration_hours" kind="bar" points={appPoints(filtered.appRank, 'traffic_gb')} onSelect={selectEvidence} />
+      <AnalyticsChart title="App 周期内受影响用户" subtitle="分析周期内至少一次触发差体验的唯一用户数" kind="bar" points={appPoints(filtered.appRank, 'poor_experience_users')} onSelect={selectEvidence} />
+      <AnalyticsChart title="App 周期内差体验用户占比" subtitle="周期内曾发生差体验的用户 / App 观测唯一用户，单位 %" kind="bar" points={appPoints(filtered.appRank, 'poor_experience_user_pct')} onSelect={selectEvidence} />
+      <AnalyticsChart title="App TCP 下载流量" subtitle="当前 TCP 文件的下载流量 GB；游戏时长仅在 Game 文件导入后提供" kind="bar" points={appPoints(filtered.appRank, 'traffic_gb')} onSelect={selectEvidence} />
       <AnalyticsEvidenceTable title="应用体验证据" rows={filtered.appRank} limit={220} />
     </div>}
 
     {activeView === 'quality' && <div className="analytics-layout">
       <AnalyticsChart title="拓扑节点受影响用户" subtitle="BRAS / OLT / PON 粒度的差体验唯一用户" kind="bar" points={hotspotPoints(filtered.networkHotspots, 'users')} onSelect={selectEvidence} />
       <AnalyticsChart title="拓扑节点差体验率" subtitle="差体验唯一用户 / 节点观测唯一用户，单位 %" kind="bar" points={hotspotPoints(filtered.networkHotspots, 'severity')} onSelect={selectEvidence} />
-      <AnalyticsChart title="网络侧 RTT" subtitle="节点平均 network-side RTT，单位 ms" kind="bar" points={hotspotPoints(filtered.networkHotspots, 'network_rtt_ms')} onSelect={selectEvidence} />
       <AnalyticsChart title="家庭侧 / Wi-Fi RTT" subtitle="节点平均 subscriber-side RTT，单位 ms" kind="bar" points={hotspotPoints(filtered.networkHotspots, 'subscriber_rtt_ms')} onSelect={selectEvidence} />
       <AnalyticsEvidenceTable title="网络热点行动证据" rows={filtered.networkHotspots} limit={240} />
     </div>}
 
     {activeView === 'cable' && <div className="analytics-layout">
-      <AnalyticsChart title="Cable / FTTH 小时有效速率" subtitle="平均有效下载速率 Mbps；按日期小时与接入类型对比" kind="line" points={hourlyPoints(filtered.hourlyTrend, 'effective_mbps')} onSelect={selectEvidence} />
-      <AnalyticsChart title="Cable / FTTH 小时 RTT" subtitle="平均 subscriber-side RTT ms；同一时间口径比较" kind="line" points={hourlyPoints(filtered.hourlyTrend, 'subscriber_rtt_ms')} onSelect={selectEvidence} />
-      <AnalyticsChart title="Cable / FTTH 小时用户侧丢包" subtitle="平均 user-side downstream loss，单位 %" kind="line" points={hourlyPoints(filtered.hourlyTrend, 'user_loss_pct')} onSelect={selectEvidence} />
+      <AnalyticsChart title="Cable / FTTH 典型日有效速率" subtitle="按活跃用户加权的 7 日小时均值，Mbps" kind="line" points={typicalHourlyPoints(filtered.hourlyTrend, 'effective_mbps')} onSelect={selectEvidence} />
+      <AnalyticsChart title="Cable / FTTH 典型日 RTT" subtitle="按活跃用户加权的 subscriber-side RTT，ms" kind="line" points={typicalHourlyPoints(filtered.hourlyTrend, 'subscriber_rtt_ms')} onSelect={selectEvidence} />
+      <AnalyticsChart title="Cable / FTTH 典型日用户侧丢包" subtitle="按活跃用户加权的 user-side downstream loss，%" kind="line" points={typicalHourlyPoints(filtered.hourlyTrend, 'user_loss_pct')} onSelect={selectEvidence} />
       <AnalyticsEvidenceTable title="接入对比小时证据" rows={filtered.hourlyTrend} limit={300} />
     </div>}
 
     {activeView === 'users' && <div className="analytics-layout">
-      <AnalyticsChart title="用户需求评分" subtitle="用于发现高需求，不等同于可营销资格" kind="bar" points={userPoints(filtered.userProfiles, 'demand_score')} onSelect={selectEvidence} />
-      <AnalyticsChart title="用户流量" subtitle="用户分析周期总流量 GB；点击查看体验和问题侧" kind="bar" points={userPoints(filtered.userProfiles, 'traffic_gb')} onSelect={selectEvidence} />
-      <AnalyticsChart title="用户游戏时长" subtitle="用户分析周期游戏时长，单位 hours" kind="bar" points={userPoints(filtered.userProfiles, 'game_hours')} onSelect={selectEvidence} />
+      <AnalyticsChart title="用户需求分层" subtitle="全量用户分群；评分用于发现需求，不等同于可营销资格" kind="bar" points={cohortPoints(filtered.userSummary, 'demand_band')} onSelect={selectEvidence} />
+      <AnalyticsChart title="用户流量分层" subtitle="全量用户按分析周期 TCP 流量分群" kind="bar" points={cohortPoints(filtered.userSummary, 'traffic_band')} onSelect={selectEvidence} />
+      <AnalyticsChart title="用户问题侧分布" subtitle="全量用户按主要瓶颈侧分群；游戏数据缺失不会记为零时长" kind="bar" points={cohortPoints(filtered.userSummary, 'bottleneck_side')} onSelect={selectEvidence} />
       <AnalyticsEvidenceTable title="用户画像证据" rows={filtered.userProfiles} limit={300} />
     </div>}
 
@@ -487,5 +828,6 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
     </div>}
     </>}
     {selectedEvidence && <EvidenceDrawer row={selectedEvidence} onClose={() => setSelectedEvidence(null)} />}
+    {pdfReport && pdfPreviewOpen && <PdfPreview report={pdfReport} onClose={() => setPdfPreviewOpen(false)} />}
   </section>;
 }
