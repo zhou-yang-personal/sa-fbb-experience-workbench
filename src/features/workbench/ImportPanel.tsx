@@ -4,6 +4,7 @@ import { ActionButton } from './ActionButton';
 import { BatchSelector } from './BatchSelector';
 import { selectCsvFile } from './fileDialogs';
 import { mappingApi } from './mappingApi';
+import { PipelineLogMonitor } from './PipelineLogMonitor';
 import { profileApi } from './profileApi';
 import { qualityApi } from './qualityApi';
 import { workbenchApi } from './workbenchApi';
@@ -69,6 +70,37 @@ function missingRequiredMessage(items: MetricCard[]) {
   return `字段映射存在 ${items.length} 个 required 缺失，已停止 RAW 入库：${detail}。完整 normalized headers 可在映射结果中查看。`;
 }
 
+const MAX_PIPELINE_LOGS = 5_000;
+
+function pipelineRunStorageKey(settings: MySqlSettings) {
+  return `sa-fbb.pipeline-run.v1:${settings.host}:${settings.port}:${settings.database}:${settings.user}`;
+}
+
+function readStoredPipelineRunId(settings: MySqlSettings) {
+  if (typeof window === 'undefined' || !window.localStorage) return '';
+  try {
+    return window.localStorage.getItem(pipelineRunStorageKey(settings)) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function storePipelineRunId(settings: MySqlSettings, pipelineRunId: string) {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(pipelineRunStorageKey(settings), pipelineRunId);
+  } catch {
+    // Monitoring still works for the current mounted view when storage is unavailable.
+  }
+}
+
+function mergePipelineLogs(current: ImportPipelineLogRow[], incoming: ImportPipelineLogRow[]) {
+  const unique = new Map<number, ImportPipelineLogRow>();
+  current.forEach((row) => unique.set(row.sequence, row));
+  incoming.forEach((row) => unique.set(row.sequence, row));
+  return [...unique.values()].sort((left, right) => left.sequence - right.sequence).slice(-MAX_PIPELINE_LOGS);
+}
+
 export function ImportPanel(props: Props) {
   const { settings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, batchDisplayName, setBatchDisplayName, batch, setBatch, createBatch, runAction, loadMetrics, actionStates } = props;
   const [mappingSummary, setMappingSummary] = useState<MetricCard[]>([]);
@@ -85,7 +117,12 @@ export function ImportPanel(props: Props) {
   const [statusMessage, setStatusMessage] = useState('请选择 CSV 文件，并确认本次导入批次名称。');
   const [pipelineStatus, setPipelineStatus] = useState<ImportPipelineStatus | null>(null);
   const [pipelineLogs, setPipelineLogs] = useState<ImportPipelineLogRow[]>([]);
-  const [pipelineRunId, setPipelineRunId] = useState('');
+  const [pipelineRunId, setPipelineRunId] = useState(() => readStoredPipelineRunId(settings));
+  const [pipelinePolling, setPipelinePolling] = useState(false);
+  const [pipelinePollingError, setPipelinePollingError] = useState('');
+  const [pipelineAutoRefresh, setPipelineAutoRefresh] = useState(true);
+  const [pipelineLastPollAt, setPipelineLastPollAt] = useState<number | null>(null);
+  const [pipelineLastLogAt, setPipelineLastLogAt] = useState<number | null>(null);
   const [publishedRuleSets, setPublishedRuleSets] = useState<AccessRuleSetRow[]>([]);
   const [historyBatches, setHistoryBatches] = useState<BatchListItem[]>([]);
   const [historyStatus, setHistoryStatus] = useState('正在读取历史批次…');
@@ -93,6 +130,7 @@ export function ImportPanel(props: Props) {
   const [accessRuleConfirmed, setAccessRuleConfirmed] = useState(false);
   const [accessRuleMessage, setAccessRuleMessage] = useState('TCP / Game 导入前必须手动选择并确认一个已发布 IP 规则版本。');
   const lastLogSeqRef = useRef(0);
+  const pipelinePollInFlightRef = useRef(false);
   const requiresAccessRules = dataType === 'tcp' || dataType === 'game';
   const selectedRuleSet = publishedRuleSets.find((item) => item.rule_set_id === selectedRuleSetId);
 
@@ -123,7 +161,6 @@ export function ImportPanel(props: Props) {
   const canImport = Boolean(filePath.trim()) && Boolean(batchDisplayName.trim()) && accessRuleReady;
   const analysisRunId = props.analysisRunId.trim() || 'RUN_DEFAULT';
   const pipelineRunning = pipelineStatus?.status === 'running' || pipelineStatus?.status === 'pending';
-  const pipelineDone = ['success', 'degraded', 'failed', 'canceled'].includes(String(pipelineStatus?.status ?? '').toLowerCase());
   const importBlockReason = !filePath
     ? '请先选择 CSV 文件'
     : !batchDisplayName.trim()
@@ -223,40 +260,78 @@ export function ImportPanel(props: Props) {
 
   async function refreshPipeline(runId = pipelineRunId) {
     if (!runId) return null;
-    const [status, logs] = await Promise.all([
-      workbenchApi.pipelineStatus(settings, runId),
-      workbenchApi.pipelineLogs(settings, runId, lastLogSeqRef.current),
-    ]);
-    setPipelineStatus(status);
-    if (status.import_batch_id) setImportBatchId(status.import_batch_id);
-    if (logs.length) {
-      lastLogSeqRef.current = Math.max(lastLogSeqRef.current, ...logs.map((row) => row.sequence));
-      setPipelineLogs((items) => [...items, ...logs].slice(-200));
-    }
-    setStatusMessage(status.message ?? `Pipeline ${status.status}`);
-    const normalizedStatus = String(status.status).toLowerCase();
-    if (status.import_batch_id && ['success', 'degraded'].includes(normalizedStatus)) {
-      const [quality, jobs, nextRegistry, modules] = await Promise.all([
-        qualityApi.allResults(settings, status.import_batch_id),
-        workbenchApi.jobs(settings, status.import_batch_id),
-        workbenchApi.batchTableRegistry(settings, status.import_batch_id),
-        workbenchApi.moduleStatus(settings, status.import_batch_id, status.analysis_run_id ?? analysisRunId),
+    if (pipelinePollInFlightRef.current) return null;
+    pipelinePollInFlightRef.current = true;
+    setPipelinePolling(true);
+    try {
+      const [status, firstPage] = await Promise.all([
+        workbenchApi.pipelineStatus(settings, runId),
+        workbenchApi.pipelineLogs(settings, runId, lastLogSeqRef.current),
       ]);
-      setQualityRows(quality);
-      setEtlJobs(jobs);
-      setRegistry(nextRegistry);
-      setModuleStatus(modules);
-    } else if (status.import_batch_id && normalizedStatus === 'failed') {
-      const [failedQuality, nextRawStatus, nextRegistry] = await Promise.allSettled([
-        qualityApi.failedResults(settings, status.import_batch_id),
-        workbenchApi.importStatus(settings, status.import_batch_id),
-        workbenchApi.batchTableRegistry(settings, status.import_batch_id),
-      ]);
-      setQualityRows(failedQuality.status === 'fulfilled' ? failedQuality.value : []);
-      setRawStatus(nextRawStatus.status === 'fulfilled' ? nextRawStatus.value : []);
-      setRegistry(nextRegistry.status === 'fulfilled' ? nextRegistry.value : []);
+      const collected: ImportPipelineLogRow[] = [];
+      let cursor = lastLogSeqRef.current;
+      if (firstPage.length) {
+        collected.push(...firstPage);
+        cursor = Math.max(cursor, ...firstPage.map((row) => row.sequence));
+      }
+      for (let pageIndex = 1; firstPage.length === 100 && pageIndex < 20; pageIndex += 1) {
+        const page = await workbenchApi.pipelineLogs(settings, runId, cursor);
+        if (!page.length) break;
+        collected.push(...page);
+        cursor = Math.max(cursor, ...page.map((row) => row.sequence));
+        if (page.length < 100) break;
+      }
+      const normalizedStatus = String(status.status).toLowerCase();
+      if (['success', 'degraded', 'failed', 'canceled'].includes(normalizedStatus)) {
+        for (let pageIndex = 0; pageIndex < 20; pageIndex += 1) {
+          const page = await workbenchApi.pipelineLogs(settings, runId, cursor);
+          if (!page.length) break;
+          collected.push(...page);
+          cursor = Math.max(cursor, ...page.map((row) => row.sequence));
+          if (page.length < 100) break;
+        }
+      }
+      setPipelineStatus(status);
+      if (status.import_batch_id) setImportBatchId(status.import_batch_id);
+      if (collected.length) {
+        lastLogSeqRef.current = cursor;
+        setPipelineLogs((items) => mergePipelineLogs(items, collected));
+        setPipelineLastLogAt(Date.now());
+      }
+      setPipelineLastPollAt(Date.now());
+      setPipelinePollingError('');
+      setStatusMessage(status.message ?? `Pipeline ${status.status}`);
+      if (status.import_batch_id && ['success', 'degraded'].includes(normalizedStatus)) {
+        const [quality, jobs, nextRegistry, modules] = await Promise.all([
+          qualityApi.allResults(settings, status.import_batch_id),
+          workbenchApi.jobs(settings, status.import_batch_id),
+          workbenchApi.batchTableRegistry(settings, status.import_batch_id),
+          workbenchApi.moduleStatus(settings, status.import_batch_id, status.analysis_run_id ?? analysisRunId),
+        ]);
+        setQualityRows(quality);
+        setEtlJobs(jobs);
+        setRegistry(nextRegistry);
+        setModuleStatus(modules);
+      } else if (status.import_batch_id && normalizedStatus === 'failed') {
+        const [failedQuality, nextRawStatus, nextRegistry] = await Promise.allSettled([
+          qualityApi.failedResults(settings, status.import_batch_id),
+          workbenchApi.importStatus(settings, status.import_batch_id),
+          workbenchApi.batchTableRegistry(settings, status.import_batch_id),
+        ]);
+        setQualityRows(failedQuality.status === 'fulfilled' ? failedQuality.value : []);
+        setRawStatus(nextRawStatus.status === 'fulfilled' ? nextRawStatus.value : []);
+        setRegistry(nextRegistry.status === 'fulfilled' ? nextRegistry.value : []);
+      }
+      return status;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setPipelinePollingError(message);
+      setStatusMessage(`Pipeline 状态刷新失败：${message}`);
+      return null;
+    } finally {
+      pipelinePollInFlightRef.current = false;
+      setPipelinePolling(false);
     }
-    return status;
   }
 
   async function startPipeline() {
@@ -265,6 +340,10 @@ export function ImportPanel(props: Props) {
       if (!batchDisplayName.trim()) throw new Error('请先为本次导入设置批次名称。');
       const accessRuleSetId = requiredAccessRuleSetId();
       setPipelineLogs([]);
+      setPipelinePollingError('');
+      setPipelineLastPollAt(null);
+      setPipelineLastLogAt(null);
+      setPipelineAutoRefresh(true);
       setQualityRows([]);
       setRawStatus([]);
       setProfileMetrics([]);
@@ -273,6 +352,7 @@ export function ImportPanel(props: Props) {
       lastLogSeqRef.current = 0;
       const started = await workbenchApi.pipelineStart(settings, dataType, filePath, batchDisplayName, importMode, analysisRunId, accessRuleSetId);
       setPipelineRunId(started.pipeline_run_id);
+      storePipelineRunId(settings, started.pipeline_run_id);
       setPipelineStatus({
         pipeline_run_id: started.pipeline_run_id,
         status: started.status,
@@ -296,23 +376,31 @@ export function ImportPanel(props: Props) {
   }, [requiresAccessRules, settings.host, settings.port, settings.database, settings.user, settings.secret]);
 
   useEffect(() => {
+    const storedRunId = readStoredPipelineRunId(settings);
+    if (storedRunId === pipelineRunId) return;
+    setPipelineRunId(storedRunId);
+    setPipelineStatus(null);
+    setPipelineLogs([]);
+    setPipelinePollingError('');
+    setPipelineLastPollAt(null);
+    setPipelineLastLogAt(null);
+    lastLogSeqRef.current = 0;
+  }, [settings.host, settings.port, settings.database, settings.user]);
+
+  useEffect(() => {
     void refreshHistoryBatches().catch((error) => {
       setHistoryStatus(`历史批次加载失败：${error instanceof Error ? error.message : String(error)}`);
     });
   }, [settings.host, settings.port, settings.database, settings.user, settings.secret]);
 
   useEffect(() => {
-    if (!pipelineRunId) return;
+    if (!pipelineRunId || !pipelineAutoRefresh) return;
     const status = String(pipelineStatus?.status ?? 'running').toLowerCase();
     if (['success', 'degraded', 'failed', 'canceled'].includes(status)) return;
     let disposed = false;
     const poll = async () => {
       if (disposed) return;
-      try {
-        await refreshPipeline(pipelineRunId);
-      } catch (error) {
-        setStatusMessage(`Pipeline 状态刷新失败：${error instanceof Error ? error.message : String(error)}`);
-      }
+      await refreshPipeline(pipelineRunId);
     };
     const timer = window.setInterval(poll, 1000);
     void poll();
@@ -320,7 +408,7 @@ export function ImportPanel(props: Props) {
       disposed = true;
       window.clearInterval(timer);
     };
-  }, [pipelineRunId, pipelineStatus?.status, settings]);
+  }, [pipelineAutoRefresh, pipelineRunId, pipelineStatus?.status, settings]);
 
   async function chooseFile() {
     const result = await runAction('select_csv_file', () => selectCsvFile());
@@ -668,29 +756,17 @@ export function ImportPanel(props: Props) {
           });
         }}
       />
-      <section className="panel form-panel">
-        <div className="log-header">
-          <div>
-            <h3>实时日志</h3>
-            <p className="muted-row">前台每秒从后端 `meta_pipeline_log` 增量刷新。</p>
-          </div>
-          <button type="button" disabled={!pipelineLogs.length} onClick={() => navigator.clipboard?.writeText(pipelineLogs.map((row) => `[${row.sequence}] ${row.timestamp} ${row.level} ${row.step_name ?? '-'} ${row.elapsed_ms}ms ${row.message}`).join('\n'))}>复制日志</button>
-        </div>
-        <div className="log-list structured-log-list">
-          {pipelineLogs.slice().reverse().map((row) => (
-            <article key={row.sequence} className={`log-entry log-entry-${row.level === 'error' ? 'failure' : 'success'}`}>
-              <div className="log-entry-head">
-                <span className={`status-pill ${row.level === 'error' ? 'status-failure' : row.level === 'warning' ? 'status-warning' : 'status-success'}`}>{row.level}</span>
-                <strong>{row.step_name ?? '-'}</strong>
-                <small>{row.elapsed_ms} ms</small>
-              </div>
-              <div className="log-meta"><span>{row.timestamp}</span><span>seq {row.sequence}</span></div>
-              <pre>{row.message}</pre>
-            </article>
-          ))}
-          {!pipelineLogs.length && <pre>等待后台计划日志。</pre>}
-        </div>
-      </section>
+      <PipelineLogMonitor
+        logs={pipelineLogs}
+        status={pipelineStatus}
+        polling={pipelinePolling}
+        pollingError={pipelinePollingError}
+        lastPollAt={pipelineLastPollAt}
+        lastLogReceivedAt={pipelineLastLogAt}
+        autoRefreshEnabled={pipelineAutoRefresh}
+        onAutoRefreshChange={setPipelineAutoRefresh}
+        onRefresh={() => refreshPipeline()}
+      />
       <details className="advanced-actions">
         <summary>高级排错：手工执行 1-8 步</summary>
       <section className="panel form-panel">

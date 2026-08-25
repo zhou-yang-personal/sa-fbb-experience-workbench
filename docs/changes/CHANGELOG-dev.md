@@ -1,5 +1,27 @@
 # CHANGELOG-dev
 
+## 1.0.43 - 2026-08-25
+
+### Added
+
+- Added 15-second liveness heartbeats with step elapsed time and phase-specific explanations for non-RAW long-running pipeline steps.
+- Added a pipeline monitoring console with polling health, log-silence detection, filters, search, pause/resume, manual refresh, ordering and filtered copy.
+- Persisted the latest pipeline ID per MySQL context so monitoring resumes after navigating away from and back to the import page.
+
+### Fixed
+
+- Prevented overlapping one-second polling requests and deduplicated frontend log rows by sequence.
+- Drained multi-page log backlogs and performed a final terminal-state log fetch so completion records are not lost.
+- Added bounded retries when concurrent backend heartbeat and step-transition logs contend for the same sequence.
+- Removed repeated pipeline-schema DDL from one-second read-only status and log polling.
+- Standardized newly generated pipeline timestamps on UTC and converted both pipeline and execution log display to the local PC timezone; copied logs include the detected IANA timezone.
+
+### Verification
+
+- `npm run check` and `cd src-tauri && cargo check --offline`: passed on 2026-08-25.
+- `npm run build`, `cd src-tauri && cargo check --offline` and `cd src-tauri && cargo test --offline`: passed; 42 Rust tests passed and only existing Rust warnings remain.
+- Live Windows/MySQL 3.46 GiB pipeline monitoring: not run in this environment.
+
 ## 1.0.42 - 2026-08-24
 
 ### Changed

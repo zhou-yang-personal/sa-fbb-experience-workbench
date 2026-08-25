@@ -136,9 +136,39 @@ fn raw_import_stall_hint(transferred_bytes: u64, total_bytes: u64) -> &'static s
     }
 }
 
+fn format_elapsed(elapsed_ms: i64) -> String {
+    let seconds = elapsed_ms.max(0) / 1_000;
+    let minutes = seconds / 60;
+    let rest = seconds % 60;
+    if minutes > 0 {
+        format!("{minutes} 分 {rest} 秒")
+    } else {
+        format!("{rest} 秒")
+    }
+}
+
+fn step_heartbeat_message(step: PipelineStepDef, elapsed_ms: i64) -> String {
+    let phase = match step.name {
+        "raw_quality_gate" => "MySQL 正在扫描 RAW 大表并计算时间、身份、应用和拓扑质量指标",
+        "raw_to_clean" => "MySQL 正在执行 RAW → CLEAN/DWD 清洗、字段转换和接入类型识别",
+        "dws_ads_aggregate" => "MySQL 正在生成 DWS/ADS 聚合、看板结果和用户机会证据",
+        "final_fusion_optional" => "MySQL 正在融合 CRM、覆盖与可触达资格数据",
+        "module_ready" => "系统正在检查结果表和模块可用性",
+        "prepare_environment" => "系统正在初始化数据库结构和字段映射目录",
+        _ => "任务仍在后端运行",
+    };
+    format!(
+        "{}仍在运行：{}；本步骤已持续 {}；数据库内部百分比不可见，此心跳表示后台任务仍存活",
+        step.label,
+        phase,
+        format_elapsed(elapsed_ms)
+    )
+}
+
 fn spawn_raw_import_reporter(
     settings: MySqlSettings,
     pipeline_run_id: String,
+    step_index: i32,
     progress: crate::raw_import_v2::RawLoadProgress,
     mode: String,
     total_bytes: u64,
@@ -168,14 +198,12 @@ fn spawn_raw_import_reporter(
                         stagnant_intervals = 0;
                     }
                     let elapsed_ms = now_elapsed_ms(total_started);
-                    let _ = update_run(
+                    let _ = update_running_step_heartbeat(
                         &settings,
                         &pipeline_run_id,
-                        "running",
-                        Some("import_current_file_atomic"),
-                        Some(&message),
-                        None,
-                        None,
+                        step_index,
+                        &message,
+                        elapsed_ms,
                         elapsed_ms,
                     );
                     let _ = append_log(
@@ -187,6 +215,44 @@ fn spawn_raw_import_reporter(
                         elapsed_ms,
                     );
                 }
+            }
+        }
+    });
+    (stop_tx, reporter)
+}
+
+fn spawn_step_reporter(
+    settings: MySqlSettings,
+    pipeline_run_id: String,
+    step_index: i32,
+    step: PipelineStepDef,
+    step_started: std::time::Instant,
+    total_started: std::time::Instant,
+) -> (std::sync::mpsc::Sender<()>, std::thread::JoinHandle<()>) {
+    let (stop_tx, stop_rx) = std::sync::mpsc::channel();
+    let reporter = std::thread::spawn(move || loop {
+        match stop_rx.recv_timeout(std::time::Duration::from_secs(15)) {
+            Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                let step_elapsed_ms = now_elapsed_ms(step_started);
+                let total_elapsed_ms = now_elapsed_ms(total_started);
+                let message = step_heartbeat_message(step, step_elapsed_ms);
+                let _ = update_running_step_heartbeat(
+                    &settings,
+                    &pipeline_run_id,
+                    step_index,
+                    &message,
+                    step_elapsed_ms,
+                    total_elapsed_ms,
+                );
+                let _ = append_log(
+                    &settings,
+                    &pipeline_run_id,
+                    "info",
+                    Some(step.name),
+                    &message,
+                    total_elapsed_ms,
+                );
             }
         }
     });
@@ -219,7 +285,7 @@ fn insert_pipeline_run(
     ensure_pipeline_schema(settings)?;
     let mut conn = db::conn(settings)?;
     conn.exec_drop(
-        "INSERT INTO meta_pipeline_run (pipeline_run_id, analysis_run_id, data_type, source_file_name, batch_display_name, status, total_steps, completed_steps, percent, message, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'pending', ?, 0, 0, 'pipeline queued', NOW(), NOW())",
+        "INSERT INTO meta_pipeline_run (pipeline_run_id, analysis_run_id, data_type, source_file_name, batch_display_name, status, total_steps, completed_steps, percent, message, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'pending', ?, 0, 0, 'pipeline queued', UTC_TIMESTAMP(), UTC_TIMESTAMP())",
         (
             pipeline_run_id,
             analysis_run_id,
@@ -257,17 +323,34 @@ fn append_log(
     elapsed_ms: i64,
 ) -> Result<(), String> {
     let mut conn = db::conn(settings)?;
-    let seq: Option<i64> = conn
-        .exec_first(
-            "SELECT COALESCE(MAX(seq), 0) + 1 FROM meta_pipeline_log WHERE pipeline_run_id=?",
-            (pipeline_run_id,),
-        )
-        .map_err(|err| format!("failed to read pipeline log seq: {err}"))?;
-    conn.exec_drop(
-        "INSERT INTO meta_pipeline_log (pipeline_run_id, seq, ts, level, step_name, message, elapsed_ms) VALUES (?, ?, NOW(), ?, ?, ?, ?)",
-        (pipeline_run_id, seq.unwrap_or(1), level, step_name, message, elapsed_ms),
-    )
-    .map_err(|err| format!("failed to append pipeline log: {err}"))
+    let mut last_duplicate = None;
+    for _ in 0..5 {
+        let seq: Option<i64> = conn
+            .exec_first(
+                "SELECT COALESCE(MAX(seq), 0) + 1 FROM meta_pipeline_log WHERE pipeline_run_id=?",
+                (pipeline_run_id,),
+            )
+            .map_err(|err| format!("failed to read pipeline log seq: {err}"))?;
+        match conn.exec_drop(
+            "INSERT INTO meta_pipeline_log (pipeline_run_id, seq, ts, level, step_name, message, elapsed_ms) VALUES (?, ?, UTC_TIMESTAMP(), ?, ?, ?, ?)",
+            (pipeline_run_id, seq.unwrap_or(1), level, step_name, message, elapsed_ms),
+        ) {
+            Ok(()) => return Ok(()),
+            Err(err) => {
+                let text = err.to_string();
+                if text.contains("Duplicate entry") || text.contains("1062") {
+                    last_duplicate = Some(text);
+                    std::thread::yield_now();
+                    continue;
+                }
+                return Err(format!("failed to append pipeline log: {err}"));
+            }
+        }
+    }
+    Err(format!(
+        "failed to append pipeline log after sequence retries: {}",
+        last_duplicate.unwrap_or_else(|| "unknown duplicate sequence error".to_string())
+    ))
 }
 
 fn update_run(
@@ -294,13 +377,13 @@ fn update_run(
         completed as f64 / PIPELINE_STEPS.len() as f64 * 100.0
     };
     let finished_expr = if matches!(status, "success" | "failed" | "degraded" | "canceled") {
-        ", finished_at=COALESCE(finished_at, NOW())"
+        ", finished_at=COALESCE(finished_at, UTC_TIMESTAMP())"
     } else {
         ""
     };
     conn.exec_drop(
         format!(
-            "UPDATE meta_pipeline_run SET status=?, current_step=?, completed_steps=?, percent=?, elapsed_ms=?, message=COALESCE(?, message), error_message=COALESCE(?, error_message), final_fusion_status=COALESCE(?, final_fusion_status), started_at=COALESCE(started_at, NOW()), updated_at=NOW(){finished_expr} WHERE pipeline_run_id=?"
+            "UPDATE meta_pipeline_run SET status=?, current_step=?, completed_steps=?, percent=?, elapsed_ms=?, message=COALESCE(?, message), error_message=COALESCE(?, error_message), final_fusion_status=COALESCE(?, final_fusion_status), started_at=COALESCE(started_at, UTC_TIMESTAMP()), updated_at=UTC_TIMESTAMP(){finished_expr} WHERE pipeline_run_id=?"
         ),
         (
             status,
@@ -317,6 +400,27 @@ fn update_run(
     .map_err(|err| format!("failed to update pipeline run: {err}"))
 }
 
+fn update_running_step_heartbeat(
+    settings: &MySqlSettings,
+    pipeline_run_id: &str,
+    step_index: i32,
+    message: &str,
+    step_elapsed_ms: i64,
+    total_elapsed_ms: i64,
+) -> Result<(), String> {
+    let mut conn = db::conn(settings)?;
+    conn.exec_drop(
+        "UPDATE meta_pipeline_step SET elapsed_ms=?, message=? WHERE pipeline_run_id=? AND step_index=? AND status='running'",
+        (step_elapsed_ms, message, pipeline_run_id, step_index),
+    )
+    .map_err(|err| format!("failed to update pipeline step heartbeat: {err}"))?;
+    conn.exec_drop(
+        "UPDATE meta_pipeline_run SET elapsed_ms=?, message=?, updated_at=UTC_TIMESTAMP() WHERE pipeline_run_id=? AND status='running'",
+        (total_elapsed_ms, message, pipeline_run_id),
+    )
+    .map_err(|err| format!("failed to update pipeline run heartbeat: {err}"))
+}
+
 fn update_batch_id(
     settings: &MySqlSettings,
     pipeline_run_id: &str,
@@ -324,7 +428,7 @@ fn update_batch_id(
 ) -> Result<(), String> {
     let mut conn = db::conn(settings)?;
     conn.exec_drop(
-        "UPDATE meta_pipeline_run SET import_batch_id=?, updated_at=NOW() WHERE pipeline_run_id=?",
+        "UPDATE meta_pipeline_run SET import_batch_id=?, updated_at=UTC_TIMESTAMP() WHERE pipeline_run_id=?",
         (import_batch_id, pipeline_run_id),
     )
     .map_err(|err| format!("failed to update pipeline batch id: {err}"))
@@ -340,7 +444,7 @@ fn start_step(
 ) -> Result<(), String> {
     let mut conn = db::conn(settings)?;
     conn.exec_drop(
-        "UPDATE meta_pipeline_step SET status='running', started_at=COALESCE(started_at, NOW()), finished_at=NULL, elapsed_ms=0, message=?, error_message=NULL WHERE pipeline_run_id=? AND step_index=?",
+        "UPDATE meta_pipeline_step SET status='running', started_at=COALESCE(started_at, UTC_TIMESTAMP()), finished_at=NULL, elapsed_ms=0, message=?, error_message=NULL WHERE pipeline_run_id=? AND step_index=?",
         (message, pipeline_run_id, step_index),
     )
     .map_err(|err| format!("failed to start pipeline step {step_name}: {err}"))?;
@@ -377,7 +481,7 @@ fn finish_step(
 ) -> Result<(), String> {
     let mut conn = db::conn(settings)?;
     conn.exec_drop(
-        "UPDATE meta_pipeline_step SET status=?, finished_at=NOW(), elapsed_ms=?, message=?, error_message=? WHERE pipeline_run_id=? AND step_index=?",
+        "UPDATE meta_pipeline_step SET status=?, finished_at=UTC_TIMESTAMP(), elapsed_ms=?, message=?, error_message=? WHERE pipeline_run_id=? AND step_index=?",
         (status, step_elapsed_ms, message, error_message, pipeline_run_id, step_index),
     )
     .map_err(|err| format!("failed to finish pipeline step {step_name}: {err}"))?;
@@ -406,7 +510,7 @@ fn fail_remaining_steps(
 ) -> Result<(), String> {
     let mut conn = db::conn(settings)?;
     conn.exec_drop(
-        "UPDATE meta_pipeline_step SET status='skipped', finished_at=NOW(), elapsed_ms=0, message=? WHERE pipeline_run_id=? AND step_index>? AND status='pending'",
+        "UPDATE meta_pipeline_step SET status='skipped', finished_at=UTC_TIMESTAMP(), elapsed_ms=0, message=? WHERE pipeline_run_id=? AND step_index>? AND status='pending'",
         (message, pipeline_run_id, after_step_index),
     )
     .map_err(|err| format!("failed to skip remaining pipeline steps: {err}"))
@@ -434,7 +538,24 @@ where
     ) {
         return Err((PipelineOutcome::Failed, err));
     }
-    match action() {
+    let heartbeat = if step.name == "import_current_file_atomic" || step.name == "finish" {
+        None
+    } else {
+        Some(spawn_step_reporter(
+            settings.clone(),
+            pipeline_run_id.to_string(),
+            step_index,
+            step,
+            step_started,
+            total_started,
+        ))
+    };
+    let action_result = action();
+    if let Some((stop_reporter, reporter)) = heartbeat {
+        let _ = stop_reporter.send(());
+        let _ = reporter.join();
+    }
+    match action_result {
         Ok(message) => {
             let text = message.unwrap_or_else(|| format!("{} completed", step.label));
             if let Err(err) = finish_step(
@@ -568,6 +689,7 @@ fn run_pipeline_job(
                     let (stop_reporter, reporter) = spawn_raw_import_reporter(
                         settings.clone(),
                         pipeline_run_id.clone(),
+                        step_index,
                         progress.clone(),
                         import_mode,
                         total_bytes,
@@ -850,7 +972,6 @@ pub fn import_pipeline_start(
 pub fn import_pipeline_get_status(
     req: ImportPipelineStatusRequest,
 ) -> Result<ImportPipelineStatus, String> {
-    ensure_pipeline_schema(&req.settings)?;
     let mut conn = db::conn(&req.settings)?;
     let row: Option<(
         String,
@@ -867,7 +988,7 @@ pub fn import_pipeline_get_status(
         Option<String>,
     )> = conn
         .exec_first(
-            "SELECT status, current_step, DATE_FORMAT(started_at, '%Y-%m-%d %H:%i:%s'), DATE_FORMAT(finished_at, '%Y-%m-%d %H:%i:%s'), CAST(percent AS DOUBLE), import_batch_id, analysis_run_id, elapsed_ms, error_message, final_fusion_status, message, (SELECT step_name FROM meta_pipeline_step s WHERE s.pipeline_run_id=meta_pipeline_run.pipeline_run_id AND s.status='failed' ORDER BY step_index LIMIT 1) FROM meta_pipeline_run WHERE pipeline_run_id=?",
+            "SELECT status, current_step, DATE_FORMAT(started_at, '%Y-%m-%dT%H:%i:%sZ'), DATE_FORMAT(finished_at, '%Y-%m-%dT%H:%i:%sZ'), CAST(percent AS DOUBLE), import_batch_id, analysis_run_id, elapsed_ms, error_message, final_fusion_status, message, (SELECT step_name FROM meta_pipeline_step s WHERE s.pipeline_run_id=meta_pipeline_run.pipeline_run_id AND s.status='failed' ORDER BY step_index LIMIT 1) FROM meta_pipeline_run WHERE pipeline_run_id=?",
             (&req.pipeline_run_id,),
         )
         .map_err(|err| format!("failed to read pipeline status: {err}"))?;
@@ -890,7 +1011,7 @@ pub fn import_pipeline_get_status(
     };
     let steps = conn
         .exec_map(
-            "SELECT step_index, step_name, step_label, status, DATE_FORMAT(started_at, '%Y-%m-%d %H:%i:%s'), DATE_FORMAT(finished_at, '%Y-%m-%d %H:%i:%s'), elapsed_ms, message, error_message FROM meta_pipeline_step WHERE pipeline_run_id=? ORDER BY step_index",
+            "SELECT step_index, step_name, step_label, status, DATE_FORMAT(started_at, '%Y-%m-%dT%H:%i:%sZ'), DATE_FORMAT(finished_at, '%Y-%m-%dT%H:%i:%sZ'), elapsed_ms, message, error_message FROM meta_pipeline_step WHERE pipeline_run_id=? ORDER BY step_index",
             (&req.pipeline_run_id,),
             |(step_index, step_name, step_label, status, started_at, finished_at, elapsed_ms, message, error_message)| ImportPipelineStepRow {
                 step_index,
@@ -927,11 +1048,10 @@ pub fn import_pipeline_get_status(
 pub fn import_pipeline_get_logs(
     req: ImportPipelineLogsRequest,
 ) -> Result<Vec<ImportPipelineLogRow>, String> {
-    ensure_pipeline_schema(&req.settings)?;
     let after = req.after_sequence.unwrap_or(0);
     let mut conn = db::conn(&req.settings)?;
     conn.exec_map(
-        "SELECT seq, DATE_FORMAT(ts, '%Y-%m-%d %H:%i:%s'), level, step_name, message, elapsed_ms FROM meta_pipeline_log WHERE pipeline_run_id=? AND seq>? ORDER BY seq LIMIT 100",
+        "SELECT seq, DATE_FORMAT(ts, '%Y-%m-%dT%H:%i:%sZ'), level, step_name, message, elapsed_ms FROM meta_pipeline_log WHERE pipeline_run_id=? AND seq>? ORDER BY seq LIMIT 100",
         (&req.pipeline_run_id, after),
         |(sequence, timestamp, level, step_name, message, elapsed_ms)| ImportPipelineLogRow {
             sequence,
@@ -949,7 +1069,7 @@ pub fn import_pipeline_get_logs(
 mod tests {
     use super::{
         final_status_for_step_failure, pipeline_plan, raw_import_heartbeat_message,
-        raw_import_stall_hint, PipelineOutcome,
+        raw_import_stall_hint, step_heartbeat_message, PipelineOutcome,
     };
 
     #[test]
@@ -998,5 +1118,18 @@ mod tests {
         assert!(committed.contains("等待 MySQL"));
         assert!(raw_import_stall_hint(0, 100).contains("LOCAL INFILE"));
         assert!(raw_import_stall_hint(100, 100).contains("SHOW PROCESSLIST"));
+    }
+
+    #[test]
+    fn long_step_heartbeat_explains_quality_scan_and_liveness() {
+        let quality = pipeline_plan()
+            .iter()
+            .copied()
+            .find(|step| step.name == "raw_quality_gate")
+            .expect("quality step");
+        let message = step_heartbeat_message(quality, 135_000);
+        assert!(message.contains("扫描 RAW 大表"));
+        assert!(message.contains("2 分 15 秒"));
+        assert!(message.contains("任务仍存活"));
     }
 }

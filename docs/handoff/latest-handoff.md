@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.42
+1.0.43
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,16 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.43 update
+
+- Serialized frontend pipeline polling with an in-flight guard, drained paged log backlogs, deduplicated by sequence and fetched terminal logs once more before stopping.
+- Added 15-second liveness heartbeats for Quality Gate, CLEAN/DWD, DWS/ADS, final fusion and module-readiness steps; each heartbeat updates both step elapsed time and pipeline status.
+- Replaced the raw log list with a monitoring console for poll health, heartbeat silence, progress, level/step/search filters, pause/resume, manual refresh, ordering and filtered copy.
+- Retained up to 5,000 unique rows in memory while rendering at most 600, and added backend retries for concurrent sequence allocation conflicts.
+- Removed schema DDL from read-only polling and persisted the latest pipeline ID per MySQL context so monitoring resumes after page navigation.
+- Stored newly generated pipeline timestamps in UTC and rendered pipeline and execution logs in the local PC timezone, including timezone metadata in copied text. Legacy timezone-less `DATETIME` rows cannot be converted reliably.
+- Version markers are synchronized to `1.0.43`.
 
 ## 1.0.42 update
 
