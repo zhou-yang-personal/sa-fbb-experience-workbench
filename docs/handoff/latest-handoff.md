@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.52
+1.0.53
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,12 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.53 update
+
+- Fixed a Windows process crash when refreshing batches if legacy `meta_import_batch` rows contain `NULL` in text metadata that current schema declares non-null.
+- Batch listing now applies SQL-side fallbacks and fallible row-by-row Rust decoding instead of an infallible typed tuple conversion; malformed metadata is shown with compatibility labels rather than triggering a `mysql_common` panic.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.52 update
 

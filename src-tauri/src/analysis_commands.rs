@@ -347,107 +347,58 @@ pub fn import_list_batches(
     data_type: Option<String>,
 ) -> Result<Vec<BatchListItem>, String> {
     let mut conn = db::conn(&settings)?;
-    let preferred_run = "(SELECT ar.analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id=b.import_batch_id AND ar.status IN ('success','degraded') ORDER BY COALESCE(ar.finished_at,ar.started_at) DESC,ar.started_at DESC LIMIT 1)";
-    let sql = if data_type.is_some() {
-        format!("SELECT b.import_batch_id, COALESCE(b.batch_display_name, ''), b.data_type, b.source_file_name, b.status, CAST(COALESCE(b.total_rows, 0) AS SIGNED), CAST(COALESCE(b.imported_rows, 0) AS SIGNED), COALESCE({preferred_run}, pr.analysis_run_id, (SELECT analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id=b.import_batch_id ORDER BY ar.started_at DESC LIMIT 1)), pr.pipeline_run_id, pr.status, COALESCE(pr.error_message, pr.message) FROM meta_import_batch b LEFT JOIN meta_pipeline_run pr ON pr.pipeline_run_id=(SELECT pr2.pipeline_run_id FROM meta_pipeline_run pr2 WHERE pr2.import_batch_id=b.import_batch_id ORDER BY pr2.updated_at DESC, pr2.created_at DESC, pr2.pipeline_run_id DESC LIMIT 1) WHERE b.data_type = ? ORDER BY b.created_at DESC, b.import_batch_id DESC LIMIT 500")
+    let sql = import_batch_list_sql(data_type.is_some());
+    let result = if let Some(data_type) = data_type {
+        conn.exec_iter(sql, (&data_type,))
     } else {
-        format!("SELECT b.import_batch_id, COALESCE(b.batch_display_name, ''), b.data_type, b.source_file_name, b.status, CAST(COALESCE(b.total_rows, 0) AS SIGNED), CAST(COALESCE(b.imported_rows, 0) AS SIGNED), COALESCE({preferred_run}, pr.analysis_run_id, (SELECT analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id=b.import_batch_id ORDER BY ar.started_at DESC LIMIT 1)), pr.pipeline_run_id, pr.status, COALESCE(pr.error_message, pr.message) FROM meta_import_batch b LEFT JOIN meta_pipeline_run pr ON pr.pipeline_run_id=(SELECT pr2.pipeline_run_id FROM meta_pipeline_run pr2 WHERE pr2.import_batch_id=b.import_batch_id ORDER BY pr2.updated_at DESC, pr2.created_at DESC, pr2.pipeline_run_id DESC LIMIT 1) ORDER BY b.created_at DESC, b.import_batch_id DESC LIMIT 500")
-    };
-    let rows = if let Some(data_type) = data_type {
-        conn.exec_map(
-            sql,
-            (&data_type,),
-            |(
-                import_batch_id,
-                batch_display_name,
-                data_type,
-                source_file_name,
-                status,
-                total_rows,
-                imported_rows,
-                analysis_run_id,
-                pipeline_run_id,
-                pipeline_status,
-                pipeline_message,
-            ): (
-                String,
-                String,
-                String,
-                String,
-                String,
-                i64,
-                i64,
-                Option<String>,
-                Option<String>,
-                Option<String>,
-                Option<String>,
-            )| BatchListItem {
-                import_batch_id,
-                batch_display_name: if batch_display_name.trim().is_empty() {
-                    None
-                } else {
-                    Some(batch_display_name)
-                },
-                data_type,
-                source_file_name,
-                status,
-                total_rows: Some(total_rows),
-                imported_rows: Some(imported_rows),
-                analysis_run_id,
-                pipeline_run_id,
-                pipeline_status,
-                pipeline_message,
-            },
-        )
-    } else {
-        conn.exec_map(
-            sql,
-            (),
-            |(
-                import_batch_id,
-                batch_display_name,
-                data_type,
-                source_file_name,
-                status,
-                total_rows,
-                imported_rows,
-                analysis_run_id,
-                pipeline_run_id,
-                pipeline_status,
-                pipeline_message,
-            ): (
-                String,
-                String,
-                String,
-                String,
-                String,
-                i64,
-                i64,
-                Option<String>,
-                Option<String>,
-                Option<String>,
-                Option<String>,
-            )| BatchListItem {
-                import_batch_id,
-                batch_display_name: if batch_display_name.trim().is_empty() {
-                    None
-                } else {
-                    Some(batch_display_name)
-                },
-                data_type,
-                source_file_name,
-                status,
-                total_rows: Some(total_rows),
-                imported_rows: Some(imported_rows),
-                analysis_run_id,
-                pipeline_run_id,
-                pipeline_status,
-                pipeline_message,
-            },
-        )
+        conn.exec_iter(sql, ())
     }
     .map_err(|err| format!("failed to list import batches: {err}"))?;
+    let rows = result
+        .map(|row| {
+            let row = row.map_err(|err| format!("failed to read import batch row: {err}"))?;
+            let batch_display_name = row.get::<String, _>(1).unwrap_or_default();
+            Ok(BatchListItem {
+                import_batch_id: normalized_batch_text(row.get(0), "UNKNOWN_BATCH"),
+                batch_display_name: if batch_display_name.trim().is_empty() {
+                    None
+                } else {
+                    Some(batch_display_name)
+                },
+                data_type: normalized_batch_text(row.get(2), "unknown"),
+                source_file_name: normalized_batch_text(
+                    row.get(3),
+                    "legacy batch (source unknown)",
+                ),
+                status: normalized_batch_text(row.get(4), "unknown"),
+                total_rows: Some(row.get::<i64, _>(5).unwrap_or_default()),
+                imported_rows: Some(row.get::<i64, _>(6).unwrap_or_default()),
+                analysis_run_id: row.get(7),
+                pipeline_run_id: row.get(8),
+                pipeline_status: row.get(9),
+                pipeline_message: row.get(10),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     Ok(rows)
+}
+
+fn import_batch_list_sql(filtered: bool) -> String {
+    let preferred_run = "(SELECT ar.analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id=b.import_batch_id AND ar.status IN ('success','degraded') ORDER BY COALESCE(ar.finished_at,ar.started_at) DESC,ar.started_at DESC LIMIT 1)";
+    let filter = if filtered {
+        " WHERE b.data_type = ?"
+    } else {
+        ""
+    };
+    format!(
+        "SELECT COALESCE(b.import_batch_id, ''), COALESCE(b.batch_display_name, ''), COALESCE(NULLIF(b.data_type, ''), 'unknown'), COALESCE(NULLIF(b.source_file_name, ''), 'legacy batch (source unknown)'), COALESCE(NULLIF(b.status, ''), 'unknown'), CAST(COALESCE(b.total_rows, 0) AS SIGNED), CAST(COALESCE(b.imported_rows, 0) AS SIGNED), COALESCE({preferred_run}, pr.analysis_run_id, (SELECT analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id=b.import_batch_id ORDER BY ar.started_at DESC LIMIT 1)), pr.pipeline_run_id, pr.status, COALESCE(pr.error_message, pr.message) FROM meta_import_batch b LEFT JOIN meta_pipeline_run pr ON pr.pipeline_run_id=(SELECT pr2.pipeline_run_id FROM meta_pipeline_run pr2 WHERE pr2.import_batch_id=b.import_batch_id ORDER BY pr2.updated_at DESC, pr2.created_at DESC, pr2.pipeline_run_id DESC LIMIT 1){filter} ORDER BY b.created_at DESC, b.import_batch_id DESC LIMIT 500"
+    )
+}
+
+fn normalized_batch_text(value: Option<String>, fallback: &str) -> String {
+    value
+        .filter(|text| !text.trim().is_empty())
+        .unwrap_or_else(|| fallback.to_string())
 }
 
 fn registered_batch_table(
@@ -965,7 +916,7 @@ fn value_to_csv(value: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{field_checks, module_spec};
+    use super::{field_checks, import_batch_list_sql, module_spec, normalized_batch_text};
 
     #[test]
     fn migration_lead_requires_sa_lead_table_only() {
@@ -989,5 +940,30 @@ mod tests {
         assert_eq!(fields, vec!["lead_type"]);
         assert!(tables.contains(&"ads_migration_lead_user"));
         assert!(!tables.contains(&"ads_final_marketing_lead_user"));
+    }
+
+    #[test]
+    fn batch_list_query_guards_legacy_nullable_text_columns() {
+        let sql = import_batch_list_sql(false);
+
+        assert!(sql.contains("COALESCE(NULLIF(b.data_type, ''), 'unknown')"));
+        assert!(sql
+            .contains("COALESCE(NULLIF(b.source_file_name, ''), 'legacy batch (source unknown)')"));
+        assert!(sql.contains("COALESCE(NULLIF(b.status, ''), 'unknown')"));
+        assert!(!sql.contains("WHERE b.data_type = ?"));
+        assert!(import_batch_list_sql(true).contains("WHERE b.data_type = ?"));
+    }
+
+    #[test]
+    fn batch_text_decoder_falls_back_for_null_and_blank_values() {
+        assert_eq!(normalized_batch_text(None, "unknown"), "unknown");
+        assert_eq!(
+            normalized_batch_text(Some("  ".to_string()), "unknown"),
+            "unknown"
+        );
+        assert_eq!(
+            normalized_batch_text(Some("success".to_string()), "unknown"),
+            "success"
+        );
     }
 }

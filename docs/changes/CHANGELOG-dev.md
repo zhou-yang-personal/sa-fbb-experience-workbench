@@ -1,5 +1,20 @@
 # CHANGELOG-dev
 
+## 1.0.53 - 2026-08-26
+
+### Fixed
+
+- Fixed the batch-refresh Windows crash caused by legacy nullable `meta_import_batch` text values being decoded into required Rust `String` tuple fields.
+- Added SQL-side null/blank fallbacks and fallible row-by-row decoding for batch ID, data type, source filename, status and row counts, so malformed legacy metadata degrades visibly instead of panicking the process.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-26.
+- `npm run build`: passed on 2026-08-26; the existing ECharts chunk-size warning remains.
+- `cargo check --offline`: passed on 2026-08-26 with existing warnings only.
+- `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 CARGO_PROFILE_TEST_DEBUG=0 cargo test --offline`: passed on 2026-08-26; 48 tests passed.
+- Live Windows/MySQL refresh against the nullable legacy row remains pending.
+
 ## 1.0.52 - 2026-08-26
 
 ### Added

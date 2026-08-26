@@ -49,7 +49,7 @@ CSV 文件选择
 
 系统诊断遵循同一任务模型：切换到诊断页只渲染轻量配置与空状态，不调用 MySQL。用户启动后，Catalog、映射失败项、质量失败项、ETL 失败项、模块深度检查和 Registry 快照按顺序执行；停止只跳过尚未开始的检查。常规模块深度检查使用批次表的有界 `EXISTS` 查询判断可用性，Registry 使用已缓存数值或 `information_schema.tables.table_rows` 估算，不在页面导航、批次准备或 Module Ready 时执行隐式大表精确 `COUNT(*)`。Quality / ETL 单步工具和完整执行日志仅在对应折叠区展开后挂载。
 
-1.0.52 将上述边界收紧为零数据库访问安全启动：应用打开和本地上下文恢复只读取 WebView 本地状态，不调用批次、analysis run、流水线或就绪度 API；批次列表也必须由用户显式刷新。Windows 运行时另写入不含业务数据的本地 `runtime.log`，用于区分正常退出、Tauri 运行错误和 Rust panic。
+1.0.52 将上述边界收紧为零数据库访问安全启动：应用打开和本地上下文恢复只读取 WebView 本地状态，不调用批次、analysis run、流水线或就绪度 API；批次列表也必须由用户显式刷新。Windows 运行时另写入不含业务数据的本地 `runtime.log`，用于区分正常退出、Tauri 运行错误和 Rust panic。1.0.53 进一步要求所有批次元数据读取兼容历史 `NULL`/空值：SQL 提供显示兜底，Rust 使用可失败的逐列解码，单条脏元数据不得导致桌面进程退出。
 
 历史批次同时提供两个不同恢复动作：已有 CLEAN 可用时从 DWS/ADS 续跑；规则或清洗口径变化时从既有 RAW 全量重建。RAW 重建保留 CSV/RAW 和旧 analysis run，以新 run 执行 Quality Gate、CLEAN/DWD、DWS/ADS/V2、可选 Final Lead 与 Module Ready。CLEAN/DWD 与不按 run 隔离的 DWS 是批次共享结果，会被重建覆盖；ADS/V2 使用新 run 隔离。核心 SQL 脚本经 SQL runner 拆分后，为每条语句写入开始、成功或失败、耗时、影响行数与有界摘要；pipeline 元数据写入不参与自递归日志。
 
