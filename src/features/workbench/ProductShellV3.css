@@ -143,6 +143,17 @@
 .product-shell .log-entry-heartbeat { border-color: #b2ccff; background: #f5f8ff; }
 .product-shell .log-entry-warning { border-color: #fedf89; background: #fffaeb; }
 .product-shell .pipeline-log-empty { padding: 34px 16px; color: var(--muted); text-align: center; background: #f8fafc; border: 1px dashed var(--line); border-radius: 12px; }
+.product-shell .import-workspace-switcher button { color: var(--ink); background: #fff; border-color: var(--line); }
+.product-shell .import-workspace-switcher button strong { color: var(--ink); }
+.product-shell .import-workspace-switcher button small { color: var(--muted); }
+.product-shell .import-workspace-switcher button.is-active { background: var(--brand-soft); border-color: #84a9ff; box-shadow: inset 3px 0 0 var(--brand); }
+.product-shell .batch-library-toolbar span { color: var(--muted); }
+.product-shell .batch-library-row { color: #344054; background: #fff; border-color: var(--line); }
+.product-shell .batch-library-row small { color: var(--muted); }
+.product-shell .batch-library-row.is-selected { background: #f5f8ff; border-color: #84a9ff; }
+.product-shell .batch-library-head { color: #475467; background: #eef2f6; }
+.product-shell .selected-batch-action-panel,
+.product-shell .task-monitor-summary { border-color: #b2ccff; }
 
 @media (max-width: 1180px) {
   .product-shell { grid-template-columns: 236px minmax(0, 1fr); }

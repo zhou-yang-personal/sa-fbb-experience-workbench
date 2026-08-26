@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.54
+1.0.55
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,17 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.55 update
+
+- Import and batch operations are split into three operator workspaces: New Import, Batch Library and Running Tasks.
+- Batch selection is now a local context action only. Pipeline status, logs and polling are loaded explicitly, preserving the zero-database-command startup boundary.
+- Batch Library is a searchable status table with next-action guidance for running, failed, analysis-ready and RAW-only batches.
+- Starting a new import, RAW rebuild or DWS/ADS resume routes directly to the shared task monitor; failed tasks link back to recovery choices.
+- Duplicate advanced actions were removed from the primary flow. Manual ETL steps and diagnostic output remain available inside developer diagnostics.
+- Operator simulation, before/after scoring and Windows acceptance steps are recorded in `docs/design/import-job-center-operator-journey.md`.
+- Frontend type check/build and 48 Rust tests passed; live Windows/WebView2 and customer MySQL interaction remain unverified here.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.54 update
 

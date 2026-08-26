@@ -1,5 +1,23 @@
 # CHANGELOG-dev
 
+## 1.0.55 - 2026-08-26
+
+### Changed
+
+- Reorganized import operations into New Import, Batch Library and Running Tasks workspaces around real operator goals.
+- Replaced the import-page history dropdown with a searchable batch status table while retaining the compact selector in Analysis Workspace.
+- Made batch selection local-only; pipeline state, log retrieval and polling now require an explicit operator action.
+- Added state-specific next-step guidance and direct transitions from task failure to recovery choices and from ready batches to analysis.
+- Consolidated duplicate manual actions and diagnostic tables under developer-only disclosure controls.
+
+### Verification
+
+- Operator journey and UX scoring are documented in `docs/design/import-job-center-operator-journey.md`.
+- `npm run check`: passed on 2026-08-26.
+- `npm run build`: passed on 2026-08-26; the existing ECharts chunk-size warning remains.
+- `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 CARGO_PROFILE_TEST_DEBUG=0 cargo test --offline`: passed on 2026-08-26; 48 tests passed with existing warnings only.
+- Live Windows/WebView2 interaction and customer MySQL behavior remain pending until the new artifact is tested locally.
+
 ## 1.0.54 - 2026-08-26
 
 ### Fixed
