@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.53
+1.0.54
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,13 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.54 update
+
+- Batch refresh no longer chains an automatic analysis-run query when a batch ID is restored from local context; selecting a batch also leaves run-list loading as an explicit user action.
+- Nullable text decoding is now guarded in registered-table resolution, shared batch-table resolution, analysis-run batch lookup, batch data type and registry listing, covering the second `mysql_common` panic path observed after 1.0.53.
+- Import page mount no longer automatically queries published access rules, history batches or a stored pipeline. Runtime logs now identify starts and successful completion of the two refresh commands.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.53 update
 

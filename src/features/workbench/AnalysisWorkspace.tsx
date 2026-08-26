@@ -54,14 +54,19 @@ export function AnalysisWorkspace({ c, activeView, onOpenImport, onNavigate }: {
   }
 
   async function refreshBatchList() {
-    const result = await workbenchApi.listBatches(c.settings);
-    setBatches(result);
-    setStatusMessage(result.length ? `已加载 ${result.length} 个批次。` : '当前没有可用批次。');
-    if (c.importBatchId) {
-      const preferred = result.find((item) => item.import_batch_id === c.importBatchId)?.analysis_run_id ?? c.analysisRunId;
-      await loadAnalysisRuns(c.importBatchId, preferred);
+    setStatusMessage('正在刷新批次列表…');
+    try {
+      const result = await workbenchApi.listBatches(c.settings);
+      setBatches(result);
+      setStatusMessage(result.length
+        ? `已加载 ${result.length} 个批次；未自动查询运行列表。需要时请点击“刷新运行列表”。`
+        : '当前没有可用批次。');
+      return result;
+    } catch (error) {
+      setBatches([]);
+      setStatusMessage(`批次列表加载失败：${error instanceof Error ? error.message : String(error)}`);
+      return [];
     }
-    return result;
   }
 
   async function deleteBatches(batchIds: string[]) {
@@ -163,12 +168,12 @@ export function AnalysisWorkspace({ c, activeView, onOpenImport, onNavigate }: {
           setModuleStatus([]);
           setAnalysisRuns([]);
           const pipelineStatus = String(batch.pipeline_status ?? '').toLowerCase();
-          setStatusMessage(pipelineStatus === 'failed'
-            ? `RAW 已导入，但自动分析流水线失败：${batch.pipeline_message ?? '请回到数据导入查看失败步骤和日志。'}`
+          const batchState = pipelineStatus === 'failed'
+            ? `该批次流水线失败：${batch.pipeline_message ?? '请回到数据导入查看日志。'}；`
             : !batch.analysis_run_id
-              ? '批次只有 RAW 导入记录，尚未发现 analysis_run_id；请回到数据导入完成 CLEAN/DWS/ADS。'
-              : `批次与 analysis_run_id=${batch.analysis_run_id} 已同步，请加载当前看板。`);
-          void loadAnalysisRuns(batch.import_batch_id, batch.analysis_run_id ?? '');
+              ? '该批次尚无 analysis_run_id；'
+              : `已绑定 analysis_run_id=${batch.analysis_run_id}；`;
+          setStatusMessage(`${batchState}未自动查询运行列表。需要切换运行时请点击“刷新运行列表”。`);
         }}
       />
 

@@ -44,7 +44,7 @@ mod raw_import;
 mod raw_import_v2;
 mod sql_runner;
 
-fn append_runtime_log(event: &str) {
+pub(crate) fn append_runtime_log(event: &str) {
     use std::io::Write;
 
     let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") else {

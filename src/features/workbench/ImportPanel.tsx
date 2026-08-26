@@ -131,12 +131,12 @@ export function ImportPanel(props: Props) {
   const [pipelineRunId, setPipelineRunId] = useState(() => readStoredPipelineRunId(settings));
   const [pipelinePolling, setPipelinePolling] = useState(false);
   const [pipelinePollingError, setPipelinePollingError] = useState('');
-  const [pipelineAutoRefresh, setPipelineAutoRefresh] = useState(true);
+  const [pipelineAutoRefresh, setPipelineAutoRefresh] = useState(false);
   const [pipelineLastPollAt, setPipelineLastPollAt] = useState<number | null>(null);
   const [pipelineLastLogAt, setPipelineLastLogAt] = useState<number | null>(null);
   const [publishedRuleSets, setPublishedRuleSets] = useState<AccessRuleSetRow[]>([]);
   const [historyBatches, setHistoryBatches] = useState<BatchListItem[]>([]);
-  const [historyStatus, setHistoryStatus] = useState('正在读取历史批次…');
+  const [historyStatus, setHistoryStatus] = useState('尚未读取历史批次；请点击“刷新批次列表”。');
   const [selectedRuleSetId, setSelectedRuleSetId] = useState('');
   const [accessRuleConfirmed, setAccessRuleConfirmed] = useState(false);
   const [staleTakeoverConfirmed, setStaleTakeoverConfirmed] = useState(false);
@@ -529,10 +529,6 @@ export function ImportPanel(props: Props) {
   }
 
   useEffect(() => {
-    void refreshPublishedRuleSets();
-  }, [requiresAccessRules, settings.host, settings.port, settings.database, settings.user, settings.secret]);
-
-  useEffect(() => {
     const storedRunId = readStoredPipelineRunId(settings);
     if (storedRunId === pipelineRunId) return;
     pipelineGenerationRef.current += 1;
@@ -544,17 +540,6 @@ export function ImportPanel(props: Props) {
     setPipelineLastLogAt(null);
     lastLogSeqRef.current = 0;
   }, [settings.host, settings.port, settings.database, settings.user]);
-
-  useEffect(() => {
-    void refreshHistoryBatches()
-      .then((batches) => {
-        const selected = batches.find((item) => item.import_batch_id === importBatchId);
-        if (selected && (selected.pipeline_run_id ?? '') !== pipelineRunId) void restorePipelineForBatch(selected);
-      })
-      .catch((error) => {
-        setHistoryStatus(`历史批次加载失败：${error instanceof Error ? error.message : String(error)}`);
-      });
-  }, [settings.host, settings.port, settings.database, settings.user, settings.secret]);
 
   useEffect(() => {
     if (!pipelineRunId || !pipelineAutoRefresh) return;

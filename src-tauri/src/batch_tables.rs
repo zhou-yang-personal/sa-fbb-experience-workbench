@@ -341,18 +341,20 @@ pub fn analysis_run_batch(
         return Ok(None);
     }
     let mut conn = db::conn(settings)?;
-    let from_pipeline: Option<String> = conn.exec_first(
+    let pipeline_row: Option<mysql::Row> = conn.exec_first(
         "SELECT import_batch_id FROM meta_pipeline_run WHERE analysis_run_id=? AND import_batch_id IS NOT NULL ORDER BY updated_at DESC LIMIT 1",
         (run_id,),
     ).map_err(|err| format!("failed to resolve analysis_run_id from meta_pipeline_run: {err}"))?;
+    let from_pipeline = pipeline_row.and_then(|row| row.get::<String, _>(0));
     if from_pipeline.is_some() {
         return Ok(from_pipeline);
     }
     ensure_registry_tables(&mut conn)?;
-    conn.exec_first(
+    let module_row: Option<mysql::Row> = conn.exec_first(
         "SELECT import_batch_id FROM meta_batch_module_status WHERE analysis_run_id=? ORDER BY updated_at DESC LIMIT 1",
         (run_id,),
-    ).map_err(|err| format!("failed to resolve analysis_run_id from module status: {err}"))
+    ).map_err(|err| format!("failed to resolve analysis_run_id from module status: {err}"))?;
+    Ok(module_row.and_then(|row| row.get::<String, _>(0)))
 }
 
 pub fn resolve_table(
@@ -362,10 +364,13 @@ pub fn resolve_table(
 ) -> Result<String, String> {
     let mut conn = db::conn(settings)?;
     ensure_registry_tables(&mut conn)?;
-    let existing: Option<String> = conn.exec_first(
+    let existing_row: Option<mysql::Row> = conn.exec_first(
         "SELECT physical_table_name FROM meta_batch_table_registry WHERE import_batch_id=? AND base_table_name=? LIMIT 1",
         (import_batch_id, base_table),
     ).map_err(|err| format!("failed to resolve physical table for {base_table}: {err}"))?;
+    let existing = existing_row
+        .and_then(|row| row.get::<String, _>(0))
+        .filter(|table| !table.trim().is_empty());
     if let Some(table) = existing {
         return Ok(table);
     }

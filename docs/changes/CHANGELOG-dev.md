@@ -1,5 +1,21 @@
 # CHANGELOG-dev
 
+## 1.0.54 - 2026-08-26
+
+### Fixed
+
+- Fixed the remaining batch-refresh crash path in analysis-run registered-table lookup and shared batch-table metadata resolution when legacy registry values are `NULL`.
+- Decoupled batch-list refresh and batch selection from automatic analysis-run queries; loading run options is now a separate explicit action.
+- Removed import-page mount queries for access-rule versions, history batches and stored pipeline polling, restoring the documented no-database-command startup boundary.
+- Added command boundary markers for batch and analysis-run list calls to the credential-free Windows runtime log.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-26.
+- `npm run build`: passed on 2026-08-26; the existing ECharts chunk-size warning remains.
+- `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 CARGO_PROFILE_TEST_DEBUG=0 cargo test --offline`: passed on 2026-08-26; 48 tests passed.
+- Live Windows/MySQL refresh against the customer legacy metadata remains pending.
+
 ## 1.0.53 - 2026-08-26
 
 ### Fixed

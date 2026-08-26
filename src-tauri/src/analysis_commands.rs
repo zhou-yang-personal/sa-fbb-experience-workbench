@@ -305,11 +305,13 @@ fn fetch_batch_data_type(
     import_batch_id: &str,
 ) -> Result<Option<String>, String> {
     let mut conn = db::conn(settings)?;
-    conn.exec_first(
-        "SELECT data_type FROM meta_import_batch WHERE import_batch_id=? LIMIT 1",
-        (import_batch_id,),
-    )
-    .map_err(|err| format!("failed to query batch data_type: {err}"))
+    let row: Option<mysql::Row> = conn
+        .exec_first(
+            "SELECT data_type FROM meta_import_batch WHERE import_batch_id=? LIMIT 1",
+            (import_batch_id,),
+        )
+        .map_err(|err| format!("failed to query batch data_type: {err}"))?;
+    Ok(row.and_then(|row| row.get::<String, _>(0)))
 }
 
 fn final_lead_readiness_text(
@@ -346,6 +348,7 @@ pub fn import_list_batches(
     settings: MySqlSettings,
     data_type: Option<String>,
 ) -> Result<Vec<BatchListItem>, String> {
+    crate::append_runtime_log("command_start import_list_batches");
     let mut conn = db::conn(&settings)?;
     let sql = import_batch_list_sql(data_type.is_some());
     let result = if let Some(data_type) = data_type {
@@ -380,6 +383,7 @@ pub fn import_list_batches(
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
+    crate::append_runtime_log(&format!("command_success import_list_batches rows={}", rows.len()));
     Ok(rows)
 }
 
@@ -406,10 +410,15 @@ fn registered_batch_table(
     import_batch_id: &str,
     base_table_name: &str,
 ) -> Result<Option<String>, String> {
-    let table: Option<String> = conn.exec_first(
-        "SELECT physical_table_name FROM meta_batch_table_registry WHERE import_batch_id=? AND base_table_name=? LIMIT 1",
-        (import_batch_id, base_table_name),
-    ).map_err(|err| format!("failed to resolve registered {base_table_name}: {err}"))?;
+    let row: Option<mysql::Row> = conn
+        .exec_first(
+            "SELECT physical_table_name FROM meta_batch_table_registry WHERE import_batch_id=? AND base_table_name=? LIMIT 1",
+            (import_batch_id, base_table_name),
+        )
+        .map_err(|err| format!("failed to resolve registered {base_table_name}: {err}"))?;
+    let table = row
+        .and_then(|row| row.get::<String, _>(0))
+        .filter(|table| !table.trim().is_empty());
     match table {
         Some(table) if batch_tables::table_exists(conn, &table)? => {
             Ok(Some(batch_tables::sanitize_identifier(&table)?))
@@ -429,6 +438,7 @@ pub fn analysis_list_runs(
     settings: MySqlSettings,
     import_batch_id: String,
 ) -> Result<Vec<AnalysisRunOption>, String> {
+    crate::append_runtime_log("command_start analysis_list_runs");
     let mut conn = db::conn(&settings)?;
     batch_tables::ensure_registry_tables(&mut conn)?;
     let period = registered_batch_table(
@@ -475,7 +485,7 @@ pub fn analysis_list_runs(
     let rows = conn
         .exec_iter(sql, (&import_batch_id,))
         .map_err(|err| format!("failed to list analysis runs for batch: {err}"))?;
-    rows.map(|row| {
+    let runs = rows.map(|row| {
         let row = row.map_err(|err| format!("failed to decode analysis run option: {err}"))?;
         Ok(AnalysisRunOption {
             analysis_run_id: row.get(0).unwrap_or_default(),
@@ -493,7 +503,9 @@ pub fn analysis_list_runs(
             experience_policy_version: row.get(12),
         })
     })
-    .collect()
+    .collect::<Result<Vec<_>, String>>()?;
+    crate::append_runtime_log(&format!("command_success analysis_list_runs rows={}", runs.len()));
+    Ok(runs)
 }
 
 #[tauri::command]
@@ -533,21 +545,26 @@ fn query_batch_table_registry(
     conn: &mut mysql::PooledConn,
     import_batch_id: &str,
 ) -> Result<Vec<BatchTableRegistryRow>, String> {
-    conn.exec_map(
-        "SELECT import_batch_id, layer, data_type, logical_table_name, base_table_name, physical_table_name, CAST(row_count AS SIGNED), status FROM meta_batch_table_registry WHERE import_batch_id=? ORDER BY layer, logical_table_name",
-        (import_batch_id,),
-        |(import_batch_id, layer, data_type, logical_table_name, base_table_name, physical_table_name, row_count, status): (String, String, String, String, String, String, i64, String)| BatchTableRegistryRow {
-            import_batch_id,
-            layer,
-            data_type,
-            logical_table_name,
-            base_table_name,
-            physical_table_name,
-            row_count,
-            status,
-        },
-    )
-    .map_err(|err| format!("failed to query batch table registry: {err}"))
+    let rows = conn
+        .exec_iter(
+            "SELECT import_batch_id, layer, data_type, logical_table_name, base_table_name, physical_table_name, CAST(COALESCE(row_count, 0) AS SIGNED), status FROM meta_batch_table_registry WHERE import_batch_id=? ORDER BY layer, logical_table_name",
+            (import_batch_id,),
+        )
+        .map_err(|err| format!("failed to query batch table registry: {err}"))?;
+    rows.map(|row| {
+        let row = row.map_err(|err| format!("failed to decode batch table registry row: {err}"))?;
+        Ok(BatchTableRegistryRow {
+            import_batch_id: normalized_batch_text(row.get(0), import_batch_id),
+            layer: normalized_batch_text(row.get(1), "unknown"),
+            data_type: normalized_batch_text(row.get(2), "unknown"),
+            logical_table_name: normalized_batch_text(row.get(3), "unknown"),
+            base_table_name: normalized_batch_text(row.get(4), "unknown"),
+            physical_table_name: normalized_batch_text(row.get(5), "unknown"),
+            row_count: row.get::<i64, _>(6).unwrap_or_default(),
+            status: normalized_batch_text(row.get(7), "unknown"),
+        })
+    })
+    .collect()
 }
 
 #[tauri::command]
