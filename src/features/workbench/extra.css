@@ -78,6 +78,8 @@
 .step-card-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
 .step-badge { border: 1px solid rgba(96, 165, 250, 0.34); border-radius: 999px; padding: 4px 10px; color: #bfdbfe; font-size: 12px; }
 .primary-action-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+.raw-rebuild-panel { border-color: rgba(245, 158, 11, 0.32); }
+.analytics-warning-banner { margin: 12px 0 0; padding: 10px 12px; color: #92400e; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 10px; line-height: 1.5; }
 .pipeline-plan-table .table-row { grid-template-columns: minmax(180px, 0.8fr) minmax(320px, 1.8fr) minmax(80px, 0.3fr); }
 .pipeline-plan-table .table-row span:nth-child(2) { min-width: 0; max-height: 72px; overflow: auto; word-break: break-word; }
 .status-running { border-color: rgba(96, 165, 250, 0.52); background: rgba(37, 99, 235, 0.18); }

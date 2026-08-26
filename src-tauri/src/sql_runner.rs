@@ -1,7 +1,55 @@
 use mysql::prelude::*;
+use std::cell::RefCell;
 
 use crate::db;
 use crate::models::MySqlSettings;
+
+#[derive(Clone, Debug)]
+pub struct SqlExecutionEvent {
+    pub statement_index: usize,
+    pub statement_count: usize,
+    pub status: &'static str,
+    pub statement_preview: String,
+    pub duration_ms: i64,
+    pub affected_rows: Option<u64>,
+    pub error: Option<String>,
+}
+
+type SqlExecutionObserver = Box<dyn Fn(SqlExecutionEvent)>;
+
+thread_local! {
+    static SQL_EXECUTION_OBSERVER: RefCell<Option<SqlExecutionObserver>> = RefCell::new(None);
+}
+
+fn notify_sql_execution(event: SqlExecutionEvent) {
+    SQL_EXECUTION_OBSERVER.with(|slot| {
+        if let Some(observer) = slot.borrow().as_ref() {
+            observer(event);
+        }
+    });
+}
+
+pub fn with_sql_execution_observer<T, F, O>(observer: O, action: F) -> T
+where
+    F: FnOnce() -> T,
+    O: Fn(SqlExecutionEvent) + 'static,
+{
+    let previous = SQL_EXECUTION_OBSERVER.with(|slot| slot.replace(Some(Box::new(observer))));
+    let result = action();
+    SQL_EXECUTION_OBSERVER.with(|slot| {
+        slot.replace(previous);
+    });
+    result
+}
+
+fn statement_preview(statement: &str) -> String {
+    let normalized = statement.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut preview = normalized.chars().take(260).collect::<String>();
+    if normalized.chars().count() > 260 {
+        preview.push('…');
+    }
+    preview
+}
 
 pub fn split_sql_script(script: &str) -> Vec<String> {
     let mut statements = Vec::new();
@@ -79,10 +127,59 @@ pub fn bind_batch_params(sql: &str, import_batch_id: &str, analysis_run_id: Opti
 pub fn execute_script(settings: &MySqlSettings, script: &str) -> Result<u64, String> {
     let mut conn = db::conn(settings)?;
     let mut total = 0_u64;
-    for stmt in split_sql_script(script) {
-        conn.query_drop(&stmt)
-            .map_err(|err| format!("failed to execute SQL statement: {err}; statement={stmt}"))?;
-        total += conn.affected_rows();
+    let statements = split_sql_script(script);
+    let statement_count = statements.len();
+    for (offset, stmt) in statements.into_iter().enumerate() {
+        let statement_index = offset + 1;
+        let preview = statement_preview(&stmt);
+        let started = std::time::Instant::now();
+        notify_sql_execution(SqlExecutionEvent {
+            statement_index,
+            statement_count,
+            status: "running",
+            statement_preview: preview.clone(),
+            duration_ms: 0,
+            affected_rows: None,
+            error: None,
+        });
+        if let Err(err) = conn.query_drop(&stmt) {
+            let error = err.to_string();
+            notify_sql_execution(SqlExecutionEvent {
+                statement_index,
+                statement_count,
+                status: "failed",
+                statement_preview: preview,
+                duration_ms: started.elapsed().as_millis().min(i64::MAX as u128) as i64,
+                affected_rows: None,
+                error: Some(error.clone()),
+            });
+            return Err(format!("failed to execute SQL statement: {error}; statement={stmt}"));
+        }
+        let affected_rows = conn.affected_rows();
+        total += affected_rows;
+        notify_sql_execution(SqlExecutionEvent {
+            statement_index,
+            statement_count,
+            status: "success",
+            statement_preview: preview,
+            duration_ms: started.elapsed().as_millis().min(i64::MAX as u128) as i64,
+            affected_rows: Some(affected_rows),
+            error: None,
+        });
     }
     Ok(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::statement_preview;
+
+    #[test]
+    fn statement_preview_is_single_line_and_bounded() {
+        let sql = format!("INSERT\nINTO target_table VALUES ('{}')", "x".repeat(400));
+        let preview = statement_preview(&sql);
+        assert!(!preview.contains('\n'));
+        assert!(preview.chars().count() <= 261);
+        assert!(preview.ends_with('…'));
+    }
 }

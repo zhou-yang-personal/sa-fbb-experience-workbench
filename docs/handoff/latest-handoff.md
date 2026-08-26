@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.51
+1.0.52
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,14 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.52 update
+
+- Application startup no longer invokes MySQL. Batch and analysis-run lists load only after an explicit refresh action.
+- Added an explicit existing-RAW rebuild pipeline that preserves CSV/RAW and old run-scoped ADS, regenerates Quality Gate/CLEAN/DWS/ADS/V2 under a new `RUN_REBUILD_*`, and rejects concurrent batch SQL.
+- Core SQL scripts now emit statement-level RUNNING/SUCCESS/FAILED entries with duration, affected rows and a bounded statement preview into `meta_pipeline_log` during RAW rebuild.
+- Windows writes credential-free runtime lifecycle and Rust panic evidence to `%LOCALAPPDATA%\\SA FBB Experience Workbench\\runtime.log`.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.51 update
 

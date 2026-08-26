@@ -464,6 +464,70 @@ export function ImportPanel(props: Props) {
     });
   }
 
+  async function rebuildCurrentBatchFromRaw() {
+    if (!importBatchId.trim()) {
+      setStatusMessage('请先在历史批次中选择要从 RAW 重建的批次。');
+      return;
+    }
+    if (pipelineRunning && !staleTakeoverConfirmed) {
+      setStatusMessage('该批次仍显示有运行中任务。请等待完成；只有原 EXE 已退出时才能确认接管。');
+      return;
+    }
+    const confirmed = window.confirm(
+      '将保留现有 RAW 和旧 analysis run，但会从 RAW 重新执行 Quality Gate、覆盖当前批次 CLEAN/DWD 与 DWS，并生成新的 ADS/V2 analysis run。大批次可能持续较长时间，期间不要关闭应用或并发启动其他任务。确认继续？',
+    );
+    if (!confirmed) {
+      setStatusMessage('已取消从 RAW 重建。');
+      return;
+    }
+    if (staleTakeoverConfirmed) {
+      const takeoverConfirmed = window.confirm(
+        '当前批次存在遗留 running 状态。仅当原 EXE 已退出且 MySQL 已无该批次活动 SQL 时才能接管；后端仍会再次检查。确认继续？',
+      );
+      if (!takeoverConfirmed) {
+        setStatusMessage('已取消遗留任务接管。');
+        return;
+      }
+    }
+    await runAction('import_pipeline_rebuild_batch_from_raw', async () => {
+      const started = await workbenchApi.pipelineRebuildFromRaw(
+        settings,
+        importBatchId,
+        staleTakeoverConfirmed,
+      );
+      pipelineGenerationRef.current += 1;
+      setPipelineLogs([]);
+      setPipelinePollingError('');
+      setPipelineLastPollAt(null);
+      setPipelineLastLogAt(null);
+      setPipelineAutoRefresh(true);
+      setQualityRows([]);
+      setRawStatus([]);
+      setProfileMetrics([]);
+      setRegistry([]);
+      setModuleStatus([]);
+      lastLogSeqRef.current = 0;
+      setPipelineRunId(started.pipeline_run_id);
+      storePipelineRunId(settings, started.pipeline_run_id);
+      setAnalysisRunId(started.analysis_run_id);
+      setPipelineStatus({
+        pipeline_run_id: started.pipeline_run_id,
+        status: started.status,
+        current_step: 'prepare_rebuild',
+        percent: 0,
+        elapsed_ms: 0,
+        import_batch_id: started.import_batch_id ?? importBatchId,
+        analysis_run_id: started.analysis_run_id,
+        final_fusion_status: 'pending',
+        message: '已启动 RAW 重建；跳过 CSV 和 RAW 导入，重跑 Quality Gate、CLEAN/DWS/ADS/V2。',
+        steps: [],
+      });
+      setStaleTakeoverConfirmed(false);
+      setStatusMessage(`RAW 重建任务已启动：${started.pipeline_run_id}；新运行 ${started.analysis_run_id}`);
+      return started;
+    });
+  }
+
   useEffect(() => {
     void refreshPublishedRuleSets();
   }, [requiresAccessRules, settings.host, settings.port, settings.database, settings.user, settings.secret]);
@@ -870,6 +934,44 @@ export function ImportPanel(props: Props) {
           void restorePipelineForBatch(selected);
         }}
       />
+      <section className="panel form-panel raw-rebuild-panel">
+        <div className="step-card-head">
+          <div>
+            <h3>从现有 RAW 重建全部分析结果</h3>
+            <p className="muted-row">适用于规则、清洗口径或体验策略变化后重新计算。不会读取 CSV，也不会重新导入 RAW；会重跑 Quality Gate、CLEAN/DWD、DWS、ADS、V2 和 Findings。</p>
+          </div>
+          <span className="step-badge">RAW rebuild</span>
+        </div>
+        <div className="summary-pills">
+          <span className="status-pill">batch {importBatchId || '-'}</span>
+          <span className="status-pill">保留 RAW</span>
+          <span className="status-pill">新建 analysis run</span>
+          <span className="status-pill">SQL 逐条计时</span>
+        </div>
+        <p className="analytics-warning-banner">重建会覆盖当前批次共享的 CLEAN/DWD 与 DWS 内容，但保留 RAW 和旧 analysis run 的 ADS 结果。执行失败会将新运行标记为 failed，不会伪装成成功。</p>
+        {pipelineRunning && (
+          <label className="access-rule-confirmation-check" style={{ marginTop: 12 }}>
+            <input
+              type="checkbox"
+              checked={staleTakeoverConfirmed}
+              onChange={(event) => setStaleTakeoverConfirmed(event.target.checked)}
+            />
+            <span>原 EXE 已退出，我需要接管遗留的 running 状态。后端将检查 MySQL 活动 SQL，仍在执行时必定拒绝。</span>
+          </label>
+        )}
+        <div className="primary-action-row" style={{ marginTop: 12 }}>
+          <ActionButton
+            actionKey="import_pipeline_rebuild_batch_from_raw"
+            actionStates={actionStates}
+            primary
+            label="从 RAW 重建 CLEAN / DWS / ADS / V2"
+            disabled={!importBatchId || (pipelineRunning && !staleTakeoverConfirmed)}
+            onClick={rebuildCurrentBatchFromRaw}
+            title={pipelineRunning && !staleTakeoverConfirmed ? '当前任务仍在运行；不要并发启动' : undefined}
+          />
+        </div>
+        <p className="muted-row">实时日志会为核心脚本拆分出的每条 SQL 写入 RUNNING、SUCCESS 或 FAILED，并记录执行耗时、影响行数和语句摘要。</p>
+      </section>
       <section className="panel form-panel">
         <div className="step-card-head">
           <div>

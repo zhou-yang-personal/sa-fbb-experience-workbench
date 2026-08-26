@@ -4,8 +4,9 @@ use uuid::Uuid;
 use crate::db;
 use crate::models::{
     EtlRequest, ImportCurrentFileRequest, ImportPipelineLogRow, ImportPipelineLogsRequest,
-    ImportPipelineResumeRequest, ImportPipelineStartRequest, ImportPipelineStartResult,
-    ImportPipelineStatus, ImportPipelineStatusRequest, ImportPipelineStepRow, MySqlSettings,
+    ImportPipelineRebuildRequest, ImportPipelineResumeRequest, ImportPipelineStartRequest,
+    ImportPipelineStartResult, ImportPipelineStatus, ImportPipelineStatusRequest,
+    ImportPipelineStepRow, MySqlSettings,
 };
 use crate::sql_runner;
 
@@ -70,6 +71,37 @@ const RESUME_PIPELINE_STEPS: &[PipelineStepDef] = &[
     PipelineStepDef {
         name: "dws_ads_aggregate",
         label: "完整 DWS/ADS 聚合",
+    },
+    PipelineStepDef {
+        name: "final_fusion_optional",
+        label: "Final Lead 融合（可降级）",
+    },
+    PipelineStepDef {
+        name: "module_ready",
+        label: "Module Ready",
+    },
+    PipelineStepDef {
+        name: "finish",
+        label: "完成",
+    },
+];
+
+const REBUILD_PIPELINE_STEPS: &[PipelineStepDef] = &[
+    PipelineStepDef {
+        name: "prepare_rebuild",
+        label: "RAW 重建检查",
+    },
+    PipelineStepDef {
+        name: "raw_quality_gate",
+        label: "RAW 质量检查",
+    },
+    PipelineStepDef {
+        name: "raw_to_clean",
+        label: "CLEAN/DWD 重建",
+    },
+    PipelineStepDef {
+        name: "dws_ads_aggregate",
+        label: "DWS/ADS/V2 重建",
     },
     PipelineStepDef {
         name: "final_fusion_optional",
@@ -385,6 +417,52 @@ fn append_log(
         "failed to append pipeline log after sequence retries: {}",
         last_duplicate.unwrap_or_else(|| "unknown duplicate sequence error".to_string())
     ))
+}
+
+fn run_with_sql_logging<T, F>(
+    settings: &MySqlSettings,
+    pipeline_run_id: &str,
+    stage: &'static str,
+    total_started: std::time::Instant,
+    action: F,
+) -> T
+where
+    F: FnOnce() -> T,
+{
+    let observed_settings = settings.clone();
+    let observed_pipeline_run_id = pipeline_run_id.to_string();
+    sql_runner::with_sql_execution_observer(
+        move |event| {
+            let level = if event.status == "failed" { "error" } else { "info" };
+            let status = event.status.to_ascii_uppercase();
+            let affected = event
+                .affected_rows
+                .map(|rows| rows.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            let error = event
+                .error
+                .as_deref()
+                .map(|value| format!("；error={value}"))
+                .unwrap_or_default();
+            let message = format!(
+                "SQL {}/{} {status}；stage={stage}；duration_ms={}；affected_rows={affected}；statement={}{}",
+                event.statement_index,
+                event.statement_count,
+                event.duration_ms,
+                event.statement_preview,
+                error,
+            );
+            let _ = append_log(
+                &observed_settings,
+                &observed_pipeline_run_id,
+                level,
+                Some(stage),
+                &message,
+                now_elapsed_ms(total_started),
+            );
+        },
+        action,
+    )
 }
 
 fn update_run(
@@ -1167,6 +1245,104 @@ fn latest_job_status(
     .map_err(|err| format!("failed to inspect {job_type} readiness: {err}"))
 }
 
+fn insert_rebuild_pipeline_run(
+    req: &ImportPipelineRebuildRequest,
+    pipeline_run_id: &str,
+    analysis_run_id: &str,
+) -> Result<(), String> {
+    ensure_pipeline_schema(&req.settings)?;
+    let mut conn = db::conn(&req.settings)?;
+    let batch: Option<(String, String, String, String, i64)> = conn
+        .exec_first(
+            "SELECT data_type, source_file_name, COALESCE(NULLIF(batch_display_name,''), source_file_name), status, CAST(COALESCE(imported_rows,0) AS SIGNED) FROM meta_import_batch WHERE import_batch_id=?",
+            (&req.import_batch_id,),
+        )
+        .map_err(|err| format!("failed to inspect RAW rebuild batch: {err}"))?;
+    let Some((data_type, source_file_name, batch_display_name, raw_status, imported_rows)) = batch
+    else {
+        return Err(format!("import batch not found: {}", req.import_batch_id));
+    };
+    if !matches!(data_type.to_ascii_lowercase().as_str(), "tcp" | "game" | "mixed") {
+        return Err(format!(
+            "RAW rebuild supports TCP/Game analysis batches only; data_type={data_type}"
+        ));
+    }
+    if raw_status.to_ascii_lowercase() != "success" || imported_rows <= 0 {
+        return Err(format!(
+            "batch RAW is not reusable: raw_status={raw_status}, imported_rows={imported_rows}"
+        ));
+    }
+    let active_pipeline: Option<String> = conn
+        .exec_first(
+            "SELECT pipeline_run_id FROM meta_pipeline_run WHERE import_batch_id=? AND status IN ('pending','running') ORDER BY updated_at DESC LIMIT 1",
+            (&req.import_batch_id,),
+        )
+        .map_err(|err| format!("failed to inspect active pipeline: {err}"))?;
+    if active_pipeline.is_some() && !req.confirm_original_process_stopped.unwrap_or(false) {
+        return Err(format!(
+            "batch still has active pipeline {}; wait for completion, or confirm stale takeover after the original EXE exits",
+            active_pipeline.as_deref().unwrap_or("unknown")
+        ));
+    }
+    let active_sql = active_batch_statements(&req.settings, &req.import_batch_id)?;
+    if !active_sql.is_empty() {
+        return Err(format!(
+            "RAW rebuild rejected because MySQL is still executing this batch: {}",
+            active_sql.join(" | ")
+        ));
+    }
+    if let Some(active_pipeline) = active_pipeline {
+        conn.exec_drop(
+            "UPDATE meta_pipeline_step SET error_message=CASE WHEN status='running' THEN 'stale pipeline superseded by explicit RAW rebuild' ELSE error_message END, status=CASE WHEN status='running' THEN 'failed' ELSE 'skipped' END, finished_at=UTC_TIMESTAMP(), message='原应用进程已退出；用户确认无活动 SQL 后由 RAW 重建任务接管。' WHERE pipeline_run_id=? AND status IN ('pending','running')",
+            (&active_pipeline,),
+        )
+        .map_err(|err| format!("failed to close stale pipeline steps: {err}"))?;
+        conn.exec_drop(
+            "UPDATE meta_pipeline_run SET status='failed', finished_at=UTC_TIMESTAMP(), updated_at=UTC_TIMESTAMP(), message='stale pipeline superseded by explicit RAW rebuild', error_message='original process confirmed stopped; no active batch SQL found' WHERE pipeline_run_id=? AND status IN ('pending','running')",
+            (&active_pipeline,),
+        )
+        .map_err(|err| format!("failed to close stale pipeline: {err}"))?;
+    }
+    conn.exec_drop(
+        "INSERT INTO meta_pipeline_run (pipeline_run_id, import_batch_id, analysis_run_id, data_type, source_file_name, batch_display_name, status, total_steps, completed_steps, percent, message, created_at, updated_at) SELECT ?, ?, ?, ?, ?, ?, 'pending', ?, 0, 0, 'RAW rebuild queued; CSV and RAW import are preserved', UTC_TIMESTAMP(), UTC_TIMESTAMP() WHERE NOT EXISTS (SELECT 1 FROM meta_pipeline_run WHERE import_batch_id=? AND status IN ('pending','running'))",
+        (
+            pipeline_run_id,
+            &req.import_batch_id,
+            analysis_run_id,
+            data_type,
+            source_file_name,
+            batch_display_name,
+            REBUILD_PIPELINE_STEPS.len() as i32,
+            &req.import_batch_id,
+        ),
+    )
+    .map_err(|err| format!("failed to create RAW rebuild pipeline: {err}"))?;
+    if conn.affected_rows() == 0 {
+        return Err(
+            "RAW rebuild rejected because another pipeline became active for this batch"
+                .to_string(),
+        );
+    }
+    for (index, step) in REBUILD_PIPELINE_STEPS.iter().enumerate() {
+        conn.exec_drop(
+            "INSERT INTO meta_pipeline_step (pipeline_run_id, step_index, step_name, step_label, status, message) VALUES (?, ?, ?, ?, 'pending', 'waiting')",
+            (pipeline_run_id, (index + 1) as i32, step.name, step.label),
+        )
+        .map_err(|err| format!("failed to create RAW rebuild step {}: {err}", step.name))?;
+    }
+    append_log(
+        &req.settings,
+        pipeline_run_id,
+        "info",
+        Some("start"),
+        &format!(
+            "RAW rebuild plan created; import_batch_id={}; analysis_run_id={analysis_run_id}; CSV and RAW import are preserved; CLEAN/DWS/ADS will be regenerated",
+            req.import_batch_id
+        ),
+        0,
+    )
+}
+
 fn insert_resume_pipeline_run(
     req: &ImportPipelineResumeRequest,
     pipeline_run_id: &str,
@@ -1422,6 +1598,274 @@ fn run_resume_pipeline_job(
     );
 }
 
+fn run_rebuild_pipeline_job(
+    req: ImportPipelineRebuildRequest,
+    pipeline_run_id: String,
+    analysis_run_id: String,
+) {
+    let total_started = std::time::Instant::now();
+    let settings = req.settings.clone();
+    let batch = req.import_batch_id.clone();
+    let mut degraded = false;
+    let mut final_fusion_status = "pending".to_string();
+    let _ = update_run(
+        &settings,
+        &pipeline_run_id,
+        "running",
+        Some("prepare_rebuild"),
+        Some("RAW rebuild running; CSV and RAW import are preserved"),
+        None,
+        None,
+        0,
+    );
+    for (idx, step) in REBUILD_PIPELINE_STEPS.iter().copied().enumerate() {
+        let step_index = (idx + 1) as i32;
+        let result = match step.name {
+            "prepare_rebuild" => run_observed_step(
+                &settings,
+                &pipeline_run_id,
+                step_index,
+                step,
+                total_started,
+                || {
+                    db::ping(&settings)?;
+                    crate::migrations::ensure_experience_policy_schema(&settings)?;
+                    crate::batch_tables::ensure_batch_tables(&settings, &batch)?;
+                    let mut conn = db::conn(&settings)?;
+                    let data_type: String = conn
+                        .exec_first(
+                            "SELECT data_type FROM meta_import_batch WHERE import_batch_id=? LIMIT 1",
+                            (&batch,),
+                        )
+                        .map_err(|err| format!("failed to inspect RAW rebuild data type: {err}"))?
+                        .ok_or_else(|| format!("import batch not found: {batch}"))?;
+                    let raw_bases: &[&str] = match data_type.to_ascii_lowercase().as_str() {
+                        "tcp" => &["raw_tcp_detail_import"],
+                        "game" => &["raw_game_detail_import"],
+                        "mixed" => &["raw_tcp_detail_import", "raw_game_detail_import"],
+                        _ => &[],
+                    };
+                    let mut ready = 0;
+                    for raw_base in raw_bases {
+                        let table = crate::batch_tables::resolve_table(&settings, &batch, raw_base)?;
+                        if crate::batch_tables::table_has_rows(&mut conn, &table)? {
+                            ready += 1;
+                        }
+                    }
+                    if ready == 0 {
+                        return Err("RAW rebuild stopped because no batch RAW table contains rows".to_string());
+                    }
+                    Ok(Some(format!(
+                        "RAW source verified; batch={batch}; analysis_run_id={analysis_run_id}; ready_raw_tables={ready}; CSV import skipped"
+                    )))
+                },
+            ),
+            "raw_quality_gate" => run_observed_step(
+                &settings,
+                &pipeline_run_id,
+                step_index,
+                step,
+                total_started,
+                || {
+                    run_with_sql_logging(
+                        &settings,
+                        &pipeline_run_id,
+                        step.name,
+                        total_started,
+                        || {
+                            crate::phase_commands::quality_run_gate(EtlRequest {
+                                settings: settings.clone(),
+                                import_batch_id: batch.clone(),
+                                analysis_run_id: None,
+                            })
+                        },
+                    )?;
+                    Ok(Some("RAW Quality Gate regenerated".to_string()))
+                },
+            ),
+            "raw_to_clean" => run_observed_step(
+                &settings,
+                &pipeline_run_id,
+                step_index,
+                step,
+                total_started,
+                || {
+                    run_with_sql_logging(
+                        &settings,
+                        &pipeline_run_id,
+                        step.name,
+                        total_started,
+                        || {
+                            crate::etl_commands::etl_start_clean_job(EtlRequest {
+                                settings: settings.clone(),
+                                import_batch_id: batch.clone(),
+                                analysis_run_id: None,
+                            })
+                        },
+                    )?;
+                    Ok(Some("CLEAN/DWD regenerated from existing RAW".to_string()))
+                },
+            ),
+            "dws_ads_aggregate" => run_observed_step(
+                &settings,
+                &pipeline_run_id,
+                step_index,
+                step,
+                total_started,
+                || {
+                    run_with_sql_logging(
+                        &settings,
+                        &pipeline_run_id,
+                        step.name,
+                        total_started,
+                        || {
+                            run_dws_ads_stage(
+                                &settings,
+                                &pipeline_run_id,
+                                &batch,
+                                &analysis_run_id,
+                                total_started,
+                            )
+                        },
+                    )
+                    .map(Some)
+                },
+            ),
+            "final_fusion_optional" => run_observed_step(
+                &settings,
+                &pipeline_run_id,
+                step_index,
+                step,
+                total_started,
+                || {
+                    let message = run_with_sql_logging(
+                        &settings,
+                        &pipeline_run_id,
+                        step.name,
+                        total_started,
+                        || run_final_fusion_stage(&settings, &batch, &analysis_run_id),
+                    )?;
+                    final_fusion_status = "success".to_string();
+                    Ok(Some(message))
+                },
+            ),
+            "module_ready" => run_observed_step(
+                &settings,
+                &pipeline_run_id,
+                step_index,
+                step,
+                total_started,
+                || run_module_ready_stage(&settings, &batch, &analysis_run_id).map(Some),
+            ),
+            "finish" => run_observed_step(
+                &settings,
+                &pipeline_run_id,
+                step_index,
+                step,
+                total_started,
+                || Ok(Some("RAW rebuild finished".to_string())),
+            ),
+            _ => Ok(Some("unknown RAW rebuild step skipped".to_string())),
+        };
+        match result {
+            Ok(_) => {}
+            Err((PipelineOutcome::Degraded, err)) => {
+                degraded = true;
+                final_fusion_status = "degraded".to_string();
+                let _ = append_log(
+                    &settings,
+                    &pipeline_run_id,
+                    "warning",
+                    Some(step.name),
+                    &format!("optional step degraded and RAW rebuild continues: {err}"),
+                    now_elapsed_ms(total_started),
+                );
+            }
+            Err((PipelineOutcome::Failed, err)) => {
+                let _ = fail_remaining_steps(
+                    &settings,
+                    &pipeline_run_id,
+                    step_index,
+                    "前序 RAW 重建步骤失败，后续步骤已跳过。",
+                );
+                let _ = crate::etl_commands::mark_analysis_run_status(
+                    &settings,
+                    &analysis_run_id,
+                    "failed",
+                    &format!("RAW rebuild failed: {err}"),
+                );
+                let _ = update_run(
+                    &settings,
+                    &pipeline_run_id,
+                    "failed",
+                    Some(step.name),
+                    Some("RAW rebuild failed"),
+                    Some(&err),
+                    Some(&final_fusion_status),
+                    now_elapsed_ms(total_started),
+                );
+                let _ = append_log(
+                    &settings,
+                    &pipeline_run_id,
+                    "error",
+                    Some(step.name),
+                    &format!("RAW rebuild failed: {err}"),
+                    now_elapsed_ms(total_started),
+                );
+                return;
+            }
+        }
+    }
+    let final_status = if degraded { "degraded" } else { "success" };
+    let final_message = if degraded {
+        "RAW rebuild finished with Final Lead degraded; CLEAN/DWS/ADS/V2 are available"
+    } else {
+        "RAW rebuild finished successfully; CLEAN/DWS/ADS/V2 are available"
+    };
+    let _ = update_run(
+        &settings,
+        &pipeline_run_id,
+        final_status,
+        Some("finish"),
+        Some(final_message),
+        None,
+        Some(&final_fusion_status),
+        now_elapsed_ms(total_started),
+    );
+    let _ = append_log(
+        &settings,
+        &pipeline_run_id,
+        if degraded { "warning" } else { "info" },
+        Some("finish"),
+        final_message,
+        now_elapsed_ms(total_started),
+    );
+}
+
+#[tauri::command]
+pub fn import_pipeline_rebuild_batch_from_raw(
+    req: ImportPipelineRebuildRequest,
+) -> Result<ImportPipelineStartResult, String> {
+    if req.import_batch_id.trim().is_empty() {
+        return Err("import_batch_id is required".to_string());
+    }
+    let analysis_run_id = format!("RUN_REBUILD_{}", Uuid::new_v4().simple());
+    let pipeline_run_id = format!("PIPE_{}", Uuid::new_v4().simple());
+    insert_rebuild_pipeline_run(&req, &pipeline_run_id, &analysis_run_id)?;
+    let task_req = req.clone();
+    let task_pipeline_run_id = pipeline_run_id.clone();
+    let task_analysis_run_id = analysis_run_id.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        run_rebuild_pipeline_job(task_req, task_pipeline_run_id, task_analysis_run_id);
+    });
+    Ok(ImportPipelineStartResult {
+        pipeline_run_id,
+        import_batch_id: Some(req.import_batch_id),
+        analysis_run_id,
+        status: "running".to_string(),
+    })
+}
+
 #[tauri::command]
 pub fn import_pipeline_resume_batch(
     req: ImportPipelineResumeRequest,
@@ -1605,7 +2049,7 @@ mod tests {
     use super::{
         final_status_for_step_failure, pipeline_plan, raw_import_heartbeat_message,
         raw_import_stall_hint, step_heartbeat_message, PipelineOutcome, AGGREGATE_SUBTASKS,
-        RESUME_PIPELINE_STEPS,
+        REBUILD_PIPELINE_STEPS, RESUME_PIPELINE_STEPS,
     };
 
     #[test]
@@ -1648,6 +2092,28 @@ mod tests {
         );
         assert!(!names.contains(&"import_current_file_atomic"));
         assert!(!names.contains(&"raw_to_clean"));
+    }
+
+    #[test]
+    fn rebuild_plan_preserves_raw_and_regenerates_clean_and_aggregates() {
+        let names = REBUILD_PIPELINE_STEPS
+            .iter()
+            .map(|step| step.name)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec![
+                "prepare_rebuild",
+                "raw_quality_gate",
+                "raw_to_clean",
+                "dws_ads_aggregate",
+                "final_fusion_optional",
+                "module_ready",
+                "finish",
+            ]
+        );
+        assert!(!names.contains(&"probe_csv"));
+        assert!(!names.contains(&"import_current_file_atomic"));
     }
 
     #[test]

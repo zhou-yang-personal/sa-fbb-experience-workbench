@@ -17,6 +17,7 @@ type Props = {
 const stepLabels: Record<string, string> = {
   start: '执行计划',
   prepare_resume: '复用批次检查',
+  prepare_rebuild: 'RAW 重建检查',
   prepare_environment: '导入准备',
   probe_csv: 'CSV 探测',
   import_current_file_atomic: '字段映射与 RAW 入库',
@@ -133,11 +134,12 @@ export function PipelineLogMonitor({ logs, status, polling, pollingError, lastPo
       <div className="log-list structured-log-list pipeline-log-list">
         {visible.map((row) => {
           const heartbeat = row.message.includes('仍在运行') || row.message.includes('任务仍存活');
-          const tone = row.level === 'error' ? 'failure' : row.level === 'warning' ? 'warning' : heartbeat ? 'heartbeat' : 'success';
+          const sqlRunning = /SQL \d+\/\d+ RUNNING/.test(row.message);
+          const tone = row.level === 'error' ? 'failure' : row.level === 'warning' ? 'warning' : heartbeat || sqlRunning ? 'heartbeat' : 'success';
           return (
             <article key={row.sequence} className={`log-entry log-entry-${tone}`}>
               <div className="log-entry-head">
-                <span className={`status-pill ${row.level === 'error' ? 'status-failure' : row.level === 'warning' ? 'status-warning' : heartbeat ? 'status-running' : 'status-success'}`}>{heartbeat ? 'heartbeat' : row.level}</span>
+                <span className={`status-pill ${row.level === 'error' ? 'status-failure' : row.level === 'warning' ? 'status-warning' : heartbeat || sqlRunning ? 'status-running' : 'status-success'}`}>{sqlRunning ? 'SQL running' : heartbeat ? 'heartbeat' : row.level}</span>
                 <strong>{stepLabels[row.step_name ?? ''] ?? row.step_name ?? '-'}</strong>
                 <small>计划累计 {duration(row.elapsed_ms)}</small>
               </div>

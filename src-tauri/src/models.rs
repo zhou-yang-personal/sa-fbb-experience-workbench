@@ -158,6 +158,13 @@ pub struct ImportPipelineResumeRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct ImportPipelineRebuildRequest {
+    pub settings: MySqlSettings,
+    pub import_batch_id: String,
+    pub confirm_original_process_stopped: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct ImportPipelineStatusRequest {
     pub settings: MySqlSettings,
     pub pipeline_run_id: String,

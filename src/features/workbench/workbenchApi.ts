@@ -75,6 +75,8 @@ export const workbenchApi = {
     invoke<ImportPipelineStartResult>('import_pipeline_start', { req: { settings, data_type: dataType, file_path: filePath, batch_display_name: batchDisplayName, import_mode: importMode, analysis_run_id: analysisRunId, access_rule_set_id: accessRuleSetId?.trim() || undefined } }),
   pipelineResume: (settings: MySqlSettings, importBatchId: string, analysisRunId?: string, confirmOriginalProcessStopped = false) =>
     invoke<ImportPipelineStartResult>('import_pipeline_resume_batch', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId?.trim() || undefined, confirm_original_process_stopped: confirmOriginalProcessStopped } }),
+  pipelineRebuildFromRaw: (settings: MySqlSettings, importBatchId: string, confirmOriginalProcessStopped = false) =>
+    invoke<ImportPipelineStartResult>('import_pipeline_rebuild_batch_from_raw', { req: { settings, import_batch_id: importBatchId, confirm_original_process_stopped: confirmOriginalProcessStopped } }),
   pipelineStatus: (settings: MySqlSettings, pipelineRunId: string) =>
     invoke<ImportPipelineStatus>('import_pipeline_get_status', { req: { settings, pipeline_run_id: pipelineRunId } }),
   pipelineLogs: (settings: MySqlSettings, pipelineRunId: string, afterSequence?: number) =>

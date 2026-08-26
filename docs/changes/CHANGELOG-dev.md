@@ -1,5 +1,25 @@
 # CHANGELOG-dev
 
+## 1.0.52 - 2026-08-26
+
+### Added
+
+- Added an explicit current-batch RAW rebuild pipeline that preserves CSV/RAW, reruns Quality Gate through CLEAN/DWS/ADS/V2, creates a new analysis run and retains existing concurrency protection.
+- Added statement-level SQL execution events for RAW rebuild core scripts, including RUNNING/SUCCESS/FAILED, duration, affected rows and a bounded statement preview in the existing real-time pipeline log.
+- Added a credential-free Windows runtime log for application start, normal exit, Tauri runtime errors and Rust panic evidence.
+
+### Fixed
+
+- Removed startup batch and analysis-run queries. Opening the application now performs no MySQL command until the user explicitly refreshes or starts an action.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-26.
+- `npm run build`: passed on 2026-08-26; the existing ECharts chunk-size warning remains.
+- `cargo check --offline`: passed on 2026-08-26 with existing warnings only.
+- `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 CARGO_PROFILE_TEST_DEBUG=0 cargo test --offline`: passed on 2026-08-26; 46 tests passed.
+- Windows artifact startup and live MySQL RAW rebuild remain pending.
+
 ## 1.0.51 - 2026-08-26
 
 ### Fixed

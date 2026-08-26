@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { AnalysisRunOption, BatchListItem, BatchTableRegistryRow, ModuleStatusRow } from '../../shared/types';
 import { AnalyticsAdsActions } from './AnalyticsAdsActions';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
@@ -19,7 +19,7 @@ export function AnalysisWorkspace({ c, activeView, onOpenImport, onNavigate }: {
   const [moduleStatus, setModuleStatus] = useState<ModuleStatusRow[]>([]);
   const [analysisRuns, setAnalysisRuns] = useState<AnalysisRunOption[]>([]);
   const [runsLoading, setRunsLoading] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('请选择批次；选择后不会自动执行分析。');
+  const [statusMessage, setStatusMessage] = useState('安全启动：尚未访问 MySQL。点击“刷新批次列表”后再选择批次。');
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [contextCheckRunning, setContextCheckRunning] = useState(false);
   const selectedBatch = batches.find((item) => item.import_batch_id === c.importBatchId);
@@ -120,12 +120,6 @@ export function AnalysisWorkspace({ c, activeView, onOpenImport, onNavigate }: {
       setContextCheckRunning(false);
     }
   }
-
-  useEffect(() => {
-    void refreshBatchList().catch((error) => {
-      setStatusMessage(error instanceof Error ? error.message : String(error));
-    });
-  }, [c.settings.host, c.settings.port, c.settings.database, c.settings.user, c.settings.secret]);
 
   const resultsNotGenerated = moduleStatus.some((item) => (item.status_text ?? '').includes('尚未生成分析结果'));
 

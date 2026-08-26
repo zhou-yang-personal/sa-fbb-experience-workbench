@@ -44,8 +44,41 @@ mod raw_import;
 mod raw_import_v2;
 mod sql_runner;
 
+fn append_runtime_log(event: &str) {
+    use std::io::Write;
+
+    let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") else {
+        return;
+    };
+    let directory = std::path::PathBuf::from(local_app_data).join("SA FBB Experience Workbench");
+    if std::fs::create_dir_all(&directory).is_err() {
+        return;
+    }
+    let path = directory.join("runtime.log");
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        let normalized = event.replace('\r', " ").replace('\n', " ");
+        let _ = writeln!(
+            file,
+            "{} version={} {}",
+            chrono::Utc::now().to_rfc3339(),
+            env!("CARGO_PKG_VERSION"),
+            normalized,
+        );
+    }
+}
+
+fn install_panic_log() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        append_runtime_log(&format!("rust_panic {panic_info}"));
+        default_hook(panic_info);
+    }));
+}
+
 fn main() {
-    tauri::Builder::default()
+    install_panic_log();
+    append_runtime_log("application_start safe_startup=no_database_commands");
+    let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             dashboard_commands::db_test_connection,
@@ -104,6 +137,7 @@ fn main() {
             import_commands::import_create_batch,
             import_commands::import_current_file_atomic,
             import_pipeline_commands::import_pipeline_start,
+            import_pipeline_commands::import_pipeline_rebuild_batch_from_raw,
             import_pipeline_commands::import_pipeline_resume_batch,
             import_pipeline_commands::import_pipeline_get_status,
             import_pipeline_commands::import_pipeline_get_logs,
@@ -146,6 +180,12 @@ fn main() {
             phase_commands::dashboard_get_cable_fiber_hourly_detail,
             phase_commands::leads_get_final_summary
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running SA FBB Experience Workbench");
+        .run(tauri::generate_context!());
+    match result {
+        Ok(()) => append_runtime_log("application_exit normal"),
+        Err(err) => {
+            append_runtime_log(&format!("tauri_run_error {err}"));
+            panic!("error while running SA FBB Experience Workbench: {err}");
+        }
+    }
 }
