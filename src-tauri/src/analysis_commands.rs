@@ -7,8 +7,8 @@ use mysql::Value;
 use crate::batch_tables;
 use crate::db;
 use crate::models::{
-    ack, BatchListItem, BatchTableRegistryRow, CommandAck, MetricCard, ModuleStatusRow,
-    MySqlSettings,
+    ack, AnalysisRunOption, BatchListItem, BatchTableRegistryRow, CommandAck, MetricCard,
+    ModuleStatusRow, MySqlSettings,
 };
 use crate::sql_runner::escape_sql_literal;
 
@@ -347,10 +347,11 @@ pub fn import_list_batches(
     data_type: Option<String>,
 ) -> Result<Vec<BatchListItem>, String> {
     let mut conn = db::conn(&settings)?;
+    let preferred_run = "(SELECT ar.analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id=b.import_batch_id AND ar.status IN ('success','degraded') ORDER BY COALESCE(ar.finished_at,ar.started_at) DESC,ar.started_at DESC LIMIT 1)";
     let sql = if data_type.is_some() {
-        "SELECT b.import_batch_id, COALESCE(b.batch_display_name, ''), b.data_type, b.source_file_name, b.status, CAST(COALESCE(b.total_rows, 0) AS SIGNED), CAST(COALESCE(b.imported_rows, 0) AS SIGNED), COALESCE(pr.analysis_run_id, (SELECT analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id = b.import_batch_id ORDER BY ar.started_at DESC LIMIT 1)), pr.pipeline_run_id, pr.status, COALESCE(pr.error_message, pr.message) FROM meta_import_batch b LEFT JOIN meta_pipeline_run pr ON pr.pipeline_run_id=(SELECT pr2.pipeline_run_id FROM meta_pipeline_run pr2 WHERE pr2.import_batch_id=b.import_batch_id ORDER BY pr2.updated_at DESC, pr2.created_at DESC, pr2.pipeline_run_id DESC LIMIT 1) WHERE b.data_type = ? ORDER BY b.created_at DESC, b.import_batch_id DESC LIMIT 500"
+        format!("SELECT b.import_batch_id, COALESCE(b.batch_display_name, ''), b.data_type, b.source_file_name, b.status, CAST(COALESCE(b.total_rows, 0) AS SIGNED), CAST(COALESCE(b.imported_rows, 0) AS SIGNED), COALESCE({preferred_run}, pr.analysis_run_id, (SELECT analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id=b.import_batch_id ORDER BY ar.started_at DESC LIMIT 1)), pr.pipeline_run_id, pr.status, COALESCE(pr.error_message, pr.message) FROM meta_import_batch b LEFT JOIN meta_pipeline_run pr ON pr.pipeline_run_id=(SELECT pr2.pipeline_run_id FROM meta_pipeline_run pr2 WHERE pr2.import_batch_id=b.import_batch_id ORDER BY pr2.updated_at DESC, pr2.created_at DESC, pr2.pipeline_run_id DESC LIMIT 1) WHERE b.data_type = ? ORDER BY b.created_at DESC, b.import_batch_id DESC LIMIT 500")
     } else {
-        "SELECT b.import_batch_id, COALESCE(b.batch_display_name, ''), b.data_type, b.source_file_name, b.status, CAST(COALESCE(b.total_rows, 0) AS SIGNED), CAST(COALESCE(b.imported_rows, 0) AS SIGNED), COALESCE(pr.analysis_run_id, (SELECT analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id = b.import_batch_id ORDER BY ar.started_at DESC LIMIT 1)), pr.pipeline_run_id, pr.status, COALESCE(pr.error_message, pr.message) FROM meta_import_batch b LEFT JOIN meta_pipeline_run pr ON pr.pipeline_run_id=(SELECT pr2.pipeline_run_id FROM meta_pipeline_run pr2 WHERE pr2.import_batch_id=b.import_batch_id ORDER BY pr2.updated_at DESC, pr2.created_at DESC, pr2.pipeline_run_id DESC LIMIT 1) ORDER BY b.created_at DESC, b.import_batch_id DESC LIMIT 500"
+        format!("SELECT b.import_batch_id, COALESCE(b.batch_display_name, ''), b.data_type, b.source_file_name, b.status, CAST(COALESCE(b.total_rows, 0) AS SIGNED), CAST(COALESCE(b.imported_rows, 0) AS SIGNED), COALESCE({preferred_run}, pr.analysis_run_id, (SELECT analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id=b.import_batch_id ORDER BY ar.started_at DESC LIMIT 1)), pr.pipeline_run_id, pr.status, COALESCE(pr.error_message, pr.message) FROM meta_import_batch b LEFT JOIN meta_pipeline_run pr ON pr.pipeline_run_id=(SELECT pr2.pipeline_run_id FROM meta_pipeline_run pr2 WHERE pr2.import_batch_id=b.import_batch_id ORDER BY pr2.updated_at DESC, pr2.created_at DESC, pr2.pipeline_run_id DESC LIMIT 1) ORDER BY b.created_at DESC, b.import_batch_id DESC LIMIT 500")
     };
     let rows = if let Some(data_type) = data_type {
         conn.exec_map(
@@ -447,6 +448,101 @@ pub fn import_list_batches(
     }
     .map_err(|err| format!("failed to list import batches: {err}"))?;
     Ok(rows)
+}
+
+fn registered_batch_table(
+    conn: &mut mysql::PooledConn,
+    import_batch_id: &str,
+    base_table_name: &str,
+) -> Result<Option<String>, String> {
+    let table: Option<String> = conn.exec_first(
+        "SELECT physical_table_name FROM meta_batch_table_registry WHERE import_batch_id=? AND base_table_name=? LIMIT 1",
+        (import_batch_id, base_table_name),
+    ).map_err(|err| format!("failed to resolve registered {base_table_name}: {err}"))?;
+    match table {
+        Some(table) if batch_tables::table_exists(conn, &table)? => {
+            Ok(Some(batch_tables::sanitize_identifier(&table)?))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn run_ready_expression(table: Option<&String>) -> String {
+    table
+        .map(|table| format!("EXISTS(SELECT 1 FROM `{table}` ready WHERE ready.analysis_run_id=r.analysis_run_id LIMIT 1)"))
+        .unwrap_or_else(|| "0".to_string())
+}
+
+#[tauri::command]
+pub fn analysis_list_runs(
+    settings: MySqlSettings,
+    import_batch_id: String,
+) -> Result<Vec<AnalysisRunOption>, String> {
+    let mut conn = db::conn(&settings)?;
+    batch_tables::ensure_registry_tables(&mut conn)?;
+    let period = registered_batch_table(
+        &mut conn,
+        &import_batch_id,
+        "dws_user_app_period_experience_v2",
+    )?;
+    let app_ads = registered_batch_table(
+        &mut conn,
+        &import_batch_id,
+        "ads_app_experience_v2",
+    )?;
+    let hourly = registered_batch_table(
+        &mut conn,
+        &import_batch_id,
+        "dws_user_app_hourly_experience_v2",
+    )?;
+    let hourly_ads = registered_batch_table(
+        &mut conn,
+        &import_batch_id,
+        "ads_app_hourly_experience_v2",
+    )?;
+    let policy_binding_available = batch_tables::table_exists(
+        &mut conn,
+        "meta_analysis_run_policy_binding",
+    )?;
+    let policy_join = if policy_binding_available {
+        "LEFT JOIN meta_analysis_run_policy_binding binding ON binding.analysis_run_id=r.analysis_run_id"
+    } else {
+        ""
+    };
+    let policy_id = if policy_binding_available { "binding.experience_policy_id" } else { "NULL" };
+    let policy_version = if policy_binding_available { "CAST(binding.experience_policy_version AS SIGNED)" } else { "NULL" };
+    let hourly_ready = format!(
+        "({} AND {})",
+        run_ready_expression(hourly.as_ref()),
+        run_ready_expression(hourly_ads.as_ref())
+    );
+    let sql = format!(
+        "SELECT r.analysis_run_id,r.import_batch_id,r.run_type,r.status,DATE_FORMAT(r.started_at,'%Y-%m-%d %H:%i:%s'),DATE_FORMAT(r.finished_at,'%Y-%m-%d %H:%i:%s'),r.message,EXISTS(SELECT 1 FROM meta_pipeline_run pipeline WHERE pipeline.analysis_run_id=r.analysis_run_id AND pipeline.import_batch_id=r.import_batch_id LIMIT 1),{}, {}, {hourly_ready},{policy_id},{policy_version} FROM meta_analysis_run r {policy_join} WHERE r.import_batch_id=? ORDER BY CASE WHEN r.status IN ('success','degraded') THEN 0 WHEN r.status='running' THEN 1 ELSE 2 END,COALESCE(r.finished_at,r.started_at) DESC,r.analysis_run_id DESC LIMIT 100",
+        run_ready_expression(period.as_ref()),
+        run_ready_expression(app_ads.as_ref()),
+    );
+    let rows = conn
+        .exec_iter(sql, (&import_batch_id,))
+        .map_err(|err| format!("failed to list analysis runs for batch: {err}"))?;
+    rows.map(|row| {
+        let row = row.map_err(|err| format!("failed to decode analysis run option: {err}"))?;
+        Ok(AnalysisRunOption {
+            analysis_run_id: row.get(0).unwrap_or_default(),
+            import_batch_id: row.get(1).unwrap_or_default(),
+            run_type: row.get(2).unwrap_or_default(),
+            status: row.get(3).unwrap_or_default(),
+            started_at: row.get(4),
+            finished_at: row.get(5),
+            message: row.get(6),
+            pipeline_linked: row.get::<i8, _>(7).unwrap_or_default() != 0,
+            v2_period_ready: row.get::<i8, _>(8).unwrap_or_default() != 0,
+            v2_app_ads_ready: row.get::<i8, _>(9).unwrap_or_default() != 0,
+            v2_hourly_ready: row.get::<i8, _>(10).unwrap_or_default() != 0,
+            experience_policy_id: row.get(11),
+            experience_policy_version: row.get(12),
+        })
+    })
+    .collect()
 }
 
 #[tauri::command]

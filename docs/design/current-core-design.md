@@ -1012,3 +1012,5 @@ The V2 query path is ADS/DWS-first:
 Server IP remains controlled/on-demand and is not exploded globally. New CLEAN results retain the source field; a drill-down requires an explicit App, selects at most 200 priority affected users from DWS and parses at most 20,000 matching DWD observations. Network objects are only treated as topology when BRAS/OLT/PON contain real values; otherwise the UI reports limited localization capability.
 
 Run verification uses the latest earlier successful analysis only when access-rule ID/version, configured Others, App-mapping version and experience-policy ID/version are all identical. Missing compatible baselines and missing V2 observations are presented as non-comparable rather than zero change.
+
+The analysis context resolves runs independently from pipeline history. Batch defaults prefer the latest successful/degraded `meta_analysis_run`, while a metadata-only selector exposes Period V2, App ADS and Hourly V2 readiness for every run. V2 foundation queries use partial-result semantics: status, findings, coverage and verification report their own failures, so one optional query cannot hide the other valid evidence.

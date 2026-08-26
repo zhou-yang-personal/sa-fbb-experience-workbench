@@ -52,6 +52,23 @@ pub struct BatchListItem {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct AnalysisRunOption {
+    pub analysis_run_id: String,
+    pub import_batch_id: String,
+    pub run_type: String,
+    pub status: String,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+    pub message: Option<String>,
+    pub pipeline_linked: bool,
+    pub v2_period_ready: bool,
+    pub v2_app_ads_ready: bool,
+    pub v2_hourly_ready: bool,
+    pub experience_policy_id: Option<String>,
+    pub experience_policy_version: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct BatchTableRegistryRow {
     pub import_batch_id: String,
     pub layer: String,

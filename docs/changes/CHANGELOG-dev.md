@@ -1,5 +1,21 @@
 # CHANGELOG-dev
 
+## 1.0.51 - 2026-08-26
+
+### Fixed
+
+- Preferred the latest successful/degraded analysis run for each batch, so side-by-side manual V2 results are not overwritten by an older pipeline run ID.
+- Added an explicit per-batch analysis-run selector with bounded Period V2, App ADS and Hourly V2 readiness checks plus policy-version context.
+- Replaced all-or-nothing V2 foundation loading with isolated dataset results and clear partial-failure or wrong-run guidance.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-26.
+- `npm run build`: passed on 2026-08-26; the existing ECharts chunk-size warning remains.
+- `cargo check --offline`: passed on 2026-08-26 with existing warnings only.
+- `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 CARGO_PROFILE_TEST_DEBUG=0 cargo test --offline`: passed on 2026-08-26; 44 tests passed.
+- Live Windows/MySQL selection of `RUN_REAGG_V2_20260825` remains to be verified on the customer batch.
+
 ## 1.0.50 - 2026-08-25
 
 - Added a shared, persistent Analysis Context with filter chips, single-filter removal, clear and back navigation across analysis pages.

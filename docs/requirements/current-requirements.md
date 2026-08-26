@@ -87,6 +87,8 @@
 - Investigation reads period and hourly DWS/ADS only. Network-side and user-side labels are evidence judgements, never confirmed root causes.
 - Server-IP investigation is App/Finding-scoped and bounded to 200 priority users plus 20,000 DWD observations; it never scans RAW or creates an unbounded exploded IP fact table.
 - Verification compares an analysis run only with an earlier successful run carrying identical access, Others, App-mapping and experience-policy versions; otherwise the UI reports that no comparable baseline exists.
+- Batch selection must prefer the latest successful/degraded analyzable run and expose an explicit run selector with Period V2, App ADS and Hourly readiness. A manually generated run must not be hidden by an older pipeline run.
+- V2 status, findings, coverage and verification load independently; one failed auxiliary dataset must not erase successful results, and a run without V2 rows must be identified as a context mismatch rather than an empty business result.
 - Experience Policy and App Experience Profile drafts are editable and published as immutable versions. New runs bind and snapshot the published version.
 - Game not imported, topology unavailable, identity limited and Server-IP controlled drill-down are distinct coverage states.
 - Experience Findings and Cable-to-Fiber experience opportunities are separate; formal marketing eligibility requires external CRM/coverage/plan/arrears/blacklist/reachability data.

@@ -68,6 +68,7 @@ fn main() {
             experience_policy_commands::experience_profile_clone,
             experience_policy_commands::experience_policy_publish,
             analysis_commands::import_list_batches,
+            analysis_commands::analysis_list_runs,
             batch_delete_commands::import_delete_batch,
             analysis_commands::analysis_prepare_batch_tables,
             analysis_commands::batch_get_table_registry,

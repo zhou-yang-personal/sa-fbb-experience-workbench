@@ -45,6 +45,7 @@ export function ExperienceInvestigationHub({ c, view, onNavigate }: { c: Workben
   const [hourly, setHourly] = useState<InvestigationHourlyRow[]>([]);
   const [serverIps, setServerIps] = useState<InvestigationServerIpRow[]>([]);
   const [saved, setSaved] = useState<SavedInvestigation[]>([]);
+  const [foundationIssues, setFoundationIssues] = useState<string[]>([]);
   const [loadedContext, setLoadedContext] = useState('');
   const [evidenceLoadedContext, setEvidenceLoadedContext] = useState('');
   const [message, setMessage] = useState(zh ? '等待加载。' : 'Ready to load.');
@@ -60,24 +61,38 @@ export function ExperienceInvestigationHub({ c, view, onNavigate }: { c: Workben
   const disabled = !c.importBatchId.trim() || !c.analysisRunId.trim() || Boolean(c.currentAction);
 
   useEffect(() => {
-    setStatus(null); setFindings([]); setCoverage([]); setVerification(null); setEvidence([]); setHourly([]); setServerIps([]); setSaved([]);
+    setStatus(null); setFindings([]); setCoverage([]); setVerification(null); setEvidence([]); setHourly([]); setServerIps([]); setSaved([]); setFoundationIssues([]);
     setLoadedContext(''); setEvidenceLoadedContext('');
   }, [contextKey]);
 
   async function loadFoundation() {
     if (disabled) return;
     const result = await c.runAction('analytics_load_experience_v2', async () => {
-      const [nextStatus, nextFindings, nextCoverage, nextVerification] = await Promise.all([
+      const results = await Promise.allSettled([
         analyticsStructuredApi.experienceStatusV2(c.effectiveSettings, c.importBatchId, c.analysisRunId),
         analyticsStructuredApi.findingsV2(c.effectiveSettings, c.importBatchId, c.analysisRunId),
         analyticsStructuredApi.coverageV2(c.effectiveSettings, c.importBatchId, c.analysisRunId),
         analyticsStructuredApi.runVerificationV2(c.effectiveSettings, c.importBatchId, c.analysisRunId),
       ]);
-      return { nextStatus, nextFindings, nextCoverage, nextVerification };
-    }) as { nextStatus: ExperienceStatusV2; nextFindings: ExperienceFinding[]; nextCoverage: DataCoverageItemV2[]; nextVerification: RunVerificationV2 } | null;
+      const labels = zh ? ['体验状态', '自动发现', '数据覆盖', '历史复验'] : ['Experience status', 'Auto findings', 'Data coverage', 'Run verification'];
+      const issues = results.flatMap((item, index) => item.status === 'rejected' ? [`${labels[index]}: ${item.reason instanceof Error ? item.reason.message : String(item.reason)}`] : []);
+      if (results.every((item) => item.status === 'rejected')) throw new Error(issues.join('；'));
+      return {
+        nextStatus: results[0].status === 'fulfilled' ? results[0].value : null,
+        nextFindings: results[1].status === 'fulfilled' ? results[1].value : [],
+        nextCoverage: results[2].status === 'fulfilled' ? results[2].value : [],
+        nextVerification: results[3].status === 'fulfilled' ? results[3].value : null,
+        issues,
+      };
+    }) as { nextStatus: ExperienceStatusV2 | null; nextFindings: ExperienceFinding[]; nextCoverage: DataCoverageItemV2[]; nextVerification: RunVerificationV2 | null; issues: string[] } | null;
     if (!result) return;
-    setStatus(result.nextStatus); setFindings(result.nextFindings); setCoverage(result.nextCoverage); setVerification(result.nextVerification); setLoadedContext(contextKey);
-    setMessage(zh ? `已生成 ${result.nextFindings.length} 条可解释发现。` : `${result.nextFindings.length} explainable findings loaded.`);
+    setStatus(result.nextStatus); setFindings(result.nextFindings); setCoverage(result.nextCoverage); setVerification(result.nextVerification); setFoundationIssues(result.issues); setLoadedContext(contextKey);
+    const v2Unavailable = result.nextStatus?.sample_status !== 'AVAILABLE' && result.nextCoverage.some((item) => item.dimension === 'APP_EXPERIENCE_V2' && item.status !== 'AVAILABLE');
+    setMessage(v2Unavailable
+      ? (zh ? `当前 analysis_run_id=${c.analysisRunId} 没有 V2 结果，请在分析上下文选择 Period/ADS 均为 READY 的运行。` : `analysis_run_id=${c.analysisRunId} has no V2 result; select a run with Period and ADS marked READY.`)
+      : result.issues.length
+        ? (zh ? `已加载可用数据，但 ${result.issues.length} 个附属数据集失败。` : `Available data loaded with ${result.issues.length} dataset failures.`)
+        : (zh ? `已生成 ${result.nextFindings.length} 条可解释发现。` : `${result.nextFindings.length} explainable findings loaded.`));
   }
 
   async function loadEvidence() {
@@ -149,6 +164,8 @@ export function ExperienceInvestigationHub({ c, view, onNavigate }: { c: Workben
   return <section className="experience-hub">
     <header className="workspace-page-header"><div><p className="eyebrow">{view === 'overview' ? 'EXPERIENCE STATUS' : 'AUTO FINDINGS'}</p><h2>{view === 'overview' ? (zh ? '体验健康总览' : 'Experience health overview') : (zh ? '自动发现' : 'Auto findings')}</h2><p>{zh ? '先看状态和可信范围，再从发现进入同一上下文的调查。' : 'Review status and coverage, then investigate findings in the same context.'}</p></div><button className="primary-button" disabled={disabled} onClick={loadFoundation}>{loadGate ? (zh ? '加载 V2 分析' : 'Load V2 analysis') : (zh ? '重新加载' : 'Reload')}</button></header>
     {loadGate ? <section className="analytics-load-gate"><div><h3>{zh ? '不会默认发起大查询' : 'No automatic large query'}</h3><p>{zh ? '点击后并行读取小型 DWS/ADS 状态、Finding 和覆盖信息，不扫描 RAW。' : 'This reads small DWS/ADS status, findings and coverage in parallel; RAW is not scanned.'}</p></div></section> : <>
+      <p className={`v2-load-message ${foundationIssues.length ? 'has-issues' : ''}`}>{message}</p>
+      {foundationIssues.length > 0 && <details className="v2-load-issues"><summary>{zh ? `查看 ${foundationIssues.length} 个失败数据集` : `View ${foundationIssues.length} failed datasets`}</summary>{foundationIssues.map((item) => <p key={item}>{item}</p>)}</details>}
       {view === 'overview' && <><div className="experience-status-grid">{statusCards.map(([label, value, hint]) => <article key={label}><span>{label}</span><strong>{value}</strong><small>{hint}</small></article>)}</div><section className="hub-section"><header><div><h3>{zh ? '上一可比运行复验' : 'Previous comparable-run verification'}</h3><p>{zh ? '仅在接入规则、Others、App 映射和体验策略版本一致时比较；负向变化表示改善。' : 'Comparison requires identical access, Others, App-mapping and experience-policy versions; a negative delta means improvement.'}</p></div></header>{verification?.comparable ? <div className="verification-grid-v2"><article><span>{zh ? '差体验观测占比变化' : 'Poor observation change'}</span><strong>{deltaRate(verification.poor_observation_rate_delta_pct)}</strong><small>{rate(verification.previous_poor_observation_rate_pct)} → {rate(verification.current_poor_observation_rate_pct)}</small></article><article><span>{zh ? '持续差体验用户占比变化' : 'Persistent-user change'}</span><strong>{deltaRate(verification.persistent_poor_user_rate_delta_pct)}</strong><small>{rate(verification.previous_persistent_poor_user_rate_pct)} → {rate(verification.current_persistent_poor_user_rate_pct)}</small></article><article><span>{zh ? '严重差体验用户占比变化' : 'Severe-user change'}</span><strong>{deltaRate(verification.severe_poor_user_rate_delta_pct)}</strong><small>{rate(verification.previous_severe_poor_user_rate_pct)} → {rate(verification.current_severe_poor_user_rate_pct)}</small></article></div> : <p className="empty-panel">{verification ? (zh ? '没有找到规则版本完全一致且具备 V2 结果的上一运行，当前不做不可比的趋势结论。' : 'No earlier run has identical rule versions and usable V2 results; no incomparable trend is shown.') : '—'}</p>}<small className="verification-reason">{verification?.comparison_reason}</small></section><section className="hub-section"><header><div><h3>{zh ? '优先调查' : 'Priority findings'}</h3><p>{zh ? '不是 Top N，而是满足样本、持续性和严重性规则的异常。' : 'Rule-qualified anomalies, not a generic Top N.'}</p></div><button onClick={() => onNavigate('findings')}>{zh ? '查看全部' : 'View all'}</button></header><FindingList findings={visibleFindings.slice(0, 6)} zh={zh} onOpen={openFinding} /></section><section className="hub-section"><header><div><h3>{zh ? '数据覆盖' : 'Data coverage'}</h3><p>{zh ? '明确区分可用、未导入、不可用和能力有限。' : 'Available, not imported, unavailable and limited are distinct.'}</p></div></header><div className="coverage-grid-v2">{coverage.map((item) => <article key={item.dimension} className={`coverage-${item.status.toLowerCase()}`}><span>{coverageLabel(item, zh)}</span><strong>{statusText(item.status, zh)}</strong><small>{item.coverage_pct == null ? item.limitation : `${item.coverage_pct.toFixed(1)}% · ${item.limitation ?? ''}`}</small></article>)}</div></section></>}
       {view === 'findings' && <FindingList findings={visibleFindings} zh={zh} onOpen={openFinding} />}
     </>}

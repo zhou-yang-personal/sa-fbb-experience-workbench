@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AccessIpRangeRow, AccessRuleInput, AccessRulePreviewResult, AccessRuleSetRow, AccessRuleValidationResult, AppExperienceProfileRow, BatchListItem, BatchTableRegistryRow, CommandAck, CsvProbeResult, DashboardOverview, ExperiencePolicyRow, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, ImportPipelineLogRow, ImportPipelineStartResult, ImportPipelineStatus, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
+import type { AccessIpRangeRow, AccessRuleInput, AccessRulePreviewResult, AccessRuleSetRow, AccessRuleValidationResult, AnalysisRunOption, AppExperienceProfileRow, BatchListItem, BatchTableRegistryRow, CommandAck, CsvProbeResult, DashboardOverview, ExperiencePolicyRow, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, ImportPipelineLogRow, ImportPipelineStartResult, ImportPipelineStatus, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
 
 function normalizeFilter(value?: string) {
   const normalized = value?.trim();
@@ -51,6 +51,7 @@ export const workbenchApi = {
   cloneExperienceProfile: (settings: MySqlSettings, policyId: string, sourceProfileId: string) => invoke<CommandAck>('experience_profile_clone', { req: { settings, policy_id: policyId, source_profile_id: sourceProfileId } }),
   publishExperiencePolicy: (settings: MySqlSettings, policyId: string) => invoke<CommandAck>('experience_policy_publish', { req: { settings, policy_id: policyId } }),
   listBatches: (settings: MySqlSettings, dataType?: string) => invoke<BatchListItem[]>('import_list_batches', { settings, dataType }),
+  listAnalysisRuns: (settings: MySqlSettings, importBatchId: string) => invoke<AnalysisRunOption[]>('analysis_list_runs', { settings, importBatchId }),
   deleteBatch: (settings: MySqlSettings, importBatchId: string) => invoke<CommandAck>('import_delete_batch', { req: { settings, import_batch_id: importBatchId } }),
   prepareBatchTables: (settings: MySqlSettings, importBatchId: string) => invoke<MetricCard[]>('analysis_prepare_batch_tables', { settings, importBatchId }),
   batchTableRegistry: (settings: MySqlSettings, importBatchId: string) => invoke<BatchTableRegistryRow[]>('batch_get_table_registry', { settings, importBatchId }),

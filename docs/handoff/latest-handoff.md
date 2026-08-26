@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.50
+1.0.51
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,13 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.51 update
+
+- Batch selection now prefers the latest successful/degraded analysis run. A completed manual V2 run such as `RUN_REAGG_V2_20260825` is no longer hidden by an older pipeline run.
+- The analysis context includes a metadata-only run selector with Period V2, App ADS, Hourly V2 and bound policy readiness. It does not scan RAW or DWD.
+- V2 foundation loading isolates status, findings, coverage and comparison failures. Available datasets remain visible, while missing V2 rows and failed datasets receive explicit messages.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.50 update
 

@@ -113,6 +113,22 @@ export interface BatchListItem {
   pipeline_message?: string;
 }
 
+export interface AnalysisRunOption {
+  analysis_run_id: string;
+  import_batch_id: string;
+  run_type: string;
+  status: string;
+  started_at?: string;
+  finished_at?: string;
+  message?: string;
+  pipeline_linked: boolean;
+  v2_period_ready: boolean;
+  v2_app_ads_ready: boolean;
+  v2_hourly_ready: boolean;
+  experience_policy_id?: string;
+  experience_policy_version?: number;
+}
+
 export interface BatchTableRegistryRow {
   import_batch_id: string;
   layer: string;

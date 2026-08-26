@@ -1,4 +1,8 @@
 .experience-hub { display: grid; gap: 16px; }
+.v2-load-message { margin: 0; padding: 10px 12px; color: #027a48; background: #ecfdf3; border: 1px solid #abefc6; border-radius: 10px; font-size: 12px; }
+.v2-load-message.has-issues { color: #b54708; background: #fffaeb; border-color: #fedf89; }
+.v2-load-issues { padding: 10px 12px; color: #b42318; background: #fef3f2; border: 1px solid #fecdca; border-radius: 10px; }
+.v2-load-issues p { margin: 7px 0 0; font-size: 11px; overflow-wrap: anywhere; }
 .hub-actions { display: flex; gap: 8px; }
 .experience-status-grid { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 10px; }
 .experience-status-grid article, .coverage-grid-v2 article { min-width: 0; padding: 14px; background: #fff; border: 1px solid #dce2ea; border-radius: 12px; }
