@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { MetricCard } from '../../shared/types';
 import { AnalyticsEvidenceTable } from './AnalyticsEvidenceTable';
-import { analyticsStructuredApi, type StructuredAnalyticsQuery } from './analyticsStructuredApi';
+import { analyticsStructuredApi, type AnalyticsQueryMeta, type StructuredAnalyticsQuery } from './analyticsStructuredApi';
 import type { WorkbenchController } from './useWorkbenchController';
 
 function num(value: string) {
@@ -12,6 +12,7 @@ function num(value: string) {
 export function AnalyticsStructuredPagedPanel({ c }: { c: WorkbenchController }) {
   const [query, setQuery] = useState<StructuredAnalyticsQuery>({ page: 1, pageSize: 200, sortBy: 'default' });
   const [rows, setRows] = useState<Record<string, MetricCard[]>>({ app: [], hourly: [], network: [], user: [], lead: [] });
+  const [meta, setMeta] = useState<Record<string, AnalyticsQueryMeta | undefined>>({});
   const [status, setStatus] = useState('waiting for batch and run');
   const disabled = !c.importBatchId.trim() || !c.analysisRunId.trim();
 
@@ -20,16 +21,20 @@ export function AnalyticsStructuredPagedPanel({ c }: { c: WorkbenchController })
     setStatus('loading paged structured data');
     try {
       const [app, hourly, network, user, lead] = await Promise.all([
-        analyticsStructuredApi.appRank(c.effectiveSettings, c.importBatchId, c.analysisRunId, next).catch(() => []),
-        analyticsStructuredApi.hourlyTrend(c.effectiveSettings, c.importBatchId, c.analysisRunId, next).catch(() => []),
-        analyticsStructuredApi.networkHotspots(c.effectiveSettings, c.importBatchId, c.analysisRunId, next).catch(() => []),
-        analyticsStructuredApi.userProfiles(c.effectiveSettings, c.importBatchId, c.analysisRunId, next).catch(() => []),
-        analyticsStructuredApi.leadEvidence(c.effectiveSettings, c.importBatchId, c.analysisRunId, next).catch(() => []),
+        analyticsStructuredApi.appRank(c.effectiveSettings, c.importBatchId, c.analysisRunId, next),
+        analyticsStructuredApi.hourlyTrend(c.effectiveSettings, c.importBatchId, c.analysisRunId, next),
+        analyticsStructuredApi.networkHotspots(c.effectiveSettings, c.importBatchId, c.analysisRunId, next),
+        analyticsStructuredApi.userProfiles(c.effectiveSettings, c.importBatchId, c.analysisRunId, next),
+        analyticsStructuredApi.leadEvidence(c.effectiveSettings, c.importBatchId, c.analysisRunId, next),
       ]);
-      setRows({ app, hourly, network, user, lead });
-      setStatus(`page=${next.page ?? 1}, pageSize=${next.pageSize ?? 200}, rows=${app.length + hourly.length + network.length + user.length + lead.length}`);
+      setRows({ app: app.rows, hourly: hourly.rows, network: network.rows, user: user.rows, lead: lead.rows });
+      setMeta({ app: app.meta, hourly: hourly.meta, network: network.meta, user: user.meta, lead: lead.meta });
+      const returnedRows = app.meta.returned_rows + hourly.meta.returned_rows + network.meta.returned_rows + user.meta.returned_rows + lead.meta.returned_rows;
+      const truncated = [app, hourly, network, user, lead].filter((page) => page.meta.has_more).length;
+      setStatus(`page=${next.page ?? 1}, pageSize=${next.pageSize ?? 200}, returned=${returnedRows}${truncated ? `, has_more=${truncated} datasets` : ''}`);
     } catch (error) {
       setRows({ app: [], hourly: [], network: [], user: [], lead: [] });
+      setMeta({});
       setStatus(error instanceof Error ? error.message : String(error));
     }
   }
@@ -52,6 +57,12 @@ export function AnalyticsStructuredPagedPanel({ c }: { c: WorkbenchController })
       </div>
       <div className="analytics-table-toolbar">
         <input value={query.keyword ?? ''} onChange={(event) => setQuery({ ...query, page: 1, keyword: event.target.value })} placeholder="keyword" />
+        <select value={query.accessType ?? 'ALL'} onChange={(event) => setQuery({ ...query, page: 1, accessType: event.target.value === 'ALL' ? undefined : event.target.value })}>
+          <option value="ALL">all access</option>
+          <option value="CABLE">Cable</option>
+          <option value="FTTH">FTTH</option>
+          <option value="OTHER">Other</option>
+        </select>
         <input value={query.minValue ?? ''} onChange={(event) => setQuery({ ...query, page: 1, minValue: num(event.target.value) })} placeholder="min value" />
         <select value={query.sortBy ?? 'default'} onChange={(event) => setQuery({ ...query, page: 1, sortBy: event.target.value })}>
           <option value="default">default</option>
@@ -74,6 +85,7 @@ export function AnalyticsStructuredPagedPanel({ c }: { c: WorkbenchController })
         <button type="button" onClick={() => apply({ ...query, page: 1 })}>Apply</button>
       </div>
       <div className="analytics-context-line"><span>{status}</span></div>
+      <div className="analytics-context-line"><span>{Object.entries(meta).filter(([, item]) => item).map(([key, item]) => `${key}: ${item?.returned_rows}/${item?.effective_limit}${item?.has_more ? '+' : ''} · ${item?.source}`).join(' | ')}</span></div>
       <div className="analytics-structured-evidence-grid analytics-structured-deep-grid">
         <AnalyticsEvidenceTable title="Paged App Rank" rows={rows.app} limit={query.pageSize ?? 200} />
         <AnalyticsEvidenceTable title="Paged Hourly Trend" rows={rows.hourly} limit={query.pageSize ?? 200} />

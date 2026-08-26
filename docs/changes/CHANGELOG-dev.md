@@ -1,5 +1,27 @@
 # CHANGELOG-dev
 
+## 1.0.55 - 2026-08-26
+
+### Changed
+
+- Moved dashboard access, keyword and minimum-user filtering into the structured Rust/MySQL queries before pagination.
+- Added typed pagination metadata for App, hourly, network, user and lead evidence: returned rows, has-more state, effective limit, page/offset, source and effective filters.
+- Unified screen and PDF preparation on one dataset query plan and removed the dashboard's client-side Top N filtering path.
+
+### Fixed
+
+- Replaced the legacy `poor_experience_user_pct > 0` problem-App KPI with a full V2 ADS aggregate requiring sufficient samples and persistent poor users.
+- Corrected the network minimum-user filter to apply to affected-user population rather than severity percentage.
+- Added full filtered KPI aggregates for access-classification coverage and severe network/path clusters.
+
+### Verification
+
+- `git diff --check`: passed on 2026-08-26.
+- Frontend type-check/build: not run because project `node_modules` is not present in this workspace.
+- Rust check/tests: not run because the Rust toolchain is not installed in this workspace.
+- Live Windows/MySQL search-beyond-Top-N and screen/PDF consistency regression: pending.
+- Dependencies and lock files were not changed.
+
 ## 1.0.54 - 2026-08-26
 
 ### Fixed

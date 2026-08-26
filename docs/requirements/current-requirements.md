@@ -31,6 +31,7 @@
 23. Lead 分层和用户分布图必须来自完整 ADS 总体聚合，不得用分页明细或 Top N 代替总体；多日小时趋势应默认压缩为按活跃用户加权的典型 24 小时曲线，同时保留小时证据明细。
 24. 应用启动必须做到零数据库访问：不得自动加载批次列表、恢复流水线、查询 analysis run 或执行就绪检查。所有 MySQL 操作必须由用户点击明确动作后开始；启动、正常退出、Tauri 运行错误和 Rust panic 应写入不含凭据与客户数据的本地运行日志。
 25. 已成功导入 RAW 的 TCP/Game 批次必须支持显式从 RAW 重建分析结果：跳过 CSV 和 RAW 导入，重新执行 Quality Gate、CLEAN/DWD、DWS、ADS、V2、可选 Final Lead 和 Module Ready，并创建新的 analysis run。核心 SQL 脚本中的每条语句必须在实时 pipeline 日志中展示 RUNNING/SUCCESS/FAILED、执行耗时、影响行数和有界语句摘要；同批次活动 SQL 存在时必须拒绝并发重建。
+26. 主看板、结构化证据表和 PDF 必须共用后端筛选语义。接入类型、关键词和最小用户数在分页前执行；分页结果必须返回行数、是否还有更多、有效上限、来源和筛选摘要。问题 App 必须使用样本充分且存在持续差体验用户的 V2 口径，KPI 不得从分页 Top N 推断总体。
 
 ## 2.1 已确认的下一版产品需求
 
@@ -81,6 +82,7 @@
 - 全部图表导出不得在进入看板或切换页面时自动查询；只有用户启动后才顺序读取 6 个聚合数据集。报告应包含六类看板的全部非空图表、批次/运行/筛选元数据和空图/失败摘要，且不包含证据明细表。
 - 仅配置 FTTH 网段且规则版本将 `Others` 显式配置为 Cable 时，CLEAN 结果不得继续产生因未命中规则导致的 UNKNOWN 接入类型；新规则草稿未配置 `Others` 时不得发布，旧聚合存在 UNKNOWN 时必须提示重跑 CLEAN/DWS/ADS。
 - Game RAW 不存在时，Game Hours / MOS 不得显示为有效的 0；Lead 分层计数必须与完整 ADS 表按用户聚合结果一致。
+- 构造一条原始排名在第 201 位之后的 App、用户或网络证据后，按唯一关键词查询必须仍能返回；同一批次、run 和筛选条件下，屏幕与 PDF 的图表数据和筛选摘要必须一致。问题 App 数必须等于 V2 ADS 中样本充分且持续差体验用户数大于 0 的去重 App 数。
 ## 1.0.50 implemented analysis workflow
 
 - The primary path is `Experience Status → Auto Findings → Investigation Workspace → Saved Investigation`; legacy dashboards remain compatibility entries.

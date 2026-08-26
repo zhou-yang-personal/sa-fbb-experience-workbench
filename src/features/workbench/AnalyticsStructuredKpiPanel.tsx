@@ -18,8 +18,8 @@ export function AnalyticsStructuredKpiPanel({ c }: { c: WorkbenchController }) {
     try {
       const [kpis, apps, hourly] = await Promise.all([
         analyticsStructuredApi.kpis(c.effectiveSettings, c.importBatchId, c.analysisRunId, query),
-        analyticsStructuredApi.appRank(c.effectiveSettings, c.importBatchId, c.analysisRunId, query).catch(() => []),
-        analyticsStructuredApi.hourlyTrend(c.effectiveSettings, c.importBatchId, c.analysisRunId, query).catch(() => []),
+        analyticsStructuredApi.appRank(c.effectiveSettings, c.importBatchId, c.analysisRunId, query).then((page) => page.rows).catch(() => []),
+        analyticsStructuredApi.hourlyTrend(c.effectiveSettings, c.importBatchId, c.analysisRunId, query).then((page) => page.rows).catch(() => []),
       ]);
       setItems(kpis);
       setAppRows(apps);

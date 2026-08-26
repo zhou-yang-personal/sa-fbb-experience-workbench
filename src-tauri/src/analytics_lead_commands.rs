@@ -52,12 +52,14 @@ pub fn analytics_get_lead_stage_summary(req: DashboardRequest) -> Result<Vec<Met
             "ads_migration_lead_user",
         )?
     };
+    let access_type = req.access_type_filter();
+    let keyword = req.keyword_like();
     let sql = format!(
-        "SELECT COALESCE(lead_type,'UNKNOWN') AS lead_type, COALESCE(user_type,'UNKNOWN') AS user_type, CAST(COUNT(DISTINCT user_key) AS SIGNED) AS users, CAST(ROUND(COALESCE(AVG(demand_score),0),2) AS DOUBLE) AS avg_demand, CAST(ROUND(COALESCE(AVG(migration_motive_score),0),2) AS DOUBLE) AS avg_motive FROM `{source_table}` WHERE analysis_run_id=? GROUP BY COALESCE(lead_type,'UNKNOWN'), COALESCE(user_type,'UNKNOWN') ORDER BY lead_type, user_type"
+        "SELECT COALESCE(lead_type,'UNKNOWN') AS lead_type, COALESCE(user_type,'UNKNOWN') AS user_type, CAST(COUNT(DISTINCT user_key) AS SIGNED) AS users, CAST(ROUND(COALESCE(AVG(demand_score),0),2) AS DOUBLE) AS avg_demand, CAST(ROUND(COALESCE(AVG(migration_motive_score),0),2) AS DOUBLE) AS avg_motive FROM `{source_table}` WHERE analysis_run_id=? AND (? IS NULL OR COALESCE(user_type,'UNKNOWN')=?) AND (? IS NULL OR user_key LIKE ? OR COALESCE(lead_type,'UNKNOWN') LIKE ? OR COALESCE(user_type,'UNKNOWN') LIKE ?) GROUP BY COALESCE(lead_type,'UNKNOWN'), COALESCE(user_type,'UNKNOWN') HAVING users >= ? ORDER BY lead_type, user_type"
     );
     conn.exec_map(
         sql,
-        (&run_id,),
+        (&run_id, access_type.clone(), access_type, keyword.clone(), keyword.clone(), keyword.clone(), keyword, req.min_value()),
         |(lead_type, user_type, users, avg_demand, avg_motive): (String, String, i64, f64, f64)| MetricCard {
             label: format!("{lead_type} · {user_type}"),
             value: users.to_string(),

@@ -3,7 +3,7 @@ import type { ECharts } from 'echarts';
 import type { BatchListItem, MetricCard, MySqlSettings } from '../../shared/types';
 import { AnalyticsEvidenceTable } from './AnalyticsEvidenceTable';
 import { ChartExplanation } from './ChartExplanation';
-import { analyticsStructuredApi } from './analyticsStructuredApi';
+import { analyticsStructuredApi, type AnalyticsQueryMeta, type StructuredAnalyticsQuery } from './analyticsStructuredApi';
 import { parseMetricHint } from './analyticsStructuredCharts';
 import { chartExplanationCatalog, type ChartExplanationId } from './chartExplanationCatalog';
 import type { WorkbenchController } from './useWorkbenchController';
@@ -24,6 +24,8 @@ type StructuredDataset = {
 };
 
 type DatasetKey = keyof StructuredDataset;
+type DashboardFilters = { access: string; keyword: string; minUsers: number };
+type DatasetLoadResult = { rows: MetricCard[]; meta?: AnalyticsQueryMeta };
 type TaskStatus = 'idle' | 'running' | 'stopping' | 'success' | 'partial' | 'failure' | 'stopped' | 'empty';
 
 type DashboardTask = {
@@ -83,11 +85,11 @@ const emptyDataset: StructuredDataset = {
 
 const viewDatasets: Record<AnalyticsTab, DatasetKey[]> = {
   overview: ['coverage', 'kpis', 'appRank', 'networkHotspots', 'leadSummary', 'hourlyTrend'],
-  apps: ['coverage', 'appRank'],
-  quality: ['coverage', 'networkHotspots'],
-  cable: ['coverage', 'hourlyTrend'],
-  users: ['coverage', 'userSummary', 'userProfiles'],
-  leads: ['coverage', 'leadSummary', 'leadEvidence'],
+  apps: ['coverage', 'kpis', 'appRank'],
+  quality: ['coverage', 'kpis', 'networkHotspots'],
+  cable: ['coverage', 'kpis', 'hourlyTrend'],
+  users: ['coverage', 'kpis', 'userSummary', 'userProfiles'],
+  leads: ['coverage', 'kpis', 'leadSummary', 'leadEvidence'],
 };
 
 const allDatasetKeys: DatasetKey[] = ['coverage', 'kpis', 'appRank', 'hourlyTrend', 'networkHotspots', 'userSummary', 'userProfiles', 'leadSummary', 'leadEvidence'];
@@ -227,30 +229,20 @@ function cohortPoints(rows: MetricCard[], summaryType: string): ChartPoint[] {
   })).filter((row) => row.value > 0);
 }
 
-function filterRows(rows: MetricCard[], access: string, keyword: string, minUsers: number) {
-  const query = keyword.trim().toLowerCase();
-  return rows.filter((row) => {
-    const detail = parseMetricHint(row.hint);
-    const rowAccess = detail.user_type || detail.access_type || 'UNKNOWN';
-    const population = detail.users ?? detail.active_users ?? detail.user_cnt;
-    const users = numberValue(population);
-    const accessMatches = access === 'ALL' || rowAccess === access;
-    const keywordMatches = !query || `${row.label} ${row.hint}`.toLowerCase().includes(query);
-    const populationMatches = minUsers <= 0 || population === undefined || users >= minUsers;
-    return accessMatches && keywordMatches && populationMatches;
-  });
+function filteredDataset(data: StructuredDataset) {
+  return {
+    appRank: data.appRank,
+    hourlyTrend: data.hourlyTrend,
+    networkHotspots: data.networkHotspots,
+    userSummary: data.userSummary,
+    userProfiles: data.userProfiles,
+    leadSummary: data.leadSummary,
+    leadEvidence: data.leadEvidence,
+  };
 }
 
-function filteredDataset(data: StructuredDataset, access: string, keyword: string, minUsers: number) {
-  return {
-    appRank: filterRows(data.appRank, access, keyword, minUsers),
-    hourlyTrend: filterRows(data.hourlyTrend, access, keyword, minUsers),
-    networkHotspots: filterRows(data.networkHotspots, access, keyword, minUsers),
-    userSummary: filterRows(data.userSummary, access, keyword, minUsers),
-    userProfiles: filterRows(data.userProfiles, access, keyword, minUsers),
-    leadSummary: filterRows(data.leadSummary, access, keyword, minUsers),
-    leadEvidence: filterRows(data.leadEvidence, access, keyword, minUsers),
-  };
+function filterKey(filters: DashboardFilters) {
+  return `${filters.access}::${filters.keyword.trim()}::${filters.minUsers}`;
 }
 
 function exportSections(filtered: ReturnType<typeof filteredDataset>): ExportSection[] {
@@ -469,29 +461,40 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
   const [failedDatasetKeys, setFailedDatasetKeys] = useState<DatasetKey[]>([]);
   const [emptyDatasetKeys, setEmptyDatasetKeys] = useState<DatasetKey[]>([]);
   const [datasetCounts, setDatasetCounts] = useState<Partial<Record<DatasetKey, number>>>({});
+  const [queryMeta, setQueryMeta] = useState<Partial<Record<DatasetKey, AnalyticsQueryMeta>>>({});
   const [access, setAccess] = useState('ALL');
   const [keyword, setKeyword] = useState('');
   const [minUsers, setMinUsers] = useState(0);
+  const [appliedFilters, setAppliedFilters] = useState<DashboardFilters>({ access: 'ALL', keyword: '', minUsers: 0 });
   const [selectedEvidence, setSelectedEvidence] = useState<MetricCard | null>(null);
   const disabled = !c.importBatchId.trim() || !c.analysisRunId.trim();
   const actionBusy = Boolean(c.currentAction);
   const contextKey = `${c.importBatchId.trim()}::${c.analysisRunId.trim()}`;
-  const viewLoaded = loadedViews[activeView] === contextKey;
+  const appliedContextKey = `${contextKey}::${filterKey(appliedFilters)}`;
+  const viewLoaded = loadedViews[activeView] === appliedContextKey;
+  const pendingFilters = { access, keyword, minUsers };
+  const filtersDirty = filterKey(pendingFilters) !== filterKey(appliedFilters);
   const stopRequested = useRef(false);
   const taskGeneration = useRef(0);
   const exportStopRequested = useRef(false);
   const exportGeneration = useRef(0);
 
-  function loadDataset(key: DatasetKey, importBatchId = c.importBatchId, analysisRunId = c.analysisRunId, settings: MySqlSettings = c.effectiveSettings) {
-    if (key === 'coverage') return analyticsStructuredApi.coverage(settings, importBatchId, analysisRunId);
-    if (key === 'kpis') return analyticsStructuredApi.kpis(settings, importBatchId, analysisRunId);
-    if (key === 'appRank') return analyticsStructuredApi.appRank(settings, importBatchId, analysisRunId, { pageSize: 200 });
-    if (key === 'hourlyTrend') return analyticsStructuredApi.hourlyTrend(settings, importBatchId, analysisRunId, { pageSize: 500, sortBy: 'hour' });
-    if (key === 'networkHotspots') return analyticsStructuredApi.networkHotspots(settings, importBatchId, analysisRunId, { pageSize: 200, sortBy: 'users' });
-    if (key === 'userSummary') return analyticsStructuredApi.userSummary(settings, importBatchId, analysisRunId);
-    if (key === 'userProfiles') return analyticsStructuredApi.userProfiles(settings, importBatchId, analysisRunId, { pageSize: 300, sortBy: 'demand' });
-    if (key === 'leadSummary') return analyticsStructuredApi.leadSummary(settings, importBatchId, analysisRunId);
-    return analyticsStructuredApi.leadEvidence(settings, importBatchId, analysisRunId, { pageSize: 500, sortBy: 'demand' });
+  async function loadDataset(key: DatasetKey, filters: DashboardFilters, importBatchId = c.importBatchId, analysisRunId = c.analysisRunId, settings: MySqlSettings = c.effectiveSettings): Promise<DatasetLoadResult> {
+    const common: StructuredAnalyticsQuery = {
+      page: 1,
+      keyword: filters.keyword.trim() || undefined,
+      accessType: filters.access === 'ALL' ? undefined : filters.access,
+      minValue: ['kpis', 'appRank', 'hourlyTrend', 'networkHotspots', 'userSummary', 'leadSummary'].includes(key) ? filters.minUsers : 0,
+    };
+    if (key === 'coverage') return { rows: await analyticsStructuredApi.coverage(settings, importBatchId, analysisRunId) };
+    if (key === 'kpis') return { rows: await analyticsStructuredApi.kpis(settings, importBatchId, analysisRunId, common) };
+    if (key === 'appRank') return analyticsStructuredApi.appRank(settings, importBatchId, analysisRunId, { ...common, pageSize: 200 });
+    if (key === 'hourlyTrend') return analyticsStructuredApi.hourlyTrend(settings, importBatchId, analysisRunId, { ...common, pageSize: 500, sortBy: 'hour' });
+    if (key === 'networkHotspots') return analyticsStructuredApi.networkHotspots(settings, importBatchId, analysisRunId, { ...common, pageSize: 200, sortBy: 'users' });
+    if (key === 'userSummary') return { rows: await analyticsStructuredApi.userSummary(settings, importBatchId, analysisRunId, common) };
+    if (key === 'userProfiles') return analyticsStructuredApi.userProfiles(settings, importBatchId, analysisRunId, { ...common, pageSize: 300, sortBy: 'demand' });
+    if (key === 'leadSummary') return { rows: await analyticsStructuredApi.leadSummary(settings, importBatchId, analysisRunId, common) };
+    return analyticsStructuredApi.leadEvidence(settings, importBatchId, analysisRunId, { ...common, pageSize: 500, sortBy: 'demand' });
   }
 
   useEffect(() => {
@@ -504,7 +507,9 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
     setFailedDatasetKeys([]);
     setEmptyDatasetKeys([]);
     setDatasetCounts({});
+    setQueryMeta({});
     setLoadedViews({});
+    setAppliedFilters({ access: 'ALL', keyword: '', minUsers: 0 });
     setTask({ status: 'idle', completed: 0, total: 0, message: disabled ? '请先选择批次并填写 analysis_run_id。' : '上下文已就绪，等待用户启动加载。' });
     setExportTask({ status: 'idle', completed: 0, total: allDatasetKeys.length, message: disabled ? '请先选择批次并填写 analysis_run_id。' : '需要时可导出六类看板中的全部图表。' });
     setExportFailures([]);
@@ -525,16 +530,17 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
     setFailedDatasetKeys([]);
     setEmptyDatasetKeys([]);
     setDatasetCounts({});
-    const cached = loadedViews[activeView] === contextKey;
+    const cached = loadedViews[activeView] === appliedContextKey;
     setTask(cached
       ? { status: 'success', completed: viewDatasets[activeView].length, total: viewDatasets[activeView].length, message: '当前看板使用本次会话缓存；需要时可手动重新加载。' }
       : { status: 'idle', completed: 0, total: 0, message: '等待用户启动当前看板加载。' });
-  }, [activeView]);
+  }, [activeView, appliedContextKey]);
 
   async function loadCurrentView() {
     if (disabled || actionBusy || task.status === 'running' || task.status === 'stopping') return;
     const keys = viewDatasets[activeView];
-    const requestedContext = contextKey;
+    const requestedFilters: DashboardFilters = { access, keyword, minUsers };
+    const requestedContext = `${contextKey}::${filterKey(requestedFilters)}`;
     const generation = taskGeneration.current + 1;
     taskGeneration.current = generation;
     stopRequested.current = false;
@@ -542,6 +548,7 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
     setFailedDatasetKeys([]);
     setEmptyDatasetKeys([]);
     setDatasetCounts({});
+    setQueryMeta({});
     setTask({ status: 'running', completed: 0, total: keys.length, current: keys[0], message: `正在加载：${datasetLabels[keys[0]]}` });
     const result = await c.runAction(`analytics_load_${activeView}`, async () => {
       const nextFailures: string[] = [];
@@ -553,10 +560,12 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
         if (stopRequested.current || generation !== taskGeneration.current) break;
         setTask({ status: 'running', completed, total: keys.length, current: key, message: `正在加载：${datasetLabels[key]}` });
         try {
-          const rows = await loadDataset(key);
+          const loaded = await loadDataset(key, requestedFilters);
+          const rows = loaded.rows;
           if (generation !== taskGeneration.current) break;
           setData((current) => ({ ...current, [key]: rows }));
           setDatasetCounts((current) => ({ ...current, [key]: rows.length }));
+          if (loaded.meta) setQueryMeta((current) => ({ ...current, [key]: loaded.meta }));
           if (key === 'kpis') c.setOverview({ metrics: rows });
           rowCount += rows.length;
           if (hasMeaningfulEvidence(key, rows)) meaningfulDatasets += 1;
@@ -583,7 +592,10 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
       return;
     }
     const noEvidence = result.meaningfulDatasets === 0;
-    if (!noEvidence) setLoadedViews((current) => ({ ...current, [activeView]: requestedContext }));
+    if (!noEvidence) {
+      setAppliedFilters(requestedFilters);
+      setLoadedViews((current) => ({ ...current, [activeView]: requestedContext }));
+    }
     const incomplete = result.emptyDatasetKeys.length > 0;
     const status = noEvidence ? 'empty' : result.failures.length || incomplete ? 'partial' : 'success';
     const message = noEvidence
@@ -616,6 +628,7 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
 
     const result = await c.runAction('analytics_export_all_charts_pdf', async () => {
       const nextData: StructuredDataset = { ...emptyDataset };
+      const nextMeta: Partial<Record<DatasetKey, AnalyticsQueryMeta>> = {};
       const nextFailures: string[] = [];
       const failedKeys: DatasetKey[] = [];
       let completed = 0;
@@ -623,7 +636,9 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
         if (exportStopRequested.current || generation !== exportGeneration.current) break;
         setExportTask({ status: 'running', completed, total: allDatasetKeys.length, current: key, message: `正在查询并准备：${datasetLabels[key]}` });
         try {
-          nextData[key] = await loadDataset(key, requestedBatchId, requestedAnalysisRunId, requestedSettings);
+          const loaded = await loadDataset(key, requestedFilters, requestedBatchId, requestedAnalysisRunId, requestedSettings);
+          nextData[key] = loaded.rows;
+          if (loaded.meta) nextMeta[key] = loaded.meta;
         } catch (error) {
           const failure = `${datasetLabels[key]}: ${error instanceof Error ? error.message : String(error)}`;
           nextFailures.push(failure);
@@ -639,8 +654,8 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
           message: exportStopRequested.current ? '当前查询结束后将停止准备报告。' : `已完成 ${completed}/${allDatasetKeys.length} 个数据集。`,
         });
       }
-      return { data: nextData, completed, failures: nextFailures, failedKeys, stopped: exportStopRequested.current };
-    }) as { data: StructuredDataset; completed: number; failures: string[]; failedKeys: DatasetKey[]; stopped: boolean } | null;
+      return { data: nextData, meta: nextMeta, completed, failures: nextFailures, failedKeys, stopped: exportStopRequested.current };
+    }) as { data: StructuredDataset; meta: Partial<Record<DatasetKey, AnalyticsQueryMeta>>; completed: number; failures: string[]; failedKeys: DatasetKey[]; stopped: boolean } | null;
 
     if (generation !== exportGeneration.current) return;
     if (!result) {
@@ -653,6 +668,8 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
     }
 
     setData(result.data);
+    setQueryMeta(result.meta);
+    setAppliedFilters(requestedFilters);
     setDatasetCounts(allDatasetKeys.reduce<Partial<Record<DatasetKey, number>>>((counts, key) => ({ ...counts, [key]: result.data[key].length }), {}));
     c.setOverview({ metrics: result.data.kpis });
     const failedSet = new Set(result.failedKeys);
@@ -660,12 +677,12 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
       const next = { ...current };
       allAnalyticsTabs.forEach((tab) => {
         const keys = viewDatasets[tab];
-        if (keys.every((key) => !failedSet.has(key)) && keys.some((key) => hasMeaningfulEvidence(key, result.data[key]))) next[tab] = requestedContext;
+        if (keys.every((key) => !failedSet.has(key)) && keys.some((key) => hasMeaningfulEvidence(key, result.data[key]))) next[tab] = `${requestedContext}::${filterKey(requestedFilters)}`;
       });
       return next;
     });
 
-    const preparedSections = exportSections(filteredDataset(result.data, requestedFilters.access, requestedFilters.keyword, requestedFilters.minUsers));
+    const preparedSections = exportSections(filteredDataset(result.data));
     const omittedCharts = preparedSections.flatMap((section) => section.charts.filter((chart) => chart.points.length === 0).map((chart) => `${section.title} / ${chart.title}`));
     const sections = preparedSections.map((section) => ({ ...section, charts: section.charts.filter((chart) => chart.points.length > 0) }));
     const chartCount = sections.reduce((sum, section) => sum + section.charts.length, 0);
@@ -702,12 +719,11 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
     setExportTask((current) => ({ ...current, status: 'stopping', message: '停止请求已接收；当前查询结束后不再准备后续数据集。' }));
   }
 
-  const filtered = useMemo(() => filteredDataset(data, access, keyword, minUsers), [access, data, keyword, minUsers]);
+  const filtered = useMemo(() => filteredDataset(data), [data]);
 
   const leadStages = useMemo(() => leadStagePoints(filtered.leadSummary), [filtered.leadSummary]);
-  const knownHourlyUsers = filtered.hourlyTrend.reduce((sum, row) => sum + (textFromHint(row, 'user_type') === 'UNKNOWN' ? 0 : fromHint(row, 'users')), 0);
-  const allHourlyUsers = filtered.hourlyTrend.reduce((sum, row) => sum + fromHint(row, 'users'), 0);
-  const coverage = allHourlyUsers > 0 ? knownHourlyUsers / allHourlyUsers * 100 : 0;
+  const coverageMetric = data.kpis.find((row) => row.label === 'Access Classification Coverage');
+  const coverage = numberValue(coverageMetric?.value);
   const gameDataset = data.coverage.find((row) => row.label === 'Game Dataset');
   const gameImported = gameDataset?.value === 'AVAILABLE';
   const accessClassification = data.coverage.find((row) => row.label === 'Access Classification');
@@ -720,17 +736,13 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
   }).length;
   const a1 = leadStages.find((stage) => stage.label.startsWith('A1_'))?.value ?? 0;
   const a2 = leadStages.find((stage) => stage.label.startsWith('A2_'))?.value ?? 0;
-  const issueApps = new Set(filtered.appRank.filter((row) => fromHint(row, 'poor_experience_user_pct') > 0).map((row) => textFromHint(row, 'app_name', row.label))).size;
-  const severeHotspots = new Set(filtered.networkHotspots
-    .filter((row) => textFromHint(row, 'bottleneck') === 'NETWORK_SIDE_SEVERE')
-    .map((row) => {
-      const detail = parseMetricHint(row.hint);
-      return [detail.bras, detail.olt, detail.pon].join('|');
-    })).size;
+  const problemAppsMetric = data.kpis.find((row) => row.label === 'Problem Apps');
+  const issueApps = problemAppsMetric?.value === 'NOT_AVAILABLE' ? undefined : numberValue(problemAppsMetric?.value);
+  const severeHotspots = numberValue(data.kpis.find((row) => row.label === 'Network Severe Hotspots')?.value);
   const kpis = [
-    { label: '接入分类观测覆盖率', value: `${coverage.toFixed(1)}%`, hint: '已识别 Cable/FTTH 的用户小时观测 / 全部用户小时观测', tone: coverage < 90 ? 'warning' : 'normal' },
-    { label: '问题 App', value: String(issueApps), hint: '当前筛选下差体验用户占比大于 0 的真实 App' },
-    { label: '网络侧可疑聚集', value: String(severeHotspots), hint: '主问题侧偏网络且存在可识别网络对象；仍需进一步验证', tone: severeHotspots ? 'danger' : 'normal' },
+    { label: '接入分类观测覆盖率', value: `${coverage.toFixed(1)}%`, hint: '筛选范围内已识别 Cable/FTTH 的活跃用户观测 / 全部活跃用户观测；后端全量聚合', tone: coverage < 90 ? 'warning' : 'normal' },
+    { label: '问题 App', value: issueApps === undefined ? '-' : String(issueApps), hint: issueApps === undefined ? '当前 run 无 V2 App 聚合，不能使用旧差体验占比替代' : '样本充分且持续差体验用户数大于 0 的真实 App；后端全量聚合' },
+    { label: '网络侧可疑聚集', value: String(severeHotspots), hint: '主问题侧偏网络且存在可识别网络对象；后端全量聚合，仍需进一步验证', tone: severeHotspots ? 'danger' : 'normal' },
     { label: 'A1 候选', value: String(a1), hint: '仍需 CRM、覆盖和可触达资格校验' },
     { label: 'A2 先修障', value: String(a2), hint: '网络严重异常，禁止直接营销', tone: a2 ? 'warning' : 'normal' },
   ];
@@ -776,7 +788,8 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
         const empty = emptyDatasetKeys.includes(key);
         const className = failed ? 'is-failed' : empty ? 'is-empty' : index < task.completed ? 'is-complete' : task.current === key && running ? 'is-running' : '';
         const count = datasetCounts[key];
-        return <span key={key} className={className}>{failed ? '!' : empty ? '○' : index < task.completed ? '✓' : index + 1} {datasetLabels[key]}{count !== undefined ? ` · ${count} rows${empty && count > 0 ? ' / all 0' : ''}` : ''}</span>;
+        const meta = queryMeta[key];
+        return <span key={key} className={className}>{failed ? '!' : empty ? '○' : index < task.completed ? '✓' : index + 1} {datasetLabels[key]}{count !== undefined ? ` · ${count} rows${meta?.has_more ? '+' : ''}${empty && count > 0 ? ' / all 0' : ''}` : ''}{meta ? ` · ${meta.source}` : ''}</span>;
       })}</div>
       <small>切换页面不会自动发起查询；停止操作会等待当前数据库请求结束，再跳过剩余步骤。</small>
     </section>
@@ -809,7 +822,8 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
       <label>接入类型<select value={access} onChange={(event) => setAccess(event.target.value)}><option value="ALL">全部</option><option value="CABLE">Cable</option><option value="FTTH">FTTH</option><option value="OTHER">Other</option></select></label>
       <label>搜索<input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="App、用户、BRAS、OLT、PON" /></label>
       <label>最小用户数<input type="number" min={0} value={minUsers} onChange={(event) => setMinUsers(Math.max(0, Number(event.target.value)))} /></label>
-      <div className="filter-context"><span>Batch</span><strong>{c.batchDisplayName || c.importBatchId || '-'}</strong><small>{task.message}</small></div>
+      <button type="button" className={filtersDirty ? 'primary-button' : ''} disabled={disabled || actionBusy || running || exportRunning} onClick={loadCurrentView}>{filtersDirty ? '应用筛选并重新查询' : '按当前条件重新查询'}</button>
+      <div className="filter-context"><span>Batch</span><strong>{c.batchDisplayName || c.importBatchId || '-'}</strong><small>{filtersDirty ? '筛选条件已修改；当前图表仍显示上一次后端查询结果。' : `后端筛选已应用：${appliedFilters.access} · ${appliedFilters.keyword.trim() || '无关键词'} · 最小用户数 ${appliedFilters.minUsers}`}</small></div>
     </section>
     {failures.length > 0 && <section className="analytics-error-banner"><strong>部分数据集加载失败</strong>{failures.map((failure) => <span key={failure}>{failure}</span>)}</section>}
     {data.coverage.length > 0 && <section className="analytics-readiness-grid" aria-label="数据可用性说明">

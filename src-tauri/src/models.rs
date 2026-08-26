@@ -250,6 +250,7 @@ pub struct DashboardRequest {
     pub page: Option<u64>,
     pub page_size: Option<u64>,
     pub keyword: Option<String>,
+    pub access_type: Option<String>,
     pub sort_by: Option<String>,
     pub min_value: Option<f64>,
 }
@@ -282,6 +283,27 @@ impl DashboardRequest {
                 "%{}%",
                 keyword.replace('%', "\\%").replace('_', "\\_")
             ))
+        }
+    }
+
+    pub fn keyword_text(&self) -> String {
+        self.keyword
+            .as_deref()
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    }
+
+    pub fn access_type_filter(&self) -> Option<String> {
+        let access_type = self
+            .access_type
+            .as_deref()
+            .unwrap_or_default()
+            .trim()
+            .to_uppercase();
+        match access_type.as_str() {
+            "CABLE" | "FTTH" | "OTHER" | "UNKNOWN" => Some(access_type),
+            _ => None,
         }
     }
 
@@ -342,6 +364,66 @@ pub struct MetricCard {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct AnalyticsFilterSummary {
+    pub access_type: String,
+    pub keyword: String,
+    pub min_value: f64,
+    pub sort_by: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AnalyticsQueryMeta {
+    pub returned_rows: usize,
+    pub has_more: bool,
+    pub effective_limit: u64,
+    pub page: u64,
+    pub offset: u64,
+    pub source: String,
+    pub filters: AnalyticsFilterSummary,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AnalyticsQueryPage {
+    pub rows: Vec<MetricCard>,
+    pub meta: AnalyticsQueryMeta,
+}
+
+impl AnalyticsQueryPage {
+    pub fn new(
+        mut rows: Vec<MetricCard>,
+        req: &DashboardRequest,
+        default_size: u64,
+        max_size: u64,
+        source: impl Into<String>,
+    ) -> Self {
+        let effective_limit = req.page_size(default_size, max_size);
+        let has_more = rows.len() > effective_limit as usize;
+        if has_more {
+            rows.truncate(effective_limit as usize);
+        }
+        Self {
+            meta: AnalyticsQueryMeta {
+                returned_rows: rows.len(),
+                has_more,
+                effective_limit,
+                page: req.page(),
+                offset: req.offset(default_size, max_size),
+                source: source.into(),
+                filters: AnalyticsFilterSummary {
+                    access_type: req
+                        .access_type_filter()
+                        .unwrap_or_else(|| "ALL".to_string()),
+                    keyword: req.keyword_text(),
+                    min_value: req.min_value(),
+                    sort_by: req.sort_by(),
+                },
+            },
+            rows,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct DashboardOverview {
     pub metrics: Vec<MetricCard>,
 }
@@ -388,5 +470,58 @@ pub fn ack(message: impl Into<String>) -> CommandAck {
     CommandAck {
         status: "ok".to_string(),
         message: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request() -> DashboardRequest {
+        DashboardRequest {
+            settings: MySqlSettings {
+                host: "127.0.0.1".into(),
+                port: 3306,
+                database: "sa_fbb".into(),
+                user: "root".into(),
+                secret: String::new(),
+                local_infile: None,
+            },
+            import_batch_id: "BATCH_TEST".into(),
+            analysis_run_id: Some("RUN_TEST".into()),
+            page: Some(2),
+            page_size: Some(2),
+            keyword: Some("  Netflix  ".into()),
+            access_type: Some(" cable ".into()),
+            sort_by: Some("users".into()),
+            min_value: Some(30.0),
+        }
+    }
+
+    #[test]
+    fn analytics_page_uses_limit_plus_one_metadata() {
+        let req = request();
+        let rows = (1..=3)
+            .map(|value| MetricCard {
+                label: format!("row-{value}"),
+                value: value.to_string(),
+                hint: String::new(),
+            })
+            .collect();
+        let page = AnalyticsQueryPage::new(rows, &req, 80, 500, "ads_test");
+        assert_eq!(page.rows.len(), 2);
+        assert_eq!(page.meta.returned_rows, 2);
+        assert!(page.meta.has_more);
+        assert_eq!(page.meta.effective_limit, 2);
+        assert_eq!(page.meta.offset, 2);
+        assert_eq!(page.meta.filters.access_type, "CABLE");
+        assert_eq!(page.meta.filters.keyword, "Netflix");
+    }
+
+    #[test]
+    fn unsupported_access_filter_is_not_applied() {
+        let mut req = request();
+        req.access_type = Some("ALL OR 1=1".into());
+        assert_eq!(req.access_type_filter(), None);
     }
 }

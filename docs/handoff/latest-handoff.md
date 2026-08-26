@@ -3,13 +3,13 @@
 ## Current version
 
 ```text
-1.0.54
+1.0.55
 ```
 
 ## Source-of-truth branch
 
 ```text
-codex/task-dashboard-ip-segmentation
+codex/task-dashboard-query-consistency
 ```
 
 ## Current baseline
@@ -19,6 +19,15 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.55 update
+
+- Dashboard access, keyword and minimum-user filters now execute in Rust/MySQL before `LIMIT`; the React dashboard no longer filters a fixed Top N response.
+- The five paged structured endpoints return rows plus `returned_rows`, `has_more`, `effective_limit`, page/offset, source and the effective filter summary. `LIMIT + 1` is used instead of an exact count.
+- The dashboard problem-App KPI uses full V2 ADS aggregation with `sample_status='SUFFICIENT'` and `persistent_poor_users>0`; missing V2 data is shown as unavailable instead of falling back to the legacy any-poor-observation rule.
+- Access coverage, problem Apps and severe network/path clusters are full filtered aggregates. Screen and PDF loading now share the same dataset query plan and chart definitions.
+- No dependency, lock-file, migration or RAW/DWD/DWS schema change is included. Live Windows/MySQL regression remains pending.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.54 update
 
