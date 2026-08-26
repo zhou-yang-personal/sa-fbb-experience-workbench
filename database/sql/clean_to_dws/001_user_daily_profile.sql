@@ -1,6 +1,8 @@
 -- CLEAN/DWD → DWS user daily profile baseline
 
-REPLACE INTO dws_user_daily_profile (
+DELETE FROM :dws_user_daily_profile WHERE import_batch_id = :import_batch_id;
+
+REPLACE INTO :dws_user_daily_profile (
   import_batch_id,
   user_key,
   user_type,
@@ -23,7 +25,12 @@ WITH params AS (
   SELECT
     import_batch_id,
     user_key,
-    COALESCE(MAX(user_type), 'UNKNOWN') AS user_type,
+    CASE
+      WHEN SUM(user_type = 'CABLE') > 0 THEN 'CABLE'
+      WHEN SUM(user_type = 'FTTH') > 0 THEN 'FTTH'
+      WHEN SUM(user_type = 'OTHER') > 0 THEN 'OTHER'
+      ELSE 'UNKNOWN'
+    END AS user_type,
     stat_date,
     COUNT(*) AS video_rows,
     SUM(COALESCE(downloaded_gb, 0)) AS total_download_gb,
@@ -33,8 +40,8 @@ WITH params AS (
     AVG(user_down_loss) AS avg_user_down_loss,
     AVG(network_down_loss) AS avg_network_down_loss,
     SUM(CASE WHEN hour_of_day BETWEEN 18 AND 22 THEN 1 ELSE 0 END) / COUNT(*) * 100 AS peak_row_pct
-  FROM dwd_tcp_detail_clean
-  WHERE dwd_tcp_detail_clean.import_batch_id = (SELECT import_batch_id FROM params)
+  FROM :dwd_tcp_detail_clean
+  WHERE import_batch_id = (SELECT import_batch_id FROM params)
     AND user_key IS NOT NULL
     AND TRIM(user_key) <> ''
     AND user_key <> 'UNKNOWN'
@@ -44,13 +51,18 @@ WITH params AS (
   SELECT
     import_batch_id,
     user_key,
-    COALESCE(MAX(user_type), 'UNKNOWN') AS user_type,
+    CASE
+      WHEN SUM(user_type = 'CABLE') > 0 THEN 'CABLE'
+      WHEN SUM(user_type = 'FTTH') > 0 THEN 'FTTH'
+      WHEN SUM(user_type = 'OTHER') > 0 THEN 'OTHER'
+      ELSE 'UNKNOWN'
+    END AS user_type,
     stat_date,
     COUNT(*) AS game_rows,
     SUM(COALESCE(game_hours, 0)) AS total_game_hours,
     AVG(mos) AS avg_mos
-  FROM dwd_game_detail_clean
-  WHERE dwd_game_detail_clean.import_batch_id = (SELECT import_batch_id FROM params)
+  FROM :dwd_game_detail_clean
+  WHERE import_batch_id = (SELECT import_batch_id FROM params)
     AND user_key IS NOT NULL
     AND TRIM(user_key) <> ''
     AND user_key <> 'UNKNOWN'

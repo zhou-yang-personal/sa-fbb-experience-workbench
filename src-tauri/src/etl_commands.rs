@@ -89,7 +89,7 @@ pub fn etl_start_clean_job(req: EtlRequest) -> Result<CommandAck, String> {
         }
     }
     let message = job_runner::run_job(&req.settings, &req.import_batch_id, "raw_to_clean", steps)?;
-    let _ = batch_tables::refresh_registry_counts(&req.settings, &req.import_batch_id);
+    let _ = batch_tables::refresh_registry_estimates(&req.settings, &req.import_batch_id);
     Ok(ack(message))
 }
 
@@ -251,15 +251,14 @@ mod tests {
 
 #[tauri::command]
 pub fn etl_start_aggregate_job(req: EtlRequest) -> Result<CommandAck, String> {
+    crate::migrations::ensure_access_schema(&req.settings)?;
+    crate::migrations::ensure_experience_policy_schema(&req.settings)?;
     batch_tables::ensure_batch_tables(&req.settings, &req.import_batch_id)?;
     let analysis_run_id = req
         .analysis_run_id
         .unwrap_or_else(|| format!("RUN_{}", Uuid::new_v4().simple()));
     let dws_bound = sql_runner::bind_batch_params(USER_DAILY_SQL, &req.import_batch_id, None);
-    let ads_bound =
-        sql_runner::bind_batch_params(LEADS_SQL, &req.import_batch_id, Some(&analysis_run_id));
     let dws_sql = batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &dws_bound)?;
-    let ads_sql = batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &ads_bound)?;
     let dwd_tcp =
         batch_tables::resolve_table(&req.settings, &req.import_batch_id, "dwd_tcp_detail_clean")?;
     let dwd_game =
@@ -269,48 +268,143 @@ pub fn etl_start_aggregate_job(req: EtlRequest) -> Result<CommandAck, String> {
         &req.import_batch_id,
         "dws_user_daily_profile",
     )?;
-    let ads_lead = batch_tables::resolve_table(
-        &req.settings,
-        &req.import_batch_id,
-        "ads_migration_lead_user",
-    )?;
     let mut conn = db::conn(&req.settings)?;
-    let _ = conn.exec_drop(
-        "REPLACE INTO meta_analysis_run (analysis_run_id, import_batch_id, run_type, status, started_at, message) VALUES (?, ?, 'base_aggregate', 'running', NOW(), 'aggregate started')",
-        (&analysis_run_id, &req.import_batch_id),
-    );
-    let message = job_runner::run_job(
+    let (access_rule_set_id, access_rule_set_version, others_access_type): (
+        Option<String>,
+        Option<i64>,
+        Option<String>,
+    ) = conn
+        .exec_first(
+            "SELECT b.access_rule_set_id, b.access_rule_set_version, s.default_access_type FROM meta_import_batch b LEFT JOIN meta_access_rule_set s ON s.rule_set_id=b.access_rule_set_id WHERE b.import_batch_id=?",
+            (&req.import_batch_id,),
+        )
+        .map_err(|err| format!("failed to snapshot access rules for analysis run: {err}"))?
+        .ok_or_else(|| format!("import batch not found: {}", req.import_batch_id))?;
+    let access_rule_set_id = access_rule_set_id.ok_or_else(|| {
+        "analysis requires a published IP rule version with an explicit Others mapping".to_string()
+    })?;
+    let access_rule_set_version = access_rule_set_version.ok_or_else(|| {
+        "analysis batch is missing its access rule version; bind a published rule first".to_string()
+    })?;
+    let others_access_type = others_access_type
+        .as_deref()
+        .map(crate::access_rule_commands::normalize_others_access_type)
+        .transpose()?
+        .ok_or_else(|| {
+            "analysis batch rule has no explicit Others mapping; publish a corrected rule version"
+                .to_string()
+        })?;
+    let (experience_policy_id, experience_policy_version): (String, i64) = conn
+        .exec_first(
+            "SELECT policy_id, CAST(version AS SIGNED) FROM meta_experience_analysis_policy WHERE status='published' ORDER BY version DESC LIMIT 1",
+            (),
+        )
+        .map_err(|err| format!("failed to resolve published experience policy: {err}"))?
+        .ok_or_else(|| "no published experience analysis policy is available".to_string())?;
+    conn.exec_drop(
+        "REPLACE INTO meta_analysis_run (analysis_run_id, import_batch_id, run_type, access_rule_set_id, access_rule_set_version, others_access_type, experience_policy_id, experience_policy_version, status, started_at, message) VALUES (?, ?, 'base_aggregate', ?, ?, ?, ?, ?, 'running', NOW(), 'aggregate started')",
+        (&analysis_run_id, &req.import_batch_id, &access_rule_set_id, access_rule_set_version, &others_access_type, &experience_policy_id, experience_policy_version),
+    )
+    .map_err(|err| format!("failed to create traceable analysis run: {err}"))?;
+    conn.exec_drop(
+        "REPLACE INTO meta_analysis_run_policy_binding (analysis_run_id, import_batch_id, access_rule_set_id, access_rule_set_version, others_access_type, app_mapping_version, experience_policy_id, experience_policy_version, policy_snapshot) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, JSON_OBJECT('access_rule_set_id', ?, 'access_rule_set_version', ?, 'others_access_type', ?, 'experience_policy_id', ?, 'experience_policy_version', ?))",
+        (
+            &analysis_run_id,
+            &req.import_batch_id,
+            &access_rule_set_id,
+            access_rule_set_version,
+            &others_access_type,
+            &experience_policy_id,
+            experience_policy_version,
+            &access_rule_set_id,
+            access_rule_set_version,
+            &others_access_type,
+            &experience_policy_id,
+            experience_policy_version,
+        ),
+    )
+    .map_err(|err| format!("failed to bind analysis policy snapshot: {err}"))?;
+    let message = match job_runner::run_job(
         &req.settings,
         &req.import_batch_id,
         "base_aggregate",
-        vec![
-            JobStep {
-                step_name: "user_daily_profile",
-                source_table: Box::leak(format!("{dwd_tcp},{dwd_game}").into_boxed_str()),
-                target_table: Box::leak(dws_user.into_boxed_str()),
-                sql_template: "001_user_daily_profile.sql",
-                sql: dws_sql,
-            },
-            JobStep {
-                step_name: "migration_leads",
-                source_table: Box::leak(
-                    batch_tables::resolve_table(
-                        &req.settings,
-                        &req.import_batch_id,
-                        "dws_user_daily_profile",
-                    )?
-                    .into_boxed_str(),
-                ),
-                target_table: Box::leak(ads_lead.into_boxed_str()),
-                sql_template: "001_migration_leads.sql",
-                sql: ads_sql,
-            },
-        ],
-    )?;
+        vec![JobStep {
+            step_name: "user_daily_profile",
+            source_table: Box::leak(format!("{dwd_tcp},{dwd_game}").into_boxed_str()),
+            target_table: Box::leak(dws_user.into_boxed_str()),
+            sql_template: "001_user_daily_profile.sql",
+            sql: dws_sql,
+        }],
+    ) {
+        Ok(message) => message,
+        Err(err) => {
+            let _ = mark_analysis_run_status(
+                &req.settings,
+                &analysis_run_id,
+                "failed",
+                &format!("base aggregate failed: {err}"),
+            );
+            return Err(err);
+        }
+    };
     let _ = conn.exec_drop(
-        "UPDATE meta_analysis_run SET status='success', finished_at=NOW(), message=? WHERE analysis_run_id=?",
-        (&message, &analysis_run_id),
+        "UPDATE meta_analysis_run SET status='running', finished_at=NULL, message=? WHERE analysis_run_id=?",
+        (
+            format!("base aggregate ready; complete DWS/ADS pending; {message}"),
+            &analysis_run_id,
+        ),
     );
-    let _ = batch_tables::refresh_registry_counts(&req.settings, &req.import_batch_id);
+    let _ = batch_tables::refresh_registry_estimates(&req.settings, &req.import_batch_id);
     Ok(ack(format!("analysis_run_id={analysis_run_id}; {message}")))
+}
+
+pub fn mark_analysis_run_status(
+    settings: &MySqlSettings,
+    analysis_run_id: &str,
+    status: &str,
+    message: &str,
+) -> Result<(), String> {
+    if !matches!(status, "running" | "success" | "failed" | "degraded") {
+        return Err(format!("unsupported analysis run status: {status}"));
+    }
+    let mut conn = db::conn(settings)?;
+    let finished_at = if matches!(status, "success" | "failed" | "degraded") {
+        "UTC_TIMESTAMP()"
+    } else {
+        "NULL"
+    };
+    conn.exec_drop(
+        format!(
+            "UPDATE meta_analysis_run SET status=?, finished_at={finished_at}, message=? WHERE analysis_run_id=?"
+        ),
+        (status, message, analysis_run_id),
+    )
+    .map_err(|err| format!("failed to update analysis run status: {err}"))
+}
+
+pub fn refresh_migration_leads(
+    settings: &MySqlSettings,
+    import_batch_id: &str,
+    analysis_run_id: &str,
+) -> Result<String, String> {
+    let bound = sql_runner::bind_batch_params(LEADS_SQL, import_batch_id, Some(analysis_run_id));
+    let sql = batch_tables::bind_batch_tables(settings, import_batch_id, &bound)?;
+    let dws_user =
+        batch_tables::resolve_table(settings, import_batch_id, "dws_user_daily_profile")?;
+    let dws_bottleneck =
+        batch_tables::resolve_table(settings, import_batch_id, "dws_user_experience_bottleneck")?;
+    let ads_lead =
+        batch_tables::resolve_table(settings, import_batch_id, "ads_migration_lead_user")?;
+    job_runner::run_job(
+        settings,
+        import_batch_id,
+        "migration_lead_scoring",
+        vec![JobStep {
+            step_name: "migration_leads_after_bottleneck",
+            source_table: Box::leak(format!("{dws_user},{dws_bottleneck}").into_boxed_str()),
+            target_table: Box::leak(ads_lead.into_boxed_str()),
+            sql_template: "001_migration_leads.sql",
+            sql,
+        }],
+    )
 }

@@ -26,6 +26,83 @@ CSV 文件选择
 4. 看板不得直接扫 RAW 明细大表，必须查询 DWS / ADS 聚合结果。
 5. 当前 SA 数据只能形成“应用体验驱动的迁转升套机会”，正式营销名单需要后续 JOIN CRM、套餐、FTTH 覆盖、合约、欠费、黑名单和可触达状态。
 
+### 1.1 1.0.35 产品决策面
+
+主分析入口按用户决策任务组织，而不是按 ETL 表组织：
+
+```text
+经营与体验总览
+├─ 应用体验：真实 App → 受影响用户 → 体验与网络证据
+├─ 网络问题定位：BRAS / OLT / PON → 问题侧 → 建议行动
+├─ Cable vs FTTH：同日期小时、同单位、同分母对比
+├─ 用户洞察：需求、使用、体验和接入识别证据
+└─ 迁转升套机会：A0 身份不足 / A2 先修障 / A1 待资格校验
+```
+
+所有图表必须显示单位或分母，点击后可查看证据字段。少于 8 个时间点时，趋势图降级为柱图，避免暗示不存在的趋势。
+
+### 1.3 按需分析与任务交互
+
+分析工作区采用显式任务模型：应用启动和恢复本地上下文只展示批次信息，不自动准备批次表、统计大表或读取看板。用户进入具体决策页后点击“加载当前看板”，系统只查询该页所需的 DWS / ADS 数据集；总览所需的多个数据集按步骤顺序执行，并展示计划、进度、当前步骤和失败信息。停止操作不宣称中断 MySQL 已开始的语句，而是在当前语句返回后跳过尚未开始的后续步骤。高级诊断组件只有在用户展开后才挂载。
+
+批次状态分为两个独立层次：`meta_import_batch.status` 只表示 RAW 入库状态，`meta_pipeline_run.status` 才表示 Quality Gate、CLEAN/DWD、DWS/ADS 和模块就绪的整体流水线状态。批次选择器必须解析该批次最新流水线，并同步它的 `analysis_run_id`；不得沿用上一个批次或更早分析运行的上下文。看板只有在至少一个必需数据集含有有效聚合证据时才可标记成功，空数组与全 0 KPI 结构属于“无分析结果”，需要引导用户返回导入页查看该批次流水线。
+
+系统诊断遵循同一任务模型：切换到诊断页只渲染轻量配置与空状态，不调用 MySQL。用户启动后，Catalog、映射失败项、质量失败项、ETL 失败项、模块深度检查和 Registry 快照按顺序执行；停止只跳过尚未开始的检查。常规模块深度检查使用批次表的有界 `EXISTS` 查询判断可用性，Registry 使用已缓存数值或 `information_schema.tables.table_rows` 估算，不在页面导航、批次准备或 Module Ready 时执行隐式大表精确 `COUNT(*)`。Quality / ETL 单步工具和完整执行日志仅在对应折叠区展开后挂载。
+
+1.0.52 将上述边界收紧为零数据库访问安全启动：应用打开和本地上下文恢复只读取 WebView 本地状态，不调用批次、analysis run、流水线或就绪度 API；批次列表也必须由用户显式刷新。Windows 运行时另写入不含业务数据的本地 `runtime.log`，用于区分正常退出、Tauri 运行错误和 Rust panic。1.0.53/1.0.54 进一步要求所有批次及批次表注册元数据读取兼容历史 `NULL`/空值：Rust 使用可失败的逐列解码，单条脏元数据不得导致桌面进程退出；刷新批次、加载运行列表、加载规则和恢复流水线必须是相互独立的显式操作。
+
+历史批次同时提供两个不同恢复动作：已有 CLEAN 可用时从 DWS/ADS 续跑；规则或清洗口径变化时从既有 RAW 全量重建。RAW 重建保留 CSV/RAW 和旧 analysis run，以新 run 执行 Quality Gate、CLEAN/DWD、DWS/ADS/V2、可选 Final Lead 与 Module Ready。CLEAN/DWD 与不按 run 隔离的 DWS 是批次共享结果，会被重建覆盖；ADS/V2 使用新 run 隔离。核心 SQL 脚本经 SQL runner 拆分后，为每条语句写入开始、成功或失败、耗时、影响行数与有界摘要；pipeline 元数据写入不参与自递归日志。
+
+### 1.4 全部图表 PDF 导出
+
+PDF 导出是独立的显式分析任务，不跟随页面切换自动运行。任务启动时锁定当前 `import_batch_id`、`analysis_run_id`、接入类型、关键词和最小用户数，随后顺序读取 KPI、App Rank、小时趋势、网络热点、用户画像和 Lead Evidence 六个 DWS/ADS 数据集。已开始的数据库语句不做虚假中断；停止操作只跳过后续数据集。
+
+报告按经营总览、应用体验、网络问题定位、Cable vs FTTH、用户洞察和迁转升套机会六个章节保留看板原有图表口径，共覆盖 20 个图表位置。当前筛选下为空的图不生成空白页，而是在封面列为已跳过；查询失败同样显式记录。报告只包含图表和必要的上下文元数据，不包含证据明细表。首版复用 Windows WebView2 打印预览保存 PDF，以 CSS 打印版式生成 A4 横向报告，不引入额外 PDF 运行库或修改依赖锁；无对话框的原生 `PrintToPdf` 可作为后续增强。
+
+### 1.2 接入类型识别
+
+Cable / FTTH 识别采用可追溯的版本规则：
+
+```text
+已发布 IPv4 网段规则
+→ 绑定 import_batch_id 和规则版本
+→ RAW → DWD 时用 INET_ATON(local_ip_address) 匹配
+→ 命中规则：IP_RULE / HIGH
+→ 有效 IPv4 未命中：使用该规则版本显式配置的 Others / RULE_SET_OTHERS / HIGH
+→ 缺失或非法 IPv4：UNKNOWN / UNAVAILABLE_IP / LOW
+```
+
+`Others` 是未命中任何显式 IP 网段的剩余有效 IPv4 集合，不是写死的第三种接入技术。规则草稿必须由用户明确选择 Others 最终归为 Cable、FTTH 或 Other；未配置或配置为 Unknown 的草稿不得预览、发布或绑定新批次。当前业务版本选择 Others → Cable，但这个选择只保存在规则版本中，不得成为 React、Rust、SQL 或数据库默认值。CSV `user_type` / `wan_type` 只保留为来源证据，不参与最终分类优先级。规则支持 CIDR 或起止 IPv4、启停、优先级、重叠阻断、最多 100,000 个不同 IP 的有界预览及原子发布。规则应用不修改 RAW；应用到历史批次后必须重跑 CLEAN / DWS / ADS。
+
+### 1.6 V2 体验指标与旁路聚合
+
+V2 App 分析采用版本化 `Experience Policy`，每个 `analysis_run` 同时绑定接入规则版本、Others 归类和体验策略版本。首轮公共粒度为用户 × App × 分析周期，并继续汇总为 App × 接入制式；看板只读对应 ADS，不扫描 RAW。
+
+必须区分：
+
+1. `Poor Observation Rate = 差体验观测 / 有效体验观测`。
+2. `Ever Affected User Rate = 至少一次差体验的合格用户 / 合格用户`。
+3. `Persistent Poor User Rate = 满足最低观测数、最低异常次数和用户差体验率门槛的用户 / 合格用户`。
+4. `Severe Poor User Rate = 满足独立严重阈值、最低严重次数和严重率门槛的用户 / 合格用户`。
+
+V2 表必须保留分子、分母、样本状态、策略版本和主要证据指标；`INSUFFICIENT_SAMPLE` 不得进入问题排名。缺失、未导入、样本不足和数值 0 是不同状态。当前手工脚本复用既有 DWD，为指定批次并排生成 V2 DWS/ADS，不覆盖旧分析运行，也不进行 Server IP 全量拆分。
+
+### 1.5 看板总体口径与数据覆盖
+
+看板额外读取一个有界的数据覆盖状态：TCP / Game RAW 是否存在、CLEAN 是否就绪，以及绑定规则集的未命中默认类型。独立 Game 文件不存在时，游戏时长与 MOS 标记为不可用，不生成伪 0 图表或把 0 加入 Lead 判断解释。
+
+机会阶段和用户分布使用完整 ADS 表的 `GROUP BY` 聚合，明细分页只用于证据列表。Cable / FTTH 多日小时数据在图表层按 `active_users` 加权形成典型 24 小时曲线，避免 7 天 145 个时点拥挤；原始日期小时仍保留在证据表与导出数据中。
+
+### 1.7 统一看板查询语义
+
+1.0.55 将主看板接入现有结构化后端查询链路。接入类型、关键词和最小用户数必须作为 `DashboardRequest` 参数进入 Rust/MySQL，并在 `LIMIT/OFFSET` 前执行；React 只展示后端已经筛选的结果，不允许先读取固定 Top N 再推断总体。
+
+App、小时、网络、用户和机会证据使用 `LIMIT + 1` 返回有界分页，并附带 `returned_rows`、`has_more`、`effective_limit`、page/offset、来源层和有效筛选摘要。该元数据用于明确当前图表是筛选后 Top N，而不是完整总体。需要总体值的 KPI 必须执行独立的 ADS/DWS 聚合，不能从分页行反推。
+
+“问题 App”只统计 V2 ADS 中 `sample_status='SUFFICIENT'` 且 `persistent_poor_users>0` 的真实 App，并保留策略版本证据。缺失 V2 结果时展示不可用状态，不使用旧 `poor_experience_user_pct > 0` 兼容口径替代。
+
+屏幕加载和 PDF 准备共用同一个数据集查询计划、筛选参数生成器和图表定义。筛选器修改后必须显式重新查询；在新查询完成前，页面明确说明仍显示上一次后端查询结果。该设计继续遵守按需查询和零数据库访问启动边界。
+
 ## 2. 参考基线与差异
 
 整体工程框架参考 `latam-fbb-desktop` 的桌面端本地分析架构：
@@ -83,6 +160,8 @@ Package: Windows EXE / MSI
 4. **MySQL 8.0** 作为本地计算与存储主引擎，承接几千万行 RAW、清洗 SQL、聚合表和看板查询。
 5. **LOAD DATA LOCAL INFILE** 作为大 CSV 主导入能力，应用层不做大文件内存清洗。
 
+1.0.35 的导入器先读取表头并生成 `@csv_N → RAW target column` 映射，因此列顺序变化不会再自动降级为批量 INSERT。只有显式关闭 `local_infile` 或选择 fallback 模式时才走有界的 500 行 streaming INSERT。
+
 ## 4. 前端模块架构
 
 建议目录结构：
@@ -126,6 +205,14 @@ src/
 - 创建 import batch。
 - 触发 RAW 导入任务。
 - 展示导入进度、速度、剩余时间、失败原因。
+
+流水线日志采用 `pipeline_run_id + sequence` 作为唯一有序游标。前台同一时刻只允许一个增量请求，按 sequence 去重并在终态后补拉一次最终日志；如果积压超过单页限制，连续分页追平而不是跳过。只读状态/日志轮询不执行 schema DDL，最近一次 pipeline ID 按 MySQL 上下文保存在本地，以便离开导入页后恢复监控。RAW 文件传输每 5 秒报告字节进度，质量检查、CLEAN/DWD、DWS/ADS、融合和模块检查等无法获得 MySQL 内部百分比的步骤每 15 秒写入存活心跳、步骤耗时和当前阶段说明。监控台分别展示轮询健康、日志静默时长、计划进度和筛选结果，45 秒无心跳时提示数据库繁忙或连接受阻，但不把“无百分比”误判为失败。新产生的 pipeline run、step 和 log 时间使用 `UTC_TIMESTAMP()` 写入 MySQL，API 返回带 `Z` 的 UTC 时间；前端统一通过浏览器 `Intl.DateTimeFormat` 转换为本地 PC 时区，并在复制文本中写入 IANA 时区名称。旧版 `DATETIME` 历史数据不携带时区元数据，因此仅从本版本新任务开始保证转换准确。
+
+恢复日志以当前选中批次为准，而不是只读取“本机最后一次 pipeline ID”。历史列表查询返回该批次最新的 `pipeline_run_id`、流水线状态、失败原因和 `analysis_run_id`；进入导入页或重新选择批次时从 sequence 0 分页恢复日志。若批次来自旧版或手工 RAW 导入且没有关联流水线，则清空上一批次的监控状态并明确提示没有可恢复日志。
+
+对于 RAW、Quality Gate 和 CLEAN 已有成功证据、但 DWS/ADS 不完整的批次，Import Center 提供“复用当前批次”显式任务。该任务不重读 CSV、不重建 RAW/CLEAN，从基础用户日聚合开始依次完成完整 DWS、基础 ADS、App Rank、小时趋势、网络热点、用户画像和 Lead Evidence，然后尝试 Final Lead 并刷新 Module Ready。后端在创建续跑任务前检查同批次流水线状态和 MySQL `PROCESSLIST`；只有用户明确确认原进程已退出且该批次无活动 SQL 时，才能接管遗留的 running 元数据。
+
+DWS/ADS 的可观测性细化为 8 个命名子阶段，每个子阶段写入开始、完成或失败日志，外层长步骤仍保持 15 秒存活心跳。`meta_analysis_run` 在基础用户日聚合完成后保持 `running`，只有完整 DWS 与五类结构化 ADS 均成功后才转为 `success`。
 
 ### 4.2 Data Quality
 
@@ -456,6 +543,8 @@ ads_build_priority_cluster
 8. 执行 RAW 层质量检查
 ```
 
+Probe 只读取有界样本识别逗号、Tab 或分号，字段映射、LOAD DATA 和 Streaming INSERT 必须复用同一分隔符。Rust MySQL 客户端在每次 LOAD DATA 前注册仅允许当前所选 CSV 规范路径的 `LocalInfileHandler`，通过 1 MiB 缓冲流式传输文件，拒绝服务端请求其他本地路径，并在语句结束后立即移除处理器。RAW 长步骤以共享原子计数器记录客户端已处理字节，每 5 秒通过独立 MySQL 连接写入 pipeline heartbeat；达到 100% 后显示 MySQL 解析/索引/提交等待，连续 30 秒无变化则输出分阶段 warning。批次创建后立即绑定到 pipeline run。LOAD DATA 返回后先验证当前 `import_batch_id` 在批次物理 RAW 表中可见；0 行必须在 RAW 步骤直接失败并保留 MySQL warning，不得进入 Quality Gate 后才以四项通用错误暴露。
+
 适用：
 
 - 千万级 CSV。
@@ -490,8 +579,10 @@ RAW 导入后必须执行：
 质量门禁失败时：
 
 - 阻断 RAW → CLEAN。
-- 展示失败项。
+- 在流水线失败卡片直接展示失败项、RAW 批次状态和物理表行数。
 - 允许用户选择修正映射后重跑。
+
+数据画像必须通过批次表注册表解析物理 RAW 表；共享 RAW 基表仅作为 `CREATE TABLE ... LIKE` 模板，不作为已分批数据的画像来源。
 
 ## 8. 清洗与聚合任务设计
 
@@ -820,8 +911,12 @@ meta_quality_check_result
 ### 15.3 存储治理
 
 - 支持按 batch 删除 RAW / CLEAN / DWS / ADS。
+- 批次删除同时清理关联分析运行、导出记录、质量结果、映射结果和任务日志；运行中的 RAW / ETL / pipeline 必须阻断删除。
+- 每批物理表删除前必须校验注册表归属和安全表名，删除失败后允许对同一批次重试收口。
 - 支持归档旧 batch。
 - 不提交本地数据库文件和导出文件到 Git。
+
+`ads_network_hotspot_rank` 保留 BRAS / OLT / PON 的 `VARCHAR(255)` 原值，但使用自增主键和 128 字符前缀的查询索引，避免 utf8mb4 组合键超过 InnoDB 3072 字节限制。
 
 ## 16. 目录结构建议
 
@@ -916,3 +1011,20 @@ meta_quality_check_result
 9. 实现 RAW → CLEAN SQL。
 10. 实现 CLEAN → DWS / ADS SQL。
 11. 实现 Overview / Experience / Cable-Fiber / Leads 四类核心看板。
+## 1.0.50 investigation architecture
+
+`WorkbenchController` owns a single persistent Analysis Context shared by the V2 overview, findings, legacy evidence pages and Investigation Workspace. Chart selections append dimensions to this context instead of creating isolated local filters.
+
+The V2 query path is ADS/DWS-first:
+
+1. `dws_user_app_period_experience_v2` supplies the four experience metrics and affected-user evidence.
+2. `ads_app_experience_v2` supplies explainable, sample-qualified App findings.
+3. `dws_user_app_hourly_experience_v2` and `ads_app_hourly_experience_v2` supply time drill-down.
+4. `meta_analysis_run_policy_binding` preserves the access-rule, Others mapping and experience-policy version used by the run.
+5. `meta_saved_investigation` stores only context and references, not copied fact data.
+
+Server IP remains controlled/on-demand and is not exploded globally. New CLEAN results retain the source field; a drill-down requires an explicit App, selects at most 200 priority affected users from DWS and parses at most 20,000 matching DWD observations. Network objects are only treated as topology when BRAS/OLT/PON contain real values; otherwise the UI reports limited localization capability.
+
+Run verification uses the latest earlier successful analysis only when access-rule ID/version, configured Others, App-mapping version and experience-policy ID/version are all identical. Missing compatible baselines and missing V2 observations are presented as non-comparable rather than zero change.
+
+The analysis context resolves runs independently from pipeline history. Batch defaults prefer the latest successful/degraded `meta_analysis_run`, while a metadata-only selector exposes Period V2, App ADS and Hourly V2 readiness for every run. V2 foundation queries use partial-result semantics: status, findings, coverage and verification report their own failures, so one optional query cannot hide the other valid evidence.

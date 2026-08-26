@@ -16,9 +16,9 @@ export function AnalyticsStructuredDeepDivePanel({ c }: { c: WorkbenchController
     setStatus('正在读取 Network / User / Lead 结构化 API...');
     try {
       const [network, users, leads] = await Promise.all([
-        analyticsStructuredApi.networkHotspots(c.effectiveSettings, c.importBatchId, c.analysisRunId).catch(() => []),
-        analyticsStructuredApi.userProfiles(c.effectiveSettings, c.importBatchId, c.analysisRunId).catch(() => []),
-        analyticsStructuredApi.leadEvidence(c.effectiveSettings, c.importBatchId, c.analysisRunId).catch(() => []),
+        analyticsStructuredApi.networkHotspots(c.effectiveSettings, c.importBatchId, c.analysisRunId).then((page) => page.rows).catch(() => []),
+        analyticsStructuredApi.userProfiles(c.effectiveSettings, c.importBatchId, c.analysisRunId).then((page) => page.rows).catch(() => []),
+        analyticsStructuredApi.leadEvidence(c.effectiveSettings, c.importBatchId, c.analysisRunId).then((page) => page.rows).catch(() => []),
       ]);
       setNetworkRows(network);
       setUserRows(users);

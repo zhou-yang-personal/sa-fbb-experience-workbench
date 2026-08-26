@@ -77,7 +77,7 @@
 
 ## B6. 本项目版本检查
 
-- [ ] 当前版本已确认：`1.0.15`。
+- [ ] 当前版本已确认：`1.0.48`。
 - [ ] 前端版本文件已同步：`package.json`。
 - [ ] Tauri 版本文件已同步：`src-tauri/tauri.conf.json`。
 - [ ] Rust package 版本文件已同步：`src-tauri/Cargo.toml`。
@@ -100,7 +100,7 @@
 
 CI 状态：
 
-- [ ] 当前未建立 CI；未发现 CI 时，不得声称 CI 通过。
+- [ ] 已建立 `.github/workflows/build-desktop.yml`：`dev` / `codex/**` 推送构建 Windows Artifact，`v*` 标签发布 GitHub Release。
 
 ## B8. 本项目禁止事项检查
 

@@ -15,7 +15,7 @@ export function RunLogDrawer({ open, log, onClose }: Props) {
         <div className="run-log-drawer-head">
           <div>
             <h2>执行日志</h2>
-            <p className="muted-row">主流程只显示结论；这里保留完整技术明细。</p>
+            <p className="muted-row">主流程只显示结论；这里保留完整技术明细，时间自动跟随本地 PC 时区。</p>
           </div>
           <button type="button" onClick={onClose}>关闭</button>
         </div>

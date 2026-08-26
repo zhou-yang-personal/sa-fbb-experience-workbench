@@ -7,7 +7,7 @@ WITH params AS (SELECT :import_batch_id AS import_batch_id), batch AS (
   SELECT
     r.*,
     NULLIF(TRIM(REGEXP_REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(r.statistical_time, ''), CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' '), CONVERT(0xC2A0 USING utf8mb4), ' '), '[[:space:]]+', ' ')), '') AS stat_time_text
-  FROM raw_game_detail_import r
+  FROM :raw_game_detail_import r
   JOIN params p ON p.import_batch_id = r.import_batch_id
 ), raw_parsed AS (
   SELECT
@@ -23,14 +23,14 @@ WITH params AS (SELECT :import_batch_id AS import_batch_id), batch AS (
 ), raw_counts AS (
   SELECT 'game' AS data_type,
          COUNT(*) AS row_cnt,
-         COUNT(DISTINCT NULLIF(TRIM(user_account), '')) AS user_account_cnt,
-         COUNT(DISTINCT NULLIF(TRIM(user_mac), '')) AS user_mac_cnt,
-         COUNT(DISTINCT NULLIF(TRIM(application_protocol), '')) AS app_cnt,
+         COUNT(DISTINCT NULLIF(NULLIF(TRIM(user_account), ''), '--')) AS user_account_cnt,
+         COUNT(DISTINCT NULLIF(NULLIF(TRIM(user_mac), ''), '--')) AS user_mac_cnt,
+         COUNT(DISTINCT NULLIF(NULLIF(TRIM(application_protocol), ''), '--')) AS app_cnt,
          MIN(parsed_stat_time) AS min_time,
          MAX(parsed_stat_time) AS max_time,
          COUNT(DISTINCT HOUR(parsed_stat_time)) AS active_hours,
          COALESCE(SUM(CASE WHEN stat_time_text IS NOT NULL AND parsed_stat_time IS NULL THEN 1 ELSE 0 END), 0) AS invalid_time_rows,
-         COALESCE(SUM(CASE WHEN NULLIF(TRIM(user_account), '') IS NULL THEN 1 ELSE 0 END), 0) AS empty_account_rows,
+         COALESCE(SUM(CASE WHEN NULLIF(NULLIF(TRIM(user_account), ''), '--') IS NULL THEN 1 ELSE 0 END), 0) AS empty_account_rows,
          COALESCE(SUM(CASE WHEN UPPER(TRIM(COALESCE(user_type, ''))) LIKE '%CABLE%' OR UPPER(TRIM(COALESCE(wan_type, ''))) LIKE '%CABLE%' THEN 1 ELSE 0 END), 0) AS cable_rows,
          COALESCE(SUM(CASE WHEN UPPER(TRIM(COALESCE(user_type, ''))) LIKE '%FTTH%' OR UPPER(TRIM(COALESCE(user_type, ''))) LIKE '%FIBER%' THEN 1 ELSE 0 END), 0) AS ftth_rows,
          COALESCE(SUM(CASE WHEN NULLIF(TRIM(bras), '') IS NULL OR UPPER(TRIM(bras)) = 'UNKNOWN' THEN 1 ELSE 0 END), 0) AS unknown_bras_rows,
@@ -45,7 +45,7 @@ WITH params AS (SELECT :import_batch_id AS import_batch_id), batch AS (
          COALESCE(SUM(CASE WHEN data_quality_flag = 'WARN_INVALID_STAT_TIME' THEN 1 ELSE 0 END), 0) AS warn_invalid_stat_time_rows,
          COALESCE(SUM(CASE WHEN data_quality_flag = 'WARN_UNKNOWN_ACCESS_TYPE' THEN 1 ELSE 0 END), 0) AS warn_unknown_access_type_rows,
          COALESCE(SUM(CASE WHEN data_quality_flag = 'OK' THEN 1 ELSE 0 END), 0) AS ok_rows
-  FROM dwd_game_detail_clean WHERE import_batch_id = (SELECT import_batch_id FROM params)
+  FROM :dwd_game_detail_clean WHERE import_batch_id = (SELECT import_batch_id FROM params)
 )
 SELECT import_batch_id, 'raw_quality', 'game_row_count', 'row_cnt', row_cnt, NULL,
        CASE WHEN row_cnt = 0 THEN 'error' ELSE 'info' END,

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { formatLocalDateTime, localTimeZone } from '../../shared/localDateTime';
 import type { ExecutionLogEntry, ExecutionLogStatus } from '../../shared/types';
 
 type LogFilter = 'all' | ExecutionLogStatus;
@@ -17,8 +18,9 @@ function formatEntry(entry: ExecutionLogEntry) {
   const lines = [
     `command: ${entry.command}`,
     `status: ${entry.status}`,
-    `started_at: ${entry.started_at}`,
-    `finished_at: ${entry.finished_at}`,
+    `time_zone: ${localTimeZone()}`,
+    `started_at: ${formatLocalDateTime(entry.started_at)}`,
+    `finished_at: ${formatLocalDateTime(entry.finished_at)}`,
     `duration_ms: ${entry.duration_ms}`,
     `message: ${entry.message}`,
   ];
@@ -49,9 +51,10 @@ export function ExecutionLog({ log }: ExecutionLogProps) {
       <div className="log-header">
         <div>
           <h2>诊断日志</h2>
-          <p className="muted-row">记录命令、错误、耗时和返回预览。字段映射、质量门禁、ETL 失败都应在这里看到可复制诊断信息。</p>
+          <p className="muted-row">记录命令、错误、耗时和返回预览。字段映射、质量门禁、ETL 失败都应在这里看到可复制诊断信息。时间按本地 PC 时区 {localTimeZone()} 显示。</p>
         </div>
         <div className="log-summary">
+          <span>{localTimeZone()}</span>
           <span>{log.length} total</span>
           <span>{successRows.length} success</span>
           <span>{failedRows.length} failed</span>
@@ -79,7 +82,7 @@ export function ExecutionLog({ log }: ExecutionLogProps) {
               <button type="button" onClick={() => copyText(formatEntry(entry))}>复制</button>
             </div>
             <div className="log-meta">
-              <span>{entry.started_at}</span>
+              <span title={`UTC: ${entry.started_at}`}>{formatLocalDateTime(entry.started_at)}</span>
               <span>{entry.duration_ms} ms</span>
             </div>
             <pre>{entry.message}</pre>

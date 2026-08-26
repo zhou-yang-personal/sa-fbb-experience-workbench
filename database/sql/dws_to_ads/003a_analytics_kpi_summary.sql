@@ -1,9 +1,9 @@
 -- Analytics KPI ADS summary.
 
-REPLACE INTO ads_dashboard_kpi_summary (analysis_run_id, import_batch_id, kpi_group, kpi_key, kpi_label, kpi_value, kpi_unit, kpi_hint, display_order)
+REPLACE INTO :ads_dashboard_kpi_summary (analysis_run_id, import_batch_id, kpi_group, kpi_key, kpi_label, kpi_value, kpi_unit, kpi_hint, display_order)
 WITH params AS (SELECT :analysis_run_id AS analysis_run_id, :import_batch_id AS import_batch_id),
-p AS (SELECT * FROM dws_user_daily_profile WHERE import_batch_id = (SELECT import_batch_id FROM params)),
-l AS (SELECT * FROM ads_migration_lead_user WHERE analysis_run_id = (SELECT analysis_run_id FROM params))
+p AS (SELECT * FROM :dws_user_daily_profile WHERE import_batch_id = (SELECT import_batch_id FROM params)),
+l AS (SELECT * FROM :ads_migration_lead_user WHERE analysis_run_id = (SELECT analysis_run_id FROM params))
 SELECT analysis_run_id, import_batch_id, 'overview', 'total_users', 'Total Users', COUNT(DISTINCT user_key), 'users', 'distinct DWS users', 10 FROM p, params
 UNION ALL SELECT analysis_run_id, import_batch_id, 'overview', 'cable_users', 'Cable Users', COUNT(DISTINCT CASE WHEN user_type='CABLE' THEN user_key END), 'users', 'Cable users', 20 FROM p, params
 UNION ALL SELECT analysis_run_id, import_batch_id, 'overview', 'ftth_users', 'FTTH Users', COUNT(DISTINCT CASE WHEN user_type='FTTH' THEN user_key END), 'users', 'FTTH users', 30 FROM p, params

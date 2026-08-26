@@ -36,7 +36,53 @@ pub fn import_create_batch(req: CreateBatchRequest) -> Result<ImportBatchResult,
         &req.data_type,
         &req.file_path,
         req.batch_display_name.as_deref(),
+        req.access_rule_set_id.as_deref(),
     )
+}
+
+fn requires_access_rule_selection(data_type: &str) -> bool {
+    matches!(
+        data_type.trim().to_ascii_lowercase().as_str(),
+        "tcp" | "game"
+    )
+}
+
+fn resolve_access_rule_set(
+    conn: &mut mysql::PooledConn,
+    data_type: &str,
+    selected_rule_set_id: Option<&str>,
+) -> Result<(Option<String>, Option<i64>), String> {
+    let selected = selected_rule_set_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if requires_access_rule_selection(data_type) && selected.is_none() {
+        return Err(
+            "TCP/Game import requires an explicitly selected published IP access rule version"
+                .to_string(),
+        );
+    }
+    let Some(rule_set_id) = selected else {
+        return Ok((None, None));
+    };
+    let published: Option<(i64, Option<String>)> = conn
+        .exec_first(
+            "SELECT CAST(version AS SIGNED), default_access_type FROM meta_access_rule_set WHERE rule_set_id=? AND status='published'",
+            (rule_set_id,),
+        )
+        .map_err(|err| format!("failed to validate selected access rule set: {err}"))?;
+    let (version, others_access_type) = published.ok_or_else(|| {
+        format!("selected access rule set is missing or not published: {rule_set_id}")
+    })?;
+    others_access_type
+        .as_deref()
+        .map(crate::access_rule_commands::normalize_others_access_type)
+        .transpose()?
+        .ok_or_else(|| {
+            format!(
+                "selected access rule set has no explicit Others mapping: {rule_set_id}; create and publish a corrected version"
+            )
+        })?;
+    Ok((Some(rule_set_id.to_string()), Some(version)))
 }
 
 pub fn create_batch_internal(
@@ -44,6 +90,7 @@ pub fn create_batch_internal(
     data_type: &str,
     file_path: &str,
     batch_display_name: Option<&str>,
+    access_rule_set_id: Option<&str>,
 ) -> Result<ImportBatchResult, String> {
     let import_batch_id = format!("BATCH_{}", Uuid::new_v4().simple());
     let source_file_name = std::path::Path::new(file_path)
@@ -58,9 +105,12 @@ pub fn create_batch_internal(
     let file_size = std::fs::metadata(file_path).map(|m| m.len()).ok();
     let mut conn = db::conn(settings)?;
     ensure_batch_display_name_column(&mut conn, &settings.database)?;
+    crate::migrations::ensure_access_schema(settings)?;
+    let (access_rule_set_id, access_rule_set_version) =
+        resolve_access_rule_set(&mut conn, data_type, access_rule_set_id)?;
     conn.exec_drop(
-        "INSERT INTO meta_import_batch (import_batch_id, batch_display_name, data_type, source_file_name, source_file_path, source_file_size_bytes, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')",
-        (&import_batch_id, &batch_display_name, data_type, &source_file_name, file_path, file_size),
+        "INSERT INTO meta_import_batch (import_batch_id, batch_display_name, data_type, source_file_name, source_file_path, source_file_size_bytes, access_rule_set_id, access_rule_set_version, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
+        (&import_batch_id, &batch_display_name, data_type, &source_file_name, file_path, file_size, access_rule_set_id, access_rule_set_version),
     ).map_err(|err| format!("failed to create import batch: {err}"))?;
     Ok(ImportBatchResult {
         import_batch_id,
@@ -131,6 +181,28 @@ pub fn import_get_batch_status(
 pub fn import_current_file_atomic(
     req: ImportCurrentFileRequest,
 ) -> Result<ImportCurrentFileResult, String> {
+    import_current_file_atomic_inner(req, None, |_| Ok(()))
+}
+
+pub fn import_current_file_atomic_observed<F>(
+    req: ImportCurrentFileRequest,
+    progress: crate::raw_import_v2::RawLoadProgress,
+    on_batch_created: F,
+) -> Result<ImportCurrentFileResult, String>
+where
+    F: FnOnce(&ImportBatchResult) -> Result<(), String>,
+{
+    import_current_file_atomic_inner(req, Some(progress), on_batch_created)
+}
+
+fn import_current_file_atomic_inner<F>(
+    req: ImportCurrentFileRequest,
+    progress: Option<crate::raw_import_v2::RawLoadProgress>,
+    on_batch_created: F,
+) -> Result<ImportCurrentFileResult, String>
+where
+    F: FnOnce(&ImportBatchResult) -> Result<(), String>,
+{
     if req.file_path.trim().is_empty() {
         return Err("CSV file path is required".to_string());
     }
@@ -144,7 +216,15 @@ pub fn import_current_file_atomic(
         &req.data_type,
         &req.file_path,
         Some(&req.batch_display_name),
+        req.access_rule_set_id.as_deref(),
     )?;
+    if let Err(err) = on_batch_created(&batch) {
+        mark_batch_failed(&req.settings, &batch.import_batch_id, &err)?;
+        return Err(format!(
+            "failed to attach import batch to pipeline: {err}; import_batch_id={}",
+            batch.import_batch_id
+        ));
+    }
     let validation_rows = crate::mapping_validation_commands::validate_mapping_to_db(
         &req.settings,
         &batch.import_batch_id,
@@ -167,7 +247,7 @@ pub fn import_current_file_atomic(
         file_path: req.file_path.clone(),
         mode: req.mode.clone(),
     };
-    if let Err(err) = crate::raw_import_v2::start_raw_load(raw_req) {
+    if let Err(err) = crate::raw_import_v2::start_raw_load_with_progress(raw_req, progress) {
         mark_batch_failed(&req.settings, &batch.import_batch_id, &err)?;
         return Err(format!("{err}; import_batch_id={}", batch.import_batch_id));
     }
@@ -200,6 +280,20 @@ pub fn import_current_file_atomic(
         profile,
         message: "atomic import finished".to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::requires_access_rule_selection;
+
+    #[test]
+    fn tcp_and_game_require_explicit_access_rules() {
+        assert!(requires_access_rule_selection("tcp"));
+        assert!(requires_access_rule_selection("GAME"));
+        assert!(!requires_access_rule_selection("crm"));
+        assert!(!requires_access_rule_selection("coverage"));
+        assert!(!requires_access_rule_selection("reachability"));
+    }
 }
 
 fn mark_batch_failed(
