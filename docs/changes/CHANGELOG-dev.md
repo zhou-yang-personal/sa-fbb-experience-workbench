@@ -1,5 +1,18 @@
 # CHANGELOG-dev
 
+## 1.0.57 - 2026-08-27
+
+### Fixed
+
+- Scoped the stale-pipeline takeover confirmations to a dedicated grid layout in both RAW rebuild and DWS/ADS resume panels.
+- Prevented the product-shell `input { width: 100% }` rule from stretching checkboxes and squeezing the safety explanation.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-27.
+- `npm run build`: passed on 2026-08-27; the existing ECharts chunk-size warning remains.
+- Live Windows/WebView2 visual confirmation remains pending for the 1.0.57 artifact.
+
 ## 1.0.56 - 2026-08-27
 
 ### Fixed

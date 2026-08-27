@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.56
+1.0.57
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,13 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.57 update
+
+- Fixed the two stale-takeover confirmations in RAW rebuild and DWS/ADS resume. Product-shell input defaults no longer stretch their checkboxes to full width.
+- The checkbox is fixed at 16px while the safety explanation receives the remaining width and wraps naturally.
+- The change is scoped to stale-takeover controls and does not alter text/select inputs or access-rule confirmation behavior.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.56 update
 

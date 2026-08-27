@@ -1001,7 +1001,7 @@ export function ImportPanel(props: Props) {
         </div>
         <p className="analytics-warning-banner">重建会覆盖当前批次共享的 CLEAN/DWD 与 DWS 内容，但保留 RAW 和旧 analysis run 的 ADS 结果。执行失败会将新运行标记为 failed，不会伪装成成功。</p>
         {selectedOrLoadedBatchRunning && (
-          <label className="access-rule-confirmation-check" style={{ marginTop: 12 }}>
+          <label className="access-rule-confirmation-check stale-takeover-confirmation" style={{ marginTop: 12 }}>
             <input
               type="checkbox"
               checked={staleTakeoverConfirmed}
@@ -1038,7 +1038,7 @@ export function ImportPanel(props: Props) {
           <span className="status-pill">8 个聚合子阶段</span>
         </div>
         {selectedOrLoadedBatchRunning && (
-          <label className="access-rule-confirmation-check" style={{ marginTop: 12 }}>
+          <label className="access-rule-confirmation-check stale-takeover-confirmation" style={{ marginTop: 12 }}>
             <input
               type="checkbox"
               checked={staleTakeoverConfirmed}
