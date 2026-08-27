@@ -182,6 +182,7 @@ export function ImportPanel(props: Props) {
   const selectedBatchReady = ['success', 'degraded'].includes(selectedPipelineStatus) && Boolean(selectedHistoryBatch?.analysis_run_id);
   const selectedBatchRunning = ['pending', 'running'].includes(selectedPipelineStatus);
   const selectedBatchFailed = selectedPipelineStatus === 'failed';
+  const selectedBatchInterrupted = selectedPipelineStatus === 'interrupted';
   const selectedOrLoadedBatchRunning = Boolean(pipelineRunning || selectedBatchRunning);
   const importBlockReason = !filePath
     ? '请先选择 CSV 文件'
@@ -280,7 +281,7 @@ export function ImportPanel(props: Props) {
     const normalized = status.toLowerCase();
     if (normalized === 'success') return 'status-success';
     if (normalized === 'failed') return 'status-failure';
-    if (normalized === 'degraded' || normalized === 'skipped') return 'status-warning';
+    if (normalized === 'degraded' || normalized === 'skipped' || normalized === 'interrupted') return 'status-warning';
     if (normalized === 'running') return 'status-running';
     return '';
   }
@@ -309,7 +310,7 @@ export function ImportPanel(props: Props) {
         if (page.length < 100) break;
       }
       const normalizedStatus = String(status.status).toLowerCase();
-      if (['success', 'degraded', 'failed', 'canceled'].includes(normalizedStatus)) {
+      if (['success', 'degraded', 'failed', 'canceled', 'interrupted'].includes(normalizedStatus)) {
         for (let pageIndex = 0; pageIndex < 20; pageIndex += 1) {
           const page = await workbenchApi.pipelineLogs(settings, runId, cursor);
           if (!page.length) break;
@@ -337,7 +338,7 @@ export function ImportPanel(props: Props) {
         ]);
         if (quality.status === 'fulfilled') setQualityRows(quality.value);
         if (jobs.status === 'fulfilled') setEtlJobs(jobs.value);
-      } else if (status.import_batch_id && normalizedStatus === 'failed') {
+      } else if (status.import_batch_id && ['failed', 'interrupted'].includes(normalizedStatus)) {
         const [failedQuality, nextRawStatus] = await Promise.allSettled([
           qualityApi.failedResults(settings, status.import_batch_id),
           workbenchApi.importStatus(settings, status.import_batch_id),
@@ -562,7 +563,7 @@ export function ImportPanel(props: Props) {
   useEffect(() => {
     if (!pipelineRunId || !pipelineAutoRefresh) return;
     const status = String(pipelineStatus?.status ?? 'running').toLowerCase();
-    if (['success', 'degraded', 'failed', 'canceled'].includes(status)) return;
+    if (['success', 'degraded', 'failed', 'canceled', 'interrupted'].includes(status)) return;
     let disposed = false;
     const poll = async () => {
       if (disposed) return;
@@ -816,6 +817,8 @@ export function ImportPanel(props: Props) {
 
   const recoveryRecommendation = selectedBatchRunning
     ? '先加载任务状态，确认它仍在执行；不要启动第二个任务。'
+    : selectedBatchInterrupted
+      ? '原任务已因MySQL或应用中断。确认当前没有活动SQL后，可从已完成的小时分片继续聚合。'
     : selectedBatchFailed
       ? '先查看失败步骤：CLEAN 已成功时选择“继续聚合”，否则选择“从 RAW 重建”。'
       : selectedBatchReady
@@ -961,7 +964,7 @@ export function ImportPanel(props: Props) {
               <p className="muted-row">{selectedHistoryBatch.import_batch_id}</p>
             </div>
             <span className={`step-badge ${selectedBatchFailed ? 'status-failure' : selectedBatchRunning ? 'status-running' : selectedBatchReady ? 'status-success' : 'status-warning'}`}>
-              {selectedBatchReady ? '可分析' : selectedBatchRunning ? '运行中' : selectedBatchFailed ? '任务失败' : '待确认'}
+              {selectedBatchReady ? '可分析' : selectedBatchRunning ? '运行中' : selectedBatchInterrupted ? '任务已中断' : selectedBatchFailed ? '任务失败' : '待确认'}
             </span>
           </div>
           <div className="summary-pills">

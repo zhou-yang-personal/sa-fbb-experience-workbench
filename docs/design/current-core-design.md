@@ -72,6 +72,8 @@ CSV 文件选择
 
 历史批次同时提供两个不同恢复动作：已有 CLEAN 可用时从 DWS/ADS 续跑；规则或清洗口径变化时从既有 RAW 全量重建。RAW 重建保留 CSV/RAW 和旧 analysis run，以新 run 执行 Quality Gate、CLEAN/DWD、DWS/ADS/V2、可选 Final Lead 与 Module Ready。CLEAN/DWD 与不按 run 隔离的 DWS 是批次共享结果，会被重建覆盖；ADS/V2 使用新 run 隔离。核心 SQL 脚本经 SQL runner 拆分后，为每条语句写入开始、成功或失败、耗时、影响行数与有界摘要；pipeline 元数据写入不参与自递归日志。
 
+hourly V2 禁止整批单事务。任务先确保批次 DWD 物理表具有 `(import_batch_id, stat_date, hour_of_day)` 索引，再枚举实际日期/小时分片；每片使用 `DELETE 当前 run/date/hour + INSERT 当前 run/date/hour` 的独立事务。`meta_aggregation_partition_checkpoint` 保存每片的连接 ID、尝试次数、耗时、影响行数与错误，成功片在恢复时直接跳过。MySQL 命名锁保证同一实例只有一个 DWS/ADS 聚合，MySQL 重启后显式状态查询会把无活动 SQL 的遗留运行标记为 `interrupted`。只有完整运行进入 `success/degraded` 后，前端才允许把 run 标记为可分析。
+
 ### 1.4 全部图表 PDF 导出
 
 PDF 导出是独立的显式分析任务，不跟随页面切换自动运行。任务启动时锁定当前 `import_batch_id`、`analysis_run_id`、接入类型、关键词和最小用户数，随后顺序读取 KPI、App Rank、小时趋势、网络热点、用户画像和 Lead Evidence 六个 DWS/ADS 数据集。已开始的数据库语句不做虚假中断；停止操作只跳过后续数据集。

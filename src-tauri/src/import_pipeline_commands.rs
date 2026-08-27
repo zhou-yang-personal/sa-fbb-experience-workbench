@@ -217,14 +217,16 @@ fn step_heartbeat_message(step: PipelineStepDef, elapsed_ms: i64) -> String {
     let phase = match step.name {
         "raw_quality_gate" => "MySQL 正在扫描 RAW 大表并计算时间、身份、应用和拓扑质量指标",
         "raw_to_clean" => "MySQL 正在执行 RAW → CLEAN/DWD 清洗、字段转换和接入类型识别",
-        "dws_ads_aggregate" => "MySQL 正在生成 DWS/ADS 聚合、看板结果和用户机会证据",
+        "dws_ads_aggregate" => {
+            "应用工作线程正在协调 DWS/ADS；具体 SQL、连接和小时分片状态请查看执行日志"
+        }
         "final_fusion_optional" => "MySQL 正在融合 CRM、覆盖与可触达资格数据",
         "module_ready" => "系统正在检查结果表和模块可用性",
         "prepare_environment" => "系统正在初始化数据库结构和字段映射目录",
         _ => "任务仍在后端运行",
     };
     format!(
-        "{}仍在运行：{}；本步骤已持续 {}；数据库内部百分比不可见，此心跳表示后台任务仍存活",
+        "{}状态心跳：{}；本步骤已持续 {}；该心跳仅表示应用线程可写日志，不等同于当前 SQL 一定存活",
         step.label,
         phase,
         format_elapsed(elapsed_ms)
@@ -326,7 +328,8 @@ fn spawn_step_reporter(
 }
 
 fn ensure_pipeline_schema(settings: &MySqlSettings) -> Result<(), String> {
-    sql_runner::execute_script(settings, PIPELINE_SCHEMA).map(|_| ())
+    sql_runner::execute_script(settings, PIPELINE_SCHEMA)?;
+    crate::migrations::ensure_aggregation_checkpoint_schema(settings)
 }
 
 #[cfg(test)]
@@ -419,6 +422,35 @@ fn append_log(
     ))
 }
 
+pub(crate) fn record_aggregation_partition_progress(
+    settings: &MySqlSettings,
+    pipeline_run_id: &str,
+    level: &str,
+    message: &str,
+) {
+    crate::append_runtime_log(&format!(
+        "aggregation_partition pipeline_run_id={pipeline_run_id} {message}"
+    ));
+    let _ = append_log(
+        settings,
+        pipeline_run_id,
+        level,
+        Some("dws_ads_aggregate"),
+        message,
+        0,
+    );
+    if let Ok(mut conn) = db::conn(settings) {
+        let _ = conn.exec_drop(
+            "UPDATE meta_pipeline_run SET message=?,updated_at=UTC_TIMESTAMP() WHERE pipeline_run_id=? AND status='running'",
+            (message, pipeline_run_id),
+        );
+        let _ = conn.exec_drop(
+            "UPDATE meta_pipeline_step SET message=? WHERE pipeline_run_id=? AND step_name='dws_ads_aggregate' AND status='running'",
+            (message, pipeline_run_id),
+        );
+    }
+}
+
 fn run_with_sql_logging<T, F>(
     settings: &MySqlSettings,
     pipeline_run_id: &str,
@@ -433,7 +465,11 @@ where
     let observed_pipeline_run_id = pipeline_run_id.to_string();
     sql_runner::with_sql_execution_observer(
         move |event| {
-            let level = if event.status == "failed" { "error" } else { "info" };
+            let level = if event.status == "failed" {
+                "error"
+            } else {
+                "info"
+            };
             let status = event.status.to_ascii_uppercase();
             let affected = event
                 .affected_rows
@@ -445,13 +481,18 @@ where
                 .map(|value| format!("；error={value}"))
                 .unwrap_or_default();
             let message = format!(
-                "SQL {}/{} {status}；stage={stage}；duration_ms={}；affected_rows={affected}；statement={}{}",
+                "SQL {}/{} {status}；stage={stage}；connection_id={}；duration_ms={}；affected_rows={affected}；statement={}{}",
                 event.statement_index,
                 event.statement_count,
+                event.connection_id.map(|value| value.to_string()).unwrap_or_else(|| "-".to_string()),
                 event.duration_ms,
                 event.statement_preview,
                 error,
             );
+            crate::append_runtime_log(&format!(
+                "pipeline_sql pipeline_run_id={} {}",
+                observed_pipeline_run_id, message
+            ));
             let _ = append_log(
                 &observed_settings,
                 &observed_pipeline_run_id,
@@ -770,6 +811,7 @@ fn run_dws_ads_stage(
     analysis_run_id: &str,
     total_started: std::time::Instant,
 ) -> Result<String, String> {
+    let _aggregation_lock = db::acquire_named_lock(settings, db::AGGREGATION_LOCK_NAME)?;
     let request = || EtlRequest {
         settings: settings.clone(),
         import_batch_id: import_batch_id.to_string(),
@@ -806,7 +848,12 @@ fn run_dws_ads_stage(
             AGGREGATE_SUBTASKS[3],
             "App Rank",
             total_started,
-            || crate::analytics_ads_app::analytics_materialize_app_rank(request()),
+            || {
+                crate::analytics_ads_app::analytics_materialize_app_rank_for_pipeline(
+                    request(),
+                    pipeline_run_id,
+                )
+            },
         )?;
         run_logged_subtask(
             settings,
@@ -1076,12 +1123,20 @@ fn run_pipeline_job(
                     let batch = import_batch_id
                         .as_ref()
                         .ok_or_else(|| "missing import_batch_id before aggregate".to_string())?;
-                    run_dws_ads_stage(
+                    run_with_sql_logging(
                         &settings,
                         &pipeline_run_id,
-                        batch,
-                        &analysis_run_id,
+                        step.name,
                         total_started,
+                        || {
+                            run_dws_ads_stage(
+                                &settings,
+                                &pipeline_run_id,
+                                batch,
+                                &analysis_run_id,
+                                total_started,
+                            )
+                        },
                     )
                     .map(Some)
                 },
@@ -1262,7 +1317,10 @@ fn insert_rebuild_pipeline_run(
     else {
         return Err(format!("import batch not found: {}", req.import_batch_id));
     };
-    if !matches!(data_type.to_ascii_lowercase().as_str(), "tcp" | "game" | "mixed") {
+    if !matches!(
+        data_type.to_ascii_lowercase().as_str(),
+        "tcp" | "game" | "mixed"
+    ) {
         return Err(format!(
             "RAW rebuild supports TCP/Game analysis batches only; data_type={data_type}"
         ));
@@ -1293,12 +1351,12 @@ fn insert_rebuild_pipeline_run(
     }
     if let Some(active_pipeline) = active_pipeline {
         conn.exec_drop(
-            "UPDATE meta_pipeline_step SET error_message=CASE WHEN status='running' THEN 'stale pipeline superseded by explicit RAW rebuild' ELSE error_message END, status=CASE WHEN status='running' THEN 'failed' ELSE 'skipped' END, finished_at=UTC_TIMESTAMP(), message='原应用进程已退出；用户确认无活动 SQL 后由 RAW 重建任务接管。' WHERE pipeline_run_id=? AND status IN ('pending','running')",
+            "UPDATE meta_pipeline_step SET error_message=CASE WHEN status='running' THEN 'stale pipeline superseded by explicit RAW rebuild' ELSE error_message END, status=CASE WHEN status='running' THEN 'interrupted' ELSE 'skipped' END, finished_at=UTC_TIMESTAMP(), message='原应用进程已退出；用户确认无活动 SQL 后由 RAW 重建任务接管。' WHERE pipeline_run_id=? AND status IN ('pending','running')",
             (&active_pipeline,),
         )
         .map_err(|err| format!("failed to close stale pipeline steps: {err}"))?;
         conn.exec_drop(
-            "UPDATE meta_pipeline_run SET status='failed', finished_at=UTC_TIMESTAMP(), updated_at=UTC_TIMESTAMP(), message='stale pipeline superseded by explicit RAW rebuild', error_message='original process confirmed stopped; no active batch SQL found' WHERE pipeline_run_id=? AND status IN ('pending','running')",
+            "UPDATE meta_pipeline_run SET status='interrupted', finished_at=UTC_TIMESTAMP(), updated_at=UTC_TIMESTAMP(), message='stale pipeline superseded by explicit RAW rebuild', error_message='original process confirmed stopped; no active batch SQL found' WHERE pipeline_run_id=? AND status IN ('pending','running')",
             (&active_pipeline,),
         )
         .map_err(|err| format!("failed to close stale pipeline: {err}"))?;
@@ -1395,12 +1453,12 @@ fn insert_resume_pipeline_run(
     }
     if let Some(active_pipeline) = active_pipeline {
         conn.exec_drop(
-            "UPDATE meta_pipeline_step SET error_message=CASE WHEN status='running' THEN 'stale pipeline superseded by explicit batch resume' ELSE error_message END, status=CASE WHEN status='running' THEN 'failed' ELSE 'skipped' END, finished_at=UTC_TIMESTAMP(), message='原应用进程已退出；用户确认无活动 SQL 后由新续跑任务接管。' WHERE pipeline_run_id=? AND status IN ('pending','running')",
+            "UPDATE meta_pipeline_step SET error_message=CASE WHEN status='running' THEN 'stale pipeline superseded by explicit batch resume' ELSE error_message END, status=CASE WHEN status='running' THEN 'interrupted' ELSE 'skipped' END, finished_at=UTC_TIMESTAMP(), message='原应用进程已退出；用户确认无活动 SQL 后由新续跑任务接管。' WHERE pipeline_run_id=? AND status IN ('pending','running')",
             (&active_pipeline,),
         )
         .map_err(|err| format!("failed to close stale pipeline steps: {err}"))?;
         conn.exec_drop(
-            "UPDATE meta_pipeline_run SET status='failed', finished_at=UTC_TIMESTAMP(), updated_at=UTC_TIMESTAMP(), message='stale pipeline superseded by explicit batch resume', error_message='original process confirmed stopped; no active batch SQL found' WHERE pipeline_run_id=? AND status IN ('pending','running')",
+            "UPDATE meta_pipeline_run SET status='interrupted', finished_at=UTC_TIMESTAMP(), updated_at=UTC_TIMESTAMP(), message='stale pipeline superseded by explicit batch resume', error_message='original process confirmed stopped; no active batch SQL found' WHERE pipeline_run_id=? AND status IN ('pending','running')",
             (&active_pipeline,),
         )
         .map_err(|err| format!("failed to close stale pipeline: {err}"))?;
@@ -1489,12 +1547,20 @@ fn run_resume_pipeline_job(
                 step,
                 total_started,
                 || {
-                    run_dws_ads_stage(
+                    run_with_sql_logging(
                         &settings,
                         &pipeline_run_id,
-                        &batch,
-                        &analysis_run_id,
+                        step.name,
                         total_started,
+                        || {
+                            run_dws_ads_stage(
+                                &settings,
+                                &pipeline_run_id,
+                                &batch,
+                                &analysis_run_id,
+                                total_started,
+                            )
+                        },
                     )
                     .map(Some)
                 },
@@ -1647,13 +1713,17 @@ fn run_rebuild_pipeline_job(
                     };
                     let mut ready = 0;
                     for raw_base in raw_bases {
-                        let table = crate::batch_tables::resolve_table(&settings, &batch, raw_base)?;
+                        let table =
+                            crate::batch_tables::resolve_table(&settings, &batch, raw_base)?;
                         if crate::batch_tables::table_has_rows(&mut conn, &table)? {
                             ready += 1;
                         }
                     }
                     if ready == 0 {
-                        return Err("RAW rebuild stopped because no batch RAW table contains rows".to_string());
+                        return Err(
+                            "RAW rebuild stopped because no batch RAW table contains rows"
+                                .to_string(),
+                        );
                     }
                     Ok(Some(format!(
                         "RAW source verified; batch={batch}; analysis_run_id={analysis_run_id}; ready_raw_tables={ready}; CSV import skipped"
@@ -1947,10 +2017,85 @@ pub fn import_pipeline_start(
     })
 }
 
+fn reconcile_pipeline_after_mysql_restart(
+    settings: &MySqlSettings,
+    pipeline_run_id: &str,
+) -> Result<(), String> {
+    let mut conn = db::conn(settings)?;
+    let uptime_seconds: u64 = conn
+        .exec_first(
+            "SELECT CAST(VARIABLE_VALUE AS UNSIGNED) FROM performance_schema.global_status WHERE VARIABLE_NAME='Uptime'",
+            (),
+        )
+        .map_err(|err| format!("failed to read MySQL uptime: {err}"))?
+        .unwrap_or(0);
+    let row: Option<(String, Option<String>, Option<String>, i64)> = conn
+        .exec_first(
+            "SELECT status,import_batch_id,analysis_run_id,TIMESTAMPDIFF(SECOND,updated_at,UTC_TIMESTAMP()) FROM meta_pipeline_run WHERE pipeline_run_id=?",
+            (pipeline_run_id,),
+        )
+        .map_err(|err| format!("failed to inspect pipeline restart boundary: {err}"))?;
+    let Some((status, import_batch_id, analysis_run_id, silent_seconds)) = row else {
+        return Ok(());
+    };
+    if !matches!(status.as_str(), "pending" | "running")
+        || silent_seconds.max(0) as u64 <= uptime_seconds
+    {
+        return Ok(());
+    }
+    if let Some(batch) = import_batch_id.as_deref() {
+        if !active_batch_statements(settings, batch)?.is_empty() {
+            return Ok(());
+        }
+    }
+    conn.exec_drop(
+        "UPDATE meta_pipeline_step SET status=CASE WHEN status='running' THEN 'interrupted' ELSE 'skipped' END,finished_at=UTC_TIMESTAMP(),message=CASE WHEN status='running' THEN 'MySQL restarted after the last heartbeat; no active batch SQL remains.' ELSE message END,error_message=CASE WHEN status='running' THEN 'execution interrupted by MySQL restart' ELSE error_message END WHERE pipeline_run_id=? AND status IN ('pending','running')",
+        (pipeline_run_id,),
+    )
+    .map_err(|err| format!("failed to reconcile interrupted pipeline steps: {err}"))?;
+    conn.exec_drop(
+        "UPDATE meta_pipeline_run SET status='interrupted',finished_at=UTC_TIMESTAMP(),updated_at=UTC_TIMESTAMP(),message='MySQL restarted after the last heartbeat; task can resume from completed hourly checkpoints.',error_message='execution interrupted by MySQL restart; no active batch SQL remains' WHERE pipeline_run_id=? AND status IN ('pending','running')",
+        (pipeline_run_id,),
+    )
+    .map_err(|err| format!("failed to reconcile interrupted pipeline: {err}"))?;
+    if let Some(run_id) = analysis_run_id.as_deref() {
+        let _ = conn.exec_drop(
+            "UPDATE meta_analysis_run SET status='interrupted',finished_at=UTC_TIMESTAMP(),message='analysis interrupted by MySQL restart; completed hourly checkpoints are reusable' WHERE analysis_run_id=? AND status='running'",
+            (run_id,),
+        );
+        if crate::batch_tables::table_exists(&mut conn, "meta_aggregation_partition_checkpoint")
+            .unwrap_or(false)
+        {
+            let _ = conn.exec_drop(
+                "UPDATE meta_aggregation_partition_checkpoint SET status='interrupted',finished_at=UTC_TIMESTAMP(),error_summary=COALESCE(error_summary,'MySQL restarted before partition completion'),updated_at=UTC_TIMESTAMP() WHERE analysis_run_id=? AND status='running'",
+                (run_id,),
+            );
+        }
+    }
+    crate::append_runtime_log(&format!(
+        "pipeline_interrupted_after_mysql_restart pipeline_run_id={pipeline_run_id} mysql_uptime_seconds={uptime_seconds} silent_seconds={silent_seconds}"
+    ));
+    let _ = append_log(
+        settings,
+        pipeline_run_id,
+        "warning",
+        Some("interrupted"),
+        "MySQL restarted after the last heartbeat; no active batch SQL remains. Resume will reuse successful hourly checkpoints.",
+        0,
+    );
+    Ok(())
+}
+
 #[tauri::command]
 pub fn import_pipeline_get_status(
     req: ImportPipelineStatusRequest,
 ) -> Result<ImportPipelineStatus, String> {
+    if let Err(err) = reconcile_pipeline_after_mysql_restart(&req.settings, &req.pipeline_run_id) {
+        crate::append_runtime_log(&format!(
+            "pipeline_restart_reconciliation_skipped pipeline_run_id={} error={err}",
+            req.pipeline_run_id
+        ));
+    }
     let mut conn = db::conn(&req.settings)?;
     let row: Option<(
         String,
@@ -1967,7 +2112,7 @@ pub fn import_pipeline_get_status(
         Option<String>,
     )> = conn
         .exec_first(
-            "SELECT status, current_step, DATE_FORMAT(started_at, '%Y-%m-%dT%H:%i:%sZ'), DATE_FORMAT(finished_at, '%Y-%m-%dT%H:%i:%sZ'), CAST(percent AS DOUBLE), import_batch_id, analysis_run_id, elapsed_ms, error_message, final_fusion_status, message, (SELECT step_name FROM meta_pipeline_step s WHERE s.pipeline_run_id=meta_pipeline_run.pipeline_run_id AND s.status='failed' ORDER BY step_index LIMIT 1) FROM meta_pipeline_run WHERE pipeline_run_id=?",
+            "SELECT status, current_step, DATE_FORMAT(started_at, '%Y-%m-%dT%H:%i:%sZ'), DATE_FORMAT(finished_at, '%Y-%m-%dT%H:%i:%sZ'), CAST(percent AS DOUBLE), import_batch_id, analysis_run_id, elapsed_ms, error_message, final_fusion_status, message, (SELECT step_name FROM meta_pipeline_step s WHERE s.pipeline_run_id=meta_pipeline_run.pipeline_run_id AND s.status IN ('failed','interrupted') ORDER BY step_index LIMIT 1) FROM meta_pipeline_run WHERE pipeline_run_id=?",
             (&req.pipeline_run_id,),
         )
         .map_err(|err| format!("failed to read pipeline status: {err}"))?;
@@ -2160,7 +2305,7 @@ mod tests {
     }
 
     #[test]
-    fn long_step_heartbeat_explains_quality_scan_and_liveness() {
+    fn long_step_heartbeat_explains_quality_scan_without_claiming_sql_liveness() {
         let quality = pipeline_plan()
             .iter()
             .copied()
@@ -2169,6 +2314,7 @@ mod tests {
         let message = step_heartbeat_message(quality, 135_000);
         assert!(message.contains("扫描 RAW 大表"));
         assert!(message.contains("2 分 15 秒"));
-        assert!(message.contains("任务仍存活"));
+        assert!(message.contains("仅表示应用线程可写日志"));
+        assert!(message.contains("不等同于当前 SQL 一定存活"));
     }
 }

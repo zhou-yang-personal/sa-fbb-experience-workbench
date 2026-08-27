@@ -429,7 +429,7 @@ fn registered_batch_table(
 
 fn run_ready_expression(table: Option<&String>) -> String {
     table
-        .map(|table| format!("EXISTS(SELECT 1 FROM `{table}` ready WHERE ready.analysis_run_id=r.analysis_run_id LIMIT 1)"))
+        .map(|table| format!("(r.status IN ('success','degraded') AND EXISTS(SELECT 1 FROM `{table}` ready WHERE ready.analysis_run_id=r.analysis_run_id LIMIT 1))"))
         .unwrap_or_else(|| "0".to_string())
 }
 

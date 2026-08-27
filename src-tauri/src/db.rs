@@ -6,6 +6,22 @@ use std::path::{Path, PathBuf};
 
 use crate::models::MySqlSettings;
 
+pub const AGGREGATION_LOCK_NAME: &str = "sa_fbb_dws_ads_aggregate";
+
+pub struct NamedLockGuard {
+    conn: Option<PooledConn>,
+    lock_name: String,
+}
+
+impl Drop for NamedLockGuard {
+    fn drop(&mut self) {
+        if let Some(conn) = self.conn.as_mut() {
+            let _: Result<Option<i8>, _> =
+                conn.exec_first("SELECT RELEASE_LOCK(?)", (&self.lock_name,));
+        }
+    }
+}
+
 pub fn pool(settings: &MySqlSettings) -> Result<Pool, String> {
     let builder = OptsBuilder::new()
         .ip_or_hostname(Some(settings.host.clone()))
@@ -32,6 +48,25 @@ pub fn ping(settings: &MySqlSettings) -> Result<String, String> {
         "MySQL connected: {}",
         version.unwrap_or_else(|| "unknown".to_string())
     ))
+}
+
+pub fn acquire_named_lock(
+    settings: &MySqlSettings,
+    lock_name: &str,
+) -> Result<NamedLockGuard, String> {
+    let mut conn = conn(settings)?;
+    let acquired: Option<i8> = conn
+        .exec_first("SELECT GET_LOCK(?, 0)", (lock_name,))
+        .map_err(|err| format!("failed to acquire MySQL task lock {lock_name}: {err}"))?;
+    if acquired != Some(1) {
+        return Err(format!(
+            "another DWS/ADS aggregation is already running on this MySQL instance; lock={lock_name}"
+        ));
+    }
+    Ok(NamedLockGuard {
+        conn: Some(conn),
+        lock_name: lock_name.to_string(),
+    })
 }
 
 pub fn local_infile_handler_for_path_with_progress<F>(
@@ -93,7 +128,10 @@ fn validate_local_infile_request(
 
 #[cfg(test)]
 mod tests {
-    use super::{local_infile_handler_for_path_with_progress, validate_local_infile_request};
+    use super::{
+        local_infile_handler_for_path_with_progress, validate_local_infile_request,
+        AGGREGATION_LOCK_NAME,
+    };
     use std::io::ErrorKind;
     use std::path::Path;
 
@@ -129,5 +167,10 @@ mod tests {
             local_infile_handler_for_path_with_progress(&missing.to_string_lossy(), |_| {})
                 .is_err()
         );
+    }
+    #[test]
+    fn aggregation_lock_name_fits_mysql_limit() {
+        assert!(!AGGREGATION_LOCK_NAME.is_empty());
+        assert!(AGGREGATION_LOCK_NAME.len() <= 64);
     }
 }

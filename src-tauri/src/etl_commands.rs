@@ -364,11 +364,14 @@ pub fn mark_analysis_run_status(
     status: &str,
     message: &str,
 ) -> Result<(), String> {
-    if !matches!(status, "running" | "success" | "failed" | "degraded") {
+    if !matches!(
+        status,
+        "running" | "success" | "failed" | "degraded" | "interrupted"
+    ) {
         return Err(format!("unsupported analysis run status: {status}"));
     }
     let mut conn = db::conn(settings)?;
-    let finished_at = if matches!(status, "success" | "failed" | "degraded") {
+    let finished_at = if matches!(status, "success" | "failed" | "degraded" | "interrupted") {
         "UTC_TIMESTAMP()"
     } else {
         "NULL"

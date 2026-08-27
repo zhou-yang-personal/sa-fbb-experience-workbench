@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS meta_aggregation_partition_checkpoint (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  pipeline_run_id VARCHAR(64) NOT NULL,
+  import_batch_id VARCHAR(64) NOT NULL,
+  analysis_run_id VARCHAR(64) NOT NULL,
+  stage_name VARCHAR(64) NOT NULL,
+  subtask_name VARCHAR(64) NOT NULL,
+  partition_date DATE NOT NULL,
+  partition_hour TINYINT NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'pending',
+  attempt_count INT NOT NULL DEFAULT 0,
+  connection_id BIGINT UNSIGNED NULL,
+  started_at DATETIME NULL,
+  finished_at DATETIME NULL,
+  duration_ms BIGINT NOT NULL DEFAULT 0,
+  affected_rows BIGINT NULL,
+  error_summary TEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_aggregation_partition (analysis_run_id, stage_name, subtask_name, partition_date, partition_hour),
+  INDEX ix_aggregation_pipeline (pipeline_run_id, status, partition_date, partition_hour),
+  INDEX ix_aggregation_batch (import_batch_id, analysis_run_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

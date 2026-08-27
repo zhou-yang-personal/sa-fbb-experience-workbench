@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.55
+1.0.56
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,18 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.56 update
+
+- Replaced the full-batch hourly V2 `INSERT ... SELECT` with date/hour partitions. Every partition runs in its own transaction and is committed independently.
+- Added `meta_aggregation_partition_checkpoint` with connection ID, attempt count, duration, affected rows and error evidence. A resumed run skips successful partitions and retries only incomplete ones.
+- Added a one-time `(import_batch_id, stat_date, hour_of_day)` index to each batch TCP/Game DWD table before hourly partitioning, avoiding a full DWD scan for every hour.
+- Added a MySQL named lock so only one DWS/ADS aggregation may run per local database instance.
+- Pipeline status reconciliation marks work interrupted by a MySQL restart as `interrupted`; analysis readiness now requires a successful/degraded run and cannot expose partial V2 rows.
+- Full import, RAW rebuild and DWS/ADS resume now share statement-level logs. SQL entries include connection ID, duration, affected rows and preview; partition entries provide progress and recovery checkpoints.
+- MySQL 4 GiB buffer pool / 1 GiB redo configuration was applied separately on the target Windows database by the operator; this repository does not edit `my.ini`.
+- Frontend type check/build, Rust check and 53 Rust tests passed on Linux. This does not prove the customer 13.2M-row runtime; the next Windows artifact must be tested by resuming the same batch without reimporting CSV.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.55 update
 

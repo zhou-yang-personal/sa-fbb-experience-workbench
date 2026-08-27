@@ -1,6 +1,11 @@
--- User × App × hour reusable experience grain. Reads DWD, never RAW.
-DELETE FROM :dws_user_app_hourly_experience_v2 WHERE analysis_run_id=:analysis_run_id;
+-- User × App × hour reusable experience grain. One date/hour per transaction; reads DWD, never RAW.
+/* hourly_v2 partition=:partition_date/:partition_hour delete */
+DELETE FROM :dws_user_app_hourly_experience_v2
+WHERE analysis_run_id=:analysis_run_id
+  AND stat_date=:partition_date
+  AND hour_of_day=:partition_hour;
 
+/* hourly_v2 partition=:partition_date/:partition_hour insert */
 INSERT INTO :dws_user_app_hourly_experience_v2 (
   analysis_run_id,import_batch_id,grain_hash,stat_date,hour_of_day,user_key,user_type,
   app_category,app_name,data_type,profile_code,policy_version,valid_obs_rows,poor_obs_rows,
@@ -28,7 +33,10 @@ WITH policy AS (
     WHERE ep2.policy_id=p.policy_id AND ep2.data_type='tcp' AND ep2.enabled=1
       AND (ep2.app_category IS NULL OR LOWER(ep2.app_category)=LOWER(COALESCE(NULLIF(d.app_category,''),'other')))
     ORDER BY CASE WHEN ep2.app_category IS NULL THEN 1 ELSE 0 END,ep2.priority,ep2.profile_code LIMIT 1)
-  WHERE d.import_batch_id=:import_batch_id AND d.stat_date IS NOT NULL AND d.hour_of_day IS NOT NULL AND d.user_key IS NOT NULL AND d.user_key<>'UNKNOWN'
+  WHERE d.import_batch_id=:import_batch_id
+    AND d.stat_date=:partition_date
+    AND d.hour_of_day=:partition_hour
+    AND d.user_key IS NOT NULL AND d.user_key<>'UNKNOWN'
 ), game AS (
   SELECT p.analysis_run_id,d.import_batch_id,d.stat_date,d.hour_of_day,d.user_key,
     COALESCE(NULLIF(d.user_type,''),'UNAVAILABLE') user_type,
@@ -44,7 +52,10 @@ WITH policy AS (
     WHERE ep2.policy_id=p.policy_id AND ep2.data_type='game' AND ep2.enabled=1
       AND (ep2.app_category IS NULL OR LOWER(ep2.app_category)=LOWER(COALESCE(NULLIF(d.app_category,''),'game')))
     ORDER BY CASE WHEN ep2.app_category IS NULL THEN 1 ELSE 0 END,ep2.priority,ep2.profile_code LIMIT 1)
-  WHERE d.import_batch_id=:import_batch_id AND d.stat_date IS NOT NULL AND d.hour_of_day IS NOT NULL AND d.user_key IS NOT NULL AND d.user_key<>'UNKNOWN'
+  WHERE d.import_batch_id=:import_batch_id
+    AND d.stat_date=:partition_date
+    AND d.hour_of_day=:partition_hour
+    AND d.user_key IS NOT NULL AND d.user_key<>'UNKNOWN'
 ), hourly AS (
   SELECT o.analysis_run_id,o.import_batch_id,o.stat_date,o.hour_of_day,o.user_key,o.user_type,o.app_category,o.app_name,o.data_type,o.profile_code,o.policy_version,
     SUM(o.valid_flag) valid_obs_rows,SUM(CASE WHEN o.valid_flag=1 THEN o.poor_flag ELSE 0 END) poor_obs_rows,SUM(CASE WHEN o.valid_flag=1 THEN o.severe_flag ELSE 0 END) severe_obs_rows,

@@ -1,5 +1,32 @@
 # CHANGELOG-dev
 
+## 1.0.56 - 2026-08-27
+
+### Fixed
+
+- Replaced the hourly V2 full-batch transaction that repeatedly triggered an InnoDB semaphore assertion with independent date/hour transactions.
+- Added resumable partition checkpoints and interrupted-state reconciliation after MySQL restart, preventing stale `running` metadata and partial results from appearing ready.
+- Added a MySQL named aggregation lock to reject concurrent DWS/ADS rebuilds on the same local database.
+- Restored statement-level SQL logging on the resume path and included MySQL connection IDs in SQL evidence.
+
+### Performance
+
+- Added a one-time DWD index on `(import_batch_id, stat_date, hour_of_day)` before hourly partitioning, so each partition performs a bounded range scan instead of repeatedly scanning the complete DWD table.
+- Reuses already committed legacy App, Period V2 and App ADS results for the same analysis run; successful hourly partitions are never recomputed during resume.
+
+### Observability
+
+- Added per-partition start/success/failure/skip logs with date, hour, progress, connection ID, duration and affected rows.
+- Clarified that the 15-second application heartbeat proves only that the application thread can write metadata; current SQL activity is represented by SQL/partition logs.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-27.
+- `npm run build`: passed on 2026-08-27; the existing ECharts chunk-size warning remains.
+- `cargo check --offline`: passed on 2026-08-27 with existing warnings only.
+- `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 CARGO_PROFILE_TEST_DEBUG=0 RUSTFLAGS='-C debuginfo=0' cargo test --offline -q`: passed on 2026-08-27; 53 tests passed.
+- Live Windows/MySQL recovery against the 13.2M-row customer batch remains pending for the 1.0.56 artifact.
+
 ## 1.0.55 - 2026-08-26
 
 ### Changed

@@ -16,6 +16,8 @@ const EXPERIENCE_POLICY_SCHEMA: &str =
     include_str!("../../database/migrations/008_experience_analysis_policy_schema.sql");
 const INVESTIGATION_SCHEMA: &str =
     include_str!("../../database/migrations/009_investigation_workspace_schema.sql");
+const AGGREGATION_CHECKPOINT_SCHEMA: &str =
+    include_str!("../../database/migrations/010_aggregation_checkpoint_schema.sql");
 const APP_MAPPING_SEED: &str = include_str!("../../database/seeds/001_app_mapping_seed.sql");
 const MAP_SEED: &str = include_str!("../../database/seeds/002_default_mapping_seed.sql");
 
@@ -29,6 +31,8 @@ pub fn init_database(settings: &MySqlSettings) -> Result<String, String> {
     let access_rows = sql_runner::execute_script(settings, ACCESS_SCHEMA)?;
     let experience_policy_rows = sql_runner::execute_script(settings, EXPERIENCE_POLICY_SCHEMA)?;
     let investigation_rows = sql_runner::execute_script(settings, INVESTIGATION_SCHEMA)?;
+    let aggregation_checkpoint_rows =
+        sql_runner::execute_script(settings, AGGREGATION_CHECKPOINT_SCHEMA)?;
     let mut conn = crate::db::conn(settings)?;
     ensure_access_columns_for_table(&mut conn, "meta_import_batch")?;
     ensure_access_columns_for_table(&mut conn, "meta_access_rule_set")?;
@@ -38,7 +42,7 @@ pub fn init_database(settings: &MySqlSettings) -> Result<String, String> {
     let seed_rows = sql_runner::execute_script(settings, APP_MAPPING_SEED)?;
     let map_seed_rows = sql_runner::execute_script(settings, MAP_SEED)?;
     crate::mapping_catalog::ensure_import_mapping_catalog(settings)?;
-    Ok(format!("database initialized: core={core_rows}, ext={ext_rows}, map={map_rows}, obs={obs_rows}, pipeline={pipeline_rows}, analytics={analytics_rows}, access={access_rows}, experience_policy={experience_policy_rows}, investigation={investigation_rows}, seed={seed_rows}, map_seed={map_seed_rows}"))
+    Ok(format!("database initialized: core={core_rows}, ext={ext_rows}, map={map_rows}, obs={obs_rows}, pipeline={pipeline_rows}, analytics={analytics_rows}, access={access_rows}, experience_policy={experience_policy_rows}, investigation={investigation_rows}, aggregation_checkpoint={aggregation_checkpoint_rows}, seed={seed_rows}, map_seed={map_seed_rows}"))
 }
 
 pub fn ensure_access_schema(settings: &MySqlSettings) -> Result<(), String> {
@@ -54,9 +58,14 @@ pub fn ensure_access_schema(settings: &MySqlSettings) -> Result<(), String> {
 pub fn ensure_experience_policy_schema(settings: &MySqlSettings) -> Result<(), String> {
     sql_runner::execute_script(settings, EXPERIENCE_POLICY_SCHEMA)?;
     sql_runner::execute_script(settings, INVESTIGATION_SCHEMA)?;
+    sql_runner::execute_script(settings, AGGREGATION_CHECKPOINT_SCHEMA)?;
     let mut conn = crate::db::conn(settings)?;
     ensure_access_columns_for_table(&mut conn, "meta_access_rule_set")?;
     ensure_access_columns_for_table(&mut conn, "meta_analysis_run")
+}
+
+pub fn ensure_aggregation_checkpoint_schema(settings: &MySqlSettings) -> Result<(), String> {
+    sql_runner::execute_script(settings, AGGREGATION_CHECKPOINT_SCHEMA).map(|_| ())
 }
 
 fn column_exists(conn: &mut mysql::PooledConn, table: &str, column: &str) -> Result<bool, String> {
@@ -147,7 +156,7 @@ pub fn ensure_access_columns_for_table(
 
 #[cfg(test)]
 mod tests {
-    use super::ANALYTICS_SCHEMA;
+    use super::{AGGREGATION_CHECKPOINT_SCHEMA, ANALYTICS_SCHEMA};
 
     #[test]
     fn network_hotspot_schema_uses_bounded_indexes() {
@@ -157,5 +166,14 @@ mod tests {
         assert!(
             !ANALYTICS_SCHEMA.contains("PRIMARY KEY (analysis_run_id, bras, olt, pon, user_type)")
         );
+    }
+
+    #[test]
+    fn aggregation_checkpoint_schema_has_idempotent_partition_key() {
+        assert!(AGGREGATION_CHECKPOINT_SCHEMA.contains(
+            "UNIQUE KEY uk_aggregation_partition (analysis_run_id, stage_name, subtask_name, partition_date, partition_hour)"
+        ));
+        assert!(AGGREGATION_CHECKPOINT_SCHEMA.contains("attempt_count INT NOT NULL DEFAULT 0"));
+        assert!(AGGREGATION_CHECKPOINT_SCHEMA.contains("connection_id BIGINT UNSIGNED NULL"));
     }
 }

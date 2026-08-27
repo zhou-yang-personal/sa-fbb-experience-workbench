@@ -44,7 +44,7 @@ function relativeAge(now: number, timestamp: number | null) {
 }
 
 function isTerminal(status?: string) {
-  return ['success', 'degraded', 'failed', 'canceled'].includes(String(status ?? '').toLowerCase());
+  return ['success', 'degraded', 'failed', 'canceled', 'interrupted'].includes(String(status ?? '').toLowerCase());
 }
 
 export function PipelineLogMonitor({ logs, status, polling, pollingError, lastPollAt, lastLogReceivedAt, autoRefreshEnabled, onAutoRefreshChange, onRefresh }: Props) {
@@ -96,7 +96,7 @@ export function PipelineLogMonitor({ logs, status, polling, pollingError, lastPo
         <div>
           <p className="eyebrow">Pipeline observability</p>
           <h3>任务实时监控</h3>
-          <p className="muted-row">单通道增量刷新、按 sequence 去重；长步骤每 15 秒写入存活心跳。时间按本地 PC 时区 {localTimeZone()} 显示。</p>
+          <p className="muted-row">单通道增量刷新、按 sequence 去重；长步骤每15秒写入应用线程心跳，小时聚合另行显示分片与SQL连接状态。时间按本地PC时区 {localTimeZone()} 显示。</p>
         </div>
         <div className="log-summary">
           <span className={`status-pill ${monitorTone}`}>{pollingError ? '刷新异常' : polling ? '正在刷新' : autoRefreshEnabled ? '自动刷新' : '已暂停'}</span>
@@ -109,7 +109,7 @@ export function PipelineLogMonitor({ logs, status, polling, pollingError, lastPo
       <div className={`pipeline-monitor-health ${heartbeatDelayed || pollingError ? 'is-warning' : ''}`}>
         <div><span>当前步骤</span><strong>{stepLabels[status?.current_step ?? ''] ?? status?.current_step ?? '-'}</strong><small>{status?.message ?? '等待任务状态'}</small></div>
         <div><span>状态轮询</span><strong>{pollingError || (autoRefreshEnabled ? '连接正常' : '用户暂停')}</strong><small>最近成功刷新：{relativeAge(now, lastPollAt)}</small></div>
-        <div><span>日志心跳</span><strong>{lastLogReceivedAt ? `静默 ${duration(silenceMs)}` : '等待首条日志'}</strong><small>{heartbeatDelayed ? '超过 45 秒未收到心跳；可能是数据库繁忙或连接受阻' : !autoRefreshEnabled ? '自动刷新已暂停，恢复后继续接收心跳' : running ? '长步骤正常情况下每 15 秒更新' : '任务未运行或已经结束'}</small></div>
+        <div><span>日志心跳</span><strong>{lastLogReceivedAt ? `静默 ${duration(silenceMs)}` : '等待首条日志'}</strong><small>{heartbeatDelayed ? '超过45秒未收到日志；可能是数据库繁忙、连接受阻或进程中断' : !autoRefreshEnabled ? '自动刷新已暂停，恢复后继续接收日志' : running ? '心跳只表示应用线程可写日志；SQL状态以connection_id和分片日志为准' : '任务未运行或已经结束'}</small></div>
         <div><span>计划进度</span><strong>{Number(status?.percent ?? 0).toFixed(0)}%</strong><small>累计运行 {duration(Number(status?.elapsed_ms ?? 0))}</small></div>
       </div>
 
@@ -133,7 +133,7 @@ export function PipelineLogMonitor({ logs, status, polling, pollingError, lastPo
       </div>
       <div className="log-list structured-log-list pipeline-log-list">
         {visible.map((row) => {
-          const heartbeat = row.message.includes('仍在运行') || row.message.includes('任务仍存活');
+          const heartbeat = row.message.includes('仍在运行') || row.message.includes('任务仍存活') || row.message.includes('状态心跳');
           const sqlRunning = /SQL \d+\/\d+ RUNNING/.test(row.message);
           const tone = row.level === 'error' ? 'failure' : row.level === 'warning' ? 'warning' : heartbeat || sqlRunning ? 'heartbeat' : 'success';
           return (

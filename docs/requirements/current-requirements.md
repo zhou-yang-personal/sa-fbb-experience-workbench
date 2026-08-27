@@ -31,6 +31,7 @@
 23. Lead 分层和用户分布图必须来自完整 ADS 总体聚合，不得用分页明细或 Top N 代替总体；多日小时趋势应默认压缩为按活跃用户加权的典型 24 小时曲线，同时保留小时证据明细。
 24. 应用启动必须做到零数据库访问：不得自动加载批次列表、恢复流水线、查询 analysis run 或执行就绪检查。所有 MySQL 操作必须由用户点击明确动作后开始；启动、正常退出、Tauri 运行错误和 Rust panic 应写入不含凭据与客户数据的本地运行日志。
 25. 已成功导入 RAW 的 TCP/Game 批次必须支持显式从 RAW 重建分析结果：跳过 CSV 和 RAW 导入，重新执行 Quality Gate、CLEAN/DWD、DWS、ADS、V2、可选 Final Lead 和 Module Ready，并创建新的 analysis run。核心 SQL 脚本中的每条语句必须在实时 pipeline 日志中展示 RUNNING/SUCCESS/FAILED、执行耗时、影响行数和有界语句摘要；同批次活动 SQL 存在时必须拒绝并发重建。
+26. 千万行 DWD 的小时体验聚合不得使用整批单事务。必须按有界日期/小时分片独立提交，持久化成功 checkpoint，支持进程或 MySQL 重启后从未完成分片继续；同一 MySQL 实例只允许一个 DWS/ADS 聚合任务，运行未成功前不得把部分结果标记为可分析。
 
 ## 2.1 已确认的下一版产品需求
 
