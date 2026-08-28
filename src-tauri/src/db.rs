@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use crate::models::MySqlSettings;
 
 pub const AGGREGATION_LOCK_NAME: &str = "sa_fbb_dws_ads_aggregate";
+pub const CLEAN_LOCK_NAME: &str = "sa_fbb_raw_to_clean";
 
 pub struct NamedLockGuard {
     conn: Option<PooledConn>,
@@ -60,7 +61,7 @@ pub fn acquire_named_lock(
         .map_err(|err| format!("failed to acquire MySQL task lock {lock_name}: {err}"))?;
     if acquired != Some(1) {
         return Err(format!(
-            "another DWS/ADS aggregation is already running on this MySQL instance; lock={lock_name}"
+            "another database-intensive task is already running on this MySQL instance; lock={lock_name}"
         ));
     }
     Ok(NamedLockGuard {
@@ -130,7 +131,7 @@ fn validate_local_infile_request(
 mod tests {
     use super::{
         local_infile_handler_for_path_with_progress, validate_local_infile_request,
-        AGGREGATION_LOCK_NAME,
+        AGGREGATION_LOCK_NAME, CLEAN_LOCK_NAME,
     };
     use std::io::ErrorKind;
     use std::path::Path;
@@ -172,5 +173,7 @@ mod tests {
     fn aggregation_lock_name_fits_mysql_limit() {
         assert!(!AGGREGATION_LOCK_NAME.is_empty());
         assert!(AGGREGATION_LOCK_NAME.len() <= 64);
+        assert!(!CLEAN_LOCK_NAME.is_empty());
+        assert!(CLEAN_LOCK_NAME.len() <= 64);
     }
 }

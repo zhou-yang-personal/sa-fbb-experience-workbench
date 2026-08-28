@@ -754,8 +754,8 @@ export function ImportPanel(props: Props) {
 
   async function generateAnalyzableBatch() {
     await runAction('import_generate_analyzable_batch', async () => {
-      await workbenchApi.qualityGate(settings, importBatchId);
       await workbenchApi.clean(settings, importBatchId);
+      await workbenchApi.qualityGate(settings, importBatchId);
       await workbenchApi.aggregate(settings, importBatchId, analysisRunId);
       await workbenchApi.completeAggregates(settings, importBatchId, analysisRunId);
       await workbenchApi.completeDashboards(settings, importBatchId, analysisRunId);
@@ -836,8 +836,8 @@ export function ImportPanel(props: Props) {
     { title: 'Step 1. 导入准备', detail: '连接、schema、mapping catalog self-heal 与版本健康。', status: 'pending', elapsed: 0 },
     { title: 'Step 2. CSV 探测', detail: '读取文件名、大小、headers 和预览。', status: 'pending', elapsed: 0 },
     { title: 'Step 3. 字段映射与 RAW 入库', detail: '后端 atomic import：catalog repair、batch、mapping、RAW load、profile。', status: 'pending', elapsed: 0 },
-    { title: 'Step 4. RAW 质量检查', detail: 'Quality Gate 按 data_type 路由。', status: 'pending', elapsed: 0 },
-    { title: 'Step 5. CLEAN/DWD 生成', detail: `${dataType} 批次只运行适用 RAW→CLEAN step。`, status: 'pending', elapsed: 0 },
+    { title: 'Step 4. CLEAN/DWD 生成', detail: `${dataType} 批次按 RAW 主键分块清洗并在完成后重建索引。`, status: 'pending', elapsed: 0 },
+    { title: 'Step 5. CLEAN 质量验证', detail: 'Quality Gate 复用标准化结果，不重复解析 RAW。', status: 'pending', elapsed: 0 },
     { title: 'Step 6. DWS/ADS 聚合', detail: '生成基础聚合、看板 ADS 与 SA Lead。', status: 'pending', elapsed: 0 },
     { title: 'Step 7. Final Lead 融合', detail: '缺 CRM/coverage/reachability 时 degraded，不阻断基础结果。', status: 'pending', elapsed: 0 },
     { title: 'Step 8. Module Ready', detail: '刷新 registry 和 module status。', status: 'pending', elapsed: 0 },
@@ -1180,15 +1180,15 @@ export function ImportPanel(props: Props) {
       </div>
       </section>
       <section className="panel form-panel">
-        <h3>5. RAW 质量检查</h3>
+        <h3>5. CLEAN / DWD 生成</h3>
         <div className="action-row">
-          <ActionButton actionKey="quality_run_gate" actionStates={actionStates} label="运行 Quality Gate" disabled={!importBatchId} onClick={runQualityGate} />
+          <ActionButton actionKey="etl_start_clean_job" actionStates={actionStates} label="RAW → CLEAN" disabled={!importBatchId} onClick={runCleanDwd} />
         </div>
       </section>
       <section className="panel form-panel">
-        <h3>6. CLEAN / DWD 生成</h3>
+        <h3>6. CLEAN 质量验证</h3>
         <div className="action-row">
-          <ActionButton actionKey="etl_start_clean_job" actionStates={actionStates} label="RAW → CLEAN" disabled={!importBatchId} onClick={runCleanDwd} />
+          <ActionButton actionKey="quality_run_gate" actionStates={actionStates} label="验证 CLEAN 质量" disabled={!importBatchId} onClick={runQualityGate} />
         </div>
       </section>
       <section className="panel form-panel">

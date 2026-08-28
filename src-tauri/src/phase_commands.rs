@@ -38,23 +38,23 @@ fn quality_templates_for_data_type(
     match data_type.to_lowercase().as_str() {
         "tcp" => vec![(
             "tcp_raw_quality_gate",
-            "raw_tcp_detail_import,dwd_tcp_detail_clean",
+            "dwd_tcp_detail_clean,meta_import_batch",
             TCP_QUALITY_SQL,
         )],
         "game" => vec![(
             "game_raw_quality_gate",
-            "raw_game_detail_import,dwd_game_detail_clean",
+            "dwd_game_detail_clean,meta_import_batch",
             GAME_QUALITY_SQL,
         )],
         "mixed" => vec![
             (
                 "tcp_raw_quality_gate",
-                "raw_tcp_detail_import,dwd_tcp_detail_clean",
+                "dwd_tcp_detail_clean,meta_import_batch",
                 TCP_QUALITY_SQL,
             ),
             (
                 "game_raw_quality_gate",
-                "raw_game_detail_import,dwd_game_detail_clean",
+                "dwd_game_detail_clean,meta_import_batch",
                 GAME_QUALITY_SQL,
             ),
         ],
@@ -318,22 +318,15 @@ mod tests {
     }
 
     #[test]
-    fn quality_gate_sql_uses_guarded_clean_timestamp_text() {
+    fn quality_gate_reuses_normalized_clean_columns_without_reparsing_raw() {
         for sql in [TCP_QUALITY_SQL, GAME_QUALITY_SQL] {
-            assert!(sql.contains("CHAR(9)"));
-            assert!(sql.contains("CHAR(10)"));
-            assert!(sql.contains("CHAR(13)"));
-            assert!(sql.contains("CONVERT(0xC2A0 USING utf8mb4)"));
-            assert!(!sql.contains("CHAR(160)"));
-            assert!(sql.contains("REGEXP_REPLACE"));
-            assert!(sql.contains("[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}"));
-            assert!(sql.contains("stat_time_text"));
-            assert!(sql.contains("NULLIF(NULLIF(TRIM(user_mac), ''), '--')"));
-            assert!(!sql.contains("STR_TO_DATE(NULLIF(TRIM(statistics_duration)"));
-            assert!(!sql.contains("STR_TO_DATE(NULLIF(TRIM(statistical_time)"));
-            assert!(!sql.contains("CHAR(9), '')"));
-            assert!(!sql.contains("CHAR(10), '')"));
-            assert!(!sql.contains("CHAR(13), '')"));
+            assert!(sql.contains("source=normalized_dwd"));
+            assert!(sql.contains("data_quality_flag='WARN_INVALID_STAT_TIME'"));
+            assert!(sql.contains("COUNT(DISTINCT hour_of_day)"));
+            assert!(!sql.contains(":raw_tcp_detail_import"));
+            assert!(!sql.contains(":raw_game_detail_import"));
+            assert!(!sql.contains("REGEXP_REPLACE"));
+            assert!(!sql.contains("STR_TO_DATE"));
         }
     }
 

@@ -1,5 +1,26 @@
 # CHANGELOG-dev
 
+## 1.0.64 - 2026-08-28
+
+### Fixed
+
+- Guarded all untrusted IPv4 conversions with `IS_IPV4()` so non-IP account values no longer abort CLEAN or V2 aggregation with MySQL error 1411.
+- Kept User Account as the preferred analytical IP and valid Local IP as fallback; invalid text remains unavailable instead of being passed to `INET_ATON()`.
+
+### Performance and recovery
+
+- Split RAW-to-CLEAN into bounded 500,000-row primary-key chunks with independent ETL step status, SQL logs, connection IDs, affected rows and duration.
+- Replaced the large per-batch CLEAN `DELETE` with `TRUNCATE`; deferred three secondary indexes until bulk loading completes and restores them after both success and failure paths.
+- Added a MySQL named lock around RAW-to-CLEAN so two heavy clean rebuilds cannot run concurrently on the same local database.
+- Moved full quality validation after CLEAN and replaced repeated RAW timestamp regex parsing with a single DWD aggregate over normalized fields.
+- Added the date/hour index to new CLEAN table definitions so hourly V2 partition discovery and execution do not require a later full-table index migration.
+
+### Verification
+
+- `cargo test --offline`: 60 passed, 0 failed on 2026-08-28; existing warnings remain.
+- Target Windows/MySQL 8.0.40 execution against the 13.2M-row batch is not verified in this environment.
+- No dependency or lock-file change; generated Cargo/Tauri artifacts were not committed.
+
 ## 1.0.63 - 2026-08-28
 
 ### Fixed

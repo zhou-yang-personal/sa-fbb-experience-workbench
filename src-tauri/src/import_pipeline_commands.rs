@@ -38,12 +38,12 @@ const PIPELINE_STEPS: &[PipelineStepDef] = &[
         label: "字段映射与 RAW 入库",
     },
     PipelineStepDef {
-        name: "raw_quality_gate",
-        label: "RAW 质量检查",
-    },
-    PipelineStepDef {
         name: "raw_to_clean",
         label: "CLEAN/DWD 生成",
+    },
+    PipelineStepDef {
+        name: "raw_quality_gate",
+        label: "CLEAN 质量验证",
     },
     PipelineStepDef {
         name: "dws_ads_aggregate",
@@ -92,12 +92,12 @@ const REBUILD_PIPELINE_STEPS: &[PipelineStepDef] = &[
         label: "RAW 重建检查",
     },
     PipelineStepDef {
-        name: "raw_quality_gate",
-        label: "RAW 质量检查",
-    },
-    PipelineStepDef {
         name: "raw_to_clean",
         label: "CLEAN/DWD 重建",
+    },
+    PipelineStepDef {
+        name: "raw_quality_gate",
+        label: "CLEAN 质量验证",
     },
     PipelineStepDef {
         name: "dws_ads_aggregate",
@@ -216,8 +216,8 @@ fn format_elapsed(elapsed_ms: i64) -> String {
 
 fn step_heartbeat_message(step: PipelineStepDef, elapsed_ms: i64) -> String {
     let phase = match step.name {
-        "raw_quality_gate" => "MySQL 正在扫描 RAW 大表并计算时间、身份、应用和拓扑质量指标",
-        "raw_to_clean" => "MySQL 正在执行 RAW → CLEAN/DWD 清洗、字段转换和接入类型识别",
+        "raw_quality_gate" => "MySQL 正在复用 CLEAN/DWD 字段计算完整性、身份、应用和拓扑质量指标",
+        "raw_to_clean" => "MySQL 正在按 RAW 主键分块生成 CLEAN/DWD；完成后将一次性重建查询索引",
         "dws_ads_aggregate" => {
             "应用工作线程正在协调 DWS/ADS；具体 SQL、连接和小时分片状态请查看执行日志"
         }
@@ -2254,8 +2254,8 @@ mod tests {
                 "prepare_environment",
                 "probe_csv",
                 "import_current_file_atomic",
-                "raw_quality_gate",
                 "raw_to_clean",
+                "raw_quality_gate",
                 "dws_ads_aggregate",
                 "final_fusion_optional",
                 "module_ready",
@@ -2294,8 +2294,8 @@ mod tests {
             names,
             vec![
                 "prepare_rebuild",
-                "raw_quality_gate",
                 "raw_to_clean",
+                "raw_quality_gate",
                 "dws_ads_aggregate",
                 "final_fusion_optional",
                 "module_ready",
@@ -2358,7 +2358,7 @@ mod tests {
             .find(|step| step.name == "raw_quality_gate")
             .expect("quality step");
         let message = step_heartbeat_message(quality, 135_000);
-        assert!(message.contains("扫描 RAW 大表"));
+        assert!(message.contains("复用 CLEAN/DWD 字段"));
         assert!(message.contains("2 分 15 秒"));
         assert!(message.contains("仅表示应用线程可写日志"));
         assert!(message.contains("不等同于当前 SQL 一定存活"));

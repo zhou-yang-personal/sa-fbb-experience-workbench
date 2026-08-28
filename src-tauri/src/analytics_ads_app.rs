@@ -448,6 +448,16 @@ mod tests {
     }
 
     #[test]
+    fn period_v2_guards_ipv4_conversion() {
+        assert!(EXPERIENCE_DWS_V2_SQL
+            .contains("COALESCE(IS_IPV4(d.local_ip_address), 0) <> 1"));
+        assert!(EXPERIENCE_DWS_V2_SQL
+            .contains("INET_ATON(CASE WHEN IS_IPV4(d.local_ip_address) = 1"));
+        assert!(!EXPERIENCE_DWS_V2_SQL.contains("WHEN INET_ATON(d.local_ip_address) IS NULL"));
+        assert!(!EXPERIENCE_DWS_V2_SQL.contains("INET_ATON(d.local_ip_address) BETWEEN"));
+    }
+
+    #[test]
     fn hourly_v2_template_is_bounded_by_date_and_hour() {
         assert!(
             EXPERIENCE_HOURLY_DWS_V2_SQL

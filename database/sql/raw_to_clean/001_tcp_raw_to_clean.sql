@@ -1,7 +1,6 @@
--- RAW TCP → DWD TCP clean baseline
--- Parameters are expressed with CTE instead of SET @var statements.
-
-DELETE FROM :dwd_tcp_detail_clean WHERE import_batch_id = :import_batch_id;
+-- RAW TCP → DWD TCP clean partition.
+-- The runner truncates the dedicated per-batch DWD table once, loads bounded RAW id
+-- ranges as independent transactions, then rebuilds secondary indexes in one pass.
 
 INSERT INTO :dwd_tcp_detail_clean (
   import_batch_id,
@@ -55,9 +54,10 @@ WITH params AS (
     NULLIF(TRIM(r.user_account), '') AS account_key,
     NULLIF(TRIM(r.user_mac), '') AS mac_key,
     NULLIF(TRIM(r.local_ip_address), '') AS ip_key,
-    NULLIF(TRIM(REGEXP_REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(r.statistics_duration, ''), CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' '), CONVERT(0xC2A0 USING utf8mb4), ' '), '[[:space:]]+', ' ')), '') AS stat_time_text
-  FROM :raw_tcp_detail_import r
+    NULLIF(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(r.statistics_duration, ''), CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' '), CONVERT(0xC2A0 USING utf8mb4), ' '), '  ', ' '), '  ', ' ')), '') AS stat_time_text
+  FROM :raw_tcp_detail_import r FORCE INDEX (PRIMARY)
   JOIN params p ON p.import_batch_id = r.import_batch_id
+  WHERE r.id BETWEEN :source_id_start AND :source_id_end
 ), parsed AS (
   SELECT
     r.*,
@@ -73,14 +73,17 @@ WITH params AS (
       WHEN UPPER(TRIM(COALESCE(r.user_type, ''))) LIKE '%CABLE%' OR UPPER(TRIM(COALESCE(r.wan_type, ''))) LIKE '%CABLE%' THEN 'CABLE'
       ELSE 'UNKNOWN'
     END AS source_user_type,
-    CASE WHEN INET_ATON(r.account_key) IS NOT NULL THEN r.account_key WHEN INET_ATON(r.ip_key) IS NOT NULL THEN r.ip_key ELSE NULL END AS analysis_ip_key,
-    COALESCE(INET_ATON(r.account_key), INET_ATON(r.ip_key)) AS ip_num
+    CASE WHEN IS_IPV4(r.account_key) = 1 THEN r.account_key WHEN IS_IPV4(r.ip_key) = 1 THEN r.ip_key ELSE NULL END AS analysis_ip_key,
+    COALESCE(
+      INET_ATON(CASE WHEN IS_IPV4(r.account_key) = 1 THEN r.account_key ELSE NULL END),
+      INET_ATON(CASE WHEN IS_IPV4(r.ip_key) = 1 THEN r.ip_key ELSE NULL END)
+    ) AS ip_num
   FROM raw_normalized r
 ), normalized AS (
   SELECT
     r.import_batch_id,
     COALESCE(r.analysis_ip_key, 'UNKNOWN') AS user_key,
-    CASE WHEN INET_ATON(r.account_key) IS NOT NULL THEN 'IP_USER_ACCOUNT' WHEN INET_ATON(r.ip_key) IS NOT NULL THEN 'IP_LOCAL_ADDRESS' ELSE 'IP_UNAVAILABLE' END AS key_confidence,
+    CASE WHEN IS_IPV4(r.account_key) = 1 THEN 'IP_USER_ACCOUNT' WHEN IS_IPV4(r.ip_key) = 1 THEN 'IP_LOCAL_ADDRESS' ELSE 'IP_UNAVAILABLE' END AS key_confidence,
     r.account_key AS user_account,
     r.mac_key AS user_mac,
     r.source_user_type,

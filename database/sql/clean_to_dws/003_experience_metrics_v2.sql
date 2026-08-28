@@ -64,7 +64,7 @@ tcp_observations AS (
     d.stat_date,
     d.user_key,
     CASE
-      WHEN INET_ATON(d.local_ip_address) IS NULL THEN 'UNAVAILABLE'
+      WHEN COALESCE(IS_IPV4(d.local_ip_address), 0) <> 1 THEN 'UNAVAILABLE'
       WHEN ar.rule_id IS NOT NULL THEN ar.access_type
       ELSE pc.others_access_type
     END AS user_type,
@@ -129,7 +129,7 @@ tcp_observations AS (
   LEFT JOIN dim_access_ip_range ar
     ON ar.rule_set_id = pc.access_rule_set_id
    AND ar.enabled = 1
-   AND INET_ATON(d.local_ip_address) BETWEEN ar.start_ip_num AND ar.end_ip_num
+   AND INET_ATON(CASE WHEN IS_IPV4(d.local_ip_address) = 1 THEN d.local_ip_address ELSE NULL END) BETWEEN ar.start_ip_num AND ar.end_ip_num
   WHERE d.import_batch_id = (SELECT import_batch_id FROM params)
     AND d.user_key IS NOT NULL
     AND TRIM(d.user_key) <> ''
@@ -142,7 +142,7 @@ game_observations AS (
     d.stat_date,
     d.user_key,
     CASE
-      WHEN INET_ATON(d.local_ip_address) IS NULL THEN 'UNAVAILABLE'
+      WHEN COALESCE(IS_IPV4(d.local_ip_address), 0) <> 1 THEN 'UNAVAILABLE'
       WHEN ar.rule_id IS NOT NULL THEN ar.access_type
       ELSE pc.others_access_type
     END AS user_type,
@@ -205,7 +205,7 @@ game_observations AS (
   LEFT JOIN dim_access_ip_range ar
     ON ar.rule_set_id = pc.access_rule_set_id
    AND ar.enabled = 1
-   AND INET_ATON(d.local_ip_address) BETWEEN ar.start_ip_num AND ar.end_ip_num
+   AND INET_ATON(CASE WHEN IS_IPV4(d.local_ip_address) = 1 THEN d.local_ip_address ELSE NULL END) BETWEEN ar.start_ip_num AND ar.end_ip_num
   WHERE d.import_batch_id = (SELECT import_batch_id FROM params)
     AND d.user_key IS NOT NULL
     AND TRIM(d.user_key) <> ''

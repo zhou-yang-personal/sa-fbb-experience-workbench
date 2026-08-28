@@ -21,7 +21,7 @@ const stepLabels: Record<string, string> = {
   prepare_environment: '导入准备',
   probe_csv: 'CSV 探测',
   import_current_file_atomic: '字段映射与 RAW 入库',
-  raw_quality_gate: 'RAW 质量检查',
+  raw_quality_gate: 'CLEAN 质量验证',
   raw_to_clean: 'CLEAN/DWD 生成',
   dws_ads_aggregate: 'DWS/ADS 聚合',
   final_fusion_optional: 'Final Lead 融合',

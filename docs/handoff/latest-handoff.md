@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.63
+1.0.64
 ```
 
 ## Source-of-truth branch
@@ -17,8 +17,18 @@ codex/task-dashboard-ip-segmentation
 Raw First MySQL pipeline is preserved:
 
 ```text
-CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
+CSV → MySQL RAW → CLEAN/DWD → Post-clean Quality Gate → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.64 update
+
+- Fixed MySQL 1411 during RAW rebuild by validating User Account and Local IP with `IS_IPV4()` before every `INET_ATON()` call in TCP/Game clean, V2 access fallback, manual reaggregation and access-rule preview.
+- RAW-to-CLEAN now loads bounded 500,000-row RAW primary-key ranges as separate committed ETL steps with per-SQL connection, duration and affected-row logs.
+- Dedicated per-batch CLEAN tables are truncated once; large secondary indexes are removed during bulk load and rebuilt once afterward, including the hourly partition index. Index restoration is attempted even when a chunk fails.
+- A database named lock serializes RAW-to-CLEAN work so two operator actions cannot compete for buffer pool, redo and disk bandwidth.
+- Full quality validation now runs after CLEAN and reuses normalized DWD timestamp, identity, access and quality columns instead of reparsing the full RAW table with regular expressions.
+- This release changes application SQL/schema defaults but does not edit the target machine's `my.ini`. Real 13.2M-row Windows/MySQL runtime remains pending.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.63 update
 

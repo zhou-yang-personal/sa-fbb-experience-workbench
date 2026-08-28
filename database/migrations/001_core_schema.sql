@@ -196,7 +196,8 @@ CREATE TABLE IF NOT EXISTS dwd_tcp_detail_clean (
   pon VARCHAR(255) NULL,
   data_quality_flag VARCHAR(64) NOT NULL DEFAULT 'OK',
   INDEX ix_batch_user_time (import_batch_id, user_key, stat_time),
-  INDEX ix_batch_category (import_batch_id, app_category, user_type, stat_date)
+  INDEX ix_batch_category (import_batch_id, app_category, user_type, stat_date),
+  INDEX ix_batch_date_hour (import_batch_id, stat_date, hour_of_day)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS dwd_game_detail_clean (
@@ -230,7 +231,8 @@ CREATE TABLE IF NOT EXISTS dwd_game_detail_clean (
   pon VARCHAR(255) NULL,
   data_quality_flag VARCHAR(64) NOT NULL DEFAULT 'OK',
   INDEX ix_batch_user_time (import_batch_id, user_key, stat_time),
-  INDEX ix_batch_category (import_batch_id, app_category, user_type, stat_date)
+  INDEX ix_batch_category (import_batch_id, app_category, user_type, stat_date),
+  INDEX ix_batch_date_hour (import_batch_id, stat_date, hour_of_day)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS dws_user_daily_profile (

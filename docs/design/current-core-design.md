@@ -78,7 +78,9 @@ CSV 文件选择
 
 1.0.52 将上述边界收紧为零数据库访问安全启动：应用打开和本地上下文恢复只读取 WebView 本地状态，不调用批次、analysis run、流水线或就绪度 API；批次列表也必须由用户显式刷新。Windows 运行时另写入不含业务数据的本地 `runtime.log`，用于区分正常退出、Tauri 运行错误和 Rust panic。1.0.53/1.0.54 进一步要求所有批次及批次表注册元数据读取兼容历史 `NULL`/空值：Rust 使用可失败的逐列解码，单条脏元数据不得导致桌面进程退出；刷新批次、加载运行列表、加载规则和恢复流水线必须是相互独立的显式操作。
 
-历史批次同时提供两个不同恢复动作：已有 CLEAN 可用时从 DWS/ADS 续跑；规则或清洗口径变化时从既有 RAW 全量重建。RAW 重建保留 CSV/RAW 和旧 analysis run，以新 run 执行 Quality Gate、CLEAN/DWD、DWS/ADS/V2、可选 Final Lead 与 Module Ready。CLEAN/DWD 与不按 run 隔离的 DWS 是批次共享结果，会被重建覆盖；ADS/V2 使用新 run 隔离。核心 SQL 脚本经 SQL runner 拆分后，为每条语句写入开始、成功或失败、耗时、影响行数与有界摘要；pipeline 元数据写入不参与自递归日志。
+历史批次同时提供两个不同恢复动作：已有 CLEAN 可用时从 DWS/ADS 续跑；规则或清洗口径变化时从既有 RAW 全量重建。RAW 重建保留 CSV/RAW 和旧 analysis run，以新 run 执行分块 CLEAN/DWD、CLEAN 后质量验证、DWS/ADS/V2、可选 Final Lead 与 Module Ready。CLEAN/DWD 与不按 run 隔离的 DWS 是批次共享结果，会被重建覆盖；ADS/V2 使用新 run 隔离。核心 SQL 脚本经 SQL runner 拆分后，为每条语句写入开始、成功或失败、耗时、影响行数与有界摘要；pipeline 元数据写入不参与自递归日志。
+
+RAW→CLEAN 使用批次物理 RAW 表的自增主键分片，每 50 万行独立提交。批次物理 CLEAN 表在重建开始时使用 `TRUNCATE`，批量写入期间暂卸用户/应用/小时二级索引，全部分片结束后一次性恢复；失败路径同样尝试恢复索引。完整质量验证复用 CLEAN 中已解析的时间、身份、接入类型和质量标记，避免对千万行 RAW 再做一次正则日期解析。该策略降低单事务 undo、锁和索引写放大，但真实总耗时必须在目标 MySQL 与客户数据上验收。
 
 hourly V2 禁止整批单事务。任务先确保批次 DWD 物理表具有 `(import_batch_id, stat_date, hour_of_day)` 索引，再枚举实际日期/小时分片；每片使用 `DELETE 当前 run/date/hour + INSERT 当前 run/date/hour` 的独立事务。`meta_aggregation_partition_checkpoint` 保存每片的连接 ID、尝试次数、耗时、影响行数与错误，成功片在恢复时直接跳过。MySQL 命名锁保证同一实例只有一个 DWS/ADS 聚合，MySQL 重启后显式状态查询会把无活动 SQL 的遗留运行标记为 `interrupted`。只有完整运行进入 `success/degraded` 后，前端才允许把 run 标记为可分析。
 

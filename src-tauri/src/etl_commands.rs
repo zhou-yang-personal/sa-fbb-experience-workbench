@@ -14,6 +14,110 @@ const GAME_CLEAN_SQL: &str =
 const USER_DAILY_SQL: &str =
     include_str!("../../database/sql/clean_to_dws/001_user_daily_profile.sql");
 const LEADS_SQL: &str = include_str!("../../database/sql/dws_to_ads/001_migration_leads.sql");
+const CLEAN_CHUNK_ROWS: u64 = 500_000;
+const CLEAN_SECONDARY_INDEXES: &[(&str, &str)] = &[
+    (
+        "ix_batch_user_time",
+        "(import_batch_id,user_key,stat_time)",
+    ),
+    (
+        "ix_batch_category",
+        "(import_batch_id,app_category,user_type,stat_date)",
+    ),
+    (
+        "ix_batch_date_hour",
+        "(import_batch_id,stat_date,hour_of_day)",
+    ),
+];
+
+fn raw_id_partitions(
+    settings: &MySqlSettings,
+    raw_table: &str,
+) -> Result<Vec<(u64, u64)>, String> {
+    let safe = batch_tables::sanitize_identifier(raw_table)?;
+    let mut conn = db::conn(settings)?;
+    let bounds: Option<(Option<u64>, Option<u64>)> = conn
+        .query_first(format!("SELECT MIN(id),MAX(id) FROM `{safe}`"))
+        .map_err(|err| format!("failed to inspect RAW id range for {safe}: {err}"))?;
+    let Some((Some(min_id), Some(max_id))) = bounds else {
+        return Ok(Vec::new());
+    };
+    let mut partitions = Vec::new();
+    let mut start = min_id;
+    loop {
+        let end = start
+            .saturating_add(CLEAN_CHUNK_ROWS.saturating_sub(1))
+            .min(max_id);
+        partitions.push((start, end));
+        if end >= max_id {
+            break;
+        }
+        start = end.saturating_add(1);
+    }
+    Ok(partitions)
+}
+
+fn prepare_clean_target(settings: &MySqlSettings, table: &str) -> Result<(), String> {
+    let safe = batch_tables::sanitize_identifier(table)?;
+    sql_runner::execute_script(settings, &format!("TRUNCATE TABLE `{safe}`;"))?;
+    let mut conn = db::conn(settings)?;
+    let existing: Vec<String> = conn
+        .exec_map(
+            "SELECT DISTINCT index_name FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name=? AND index_name IN ('ix_batch_user_time','ix_batch_category','ix_batch_date_hour')",
+            (&safe,),
+            |name: String| name,
+        )
+        .map_err(|err| format!("failed to inspect CLEAN indexes on {safe}: {err}"))?;
+    if existing.is_empty() {
+        return Ok(());
+    }
+    let drops = existing
+        .iter()
+        .map(|name| format!("DROP INDEX `{name}`"))
+        .collect::<Vec<_>>()
+        .join(",");
+    sql_runner::execute_script(
+        settings,
+        &format!("ALTER TABLE `{safe}` {drops}, ALGORITHM=INPLACE, LOCK=NONE;"),
+    )?;
+    Ok(())
+}
+
+fn restore_clean_indexes(settings: &MySqlSettings, table: &str) -> Result<(), String> {
+    let safe = batch_tables::sanitize_identifier(table)?;
+    let mut conn = db::conn(settings)?;
+    let existing: Vec<String> = conn
+        .exec_map(
+            "SELECT DISTINCT index_name FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name=?",
+            (&safe,),
+            |name: String| name,
+        )
+        .map_err(|err| format!("failed to inspect CLEAN indexes on {safe}: {err}"))?;
+    let additions = CLEAN_SECONDARY_INDEXES
+        .iter()
+        .filter(|(name, _)| !existing.iter().any(|value| value == name))
+        .map(|(name, definition)| format!("ADD INDEX `{name}` {definition}"))
+        .collect::<Vec<_>>();
+    if additions.is_empty() {
+        return Ok(());
+    }
+    sql_runner::execute_script(
+        settings,
+        &format!(
+            "ALTER TABLE `{safe}` {}, ALGORITHM=INPLACE, LOCK=NONE;",
+            additions.join(",")
+        ),
+    )?;
+    Ok(())
+}
+
+fn bind_clean_partition(sql: &str, start_id: u64, end_id: u64) -> String {
+    format!(
+        "/* clean_partition raw_id={start_id}..{end_id} */\n{}",
+        sql.replace(":source_id_start", &start_id.to_string())
+            .replace(":source_id_end", &end_id.to_string())
+    )
+}
 
 #[tauri::command]
 pub fn etl_get_recent_jobs(
@@ -34,6 +138,7 @@ pub fn etl_get_recent_jobs(
 
 #[tauri::command]
 pub fn etl_start_clean_job(req: EtlRequest) -> Result<CommandAck, String> {
+    let _clean_lock = db::acquire_named_lock(&req.settings, db::CLEAN_LOCK_NAME)?;
     batch_tables::ensure_batch_tables(&req.settings, &req.import_batch_id)?;
     let data_type = fetch_batch_data_type(&req.settings, &req.import_batch_id)?;
     let clean_plan = clean_steps_for_data_type(&data_type);
@@ -45,6 +150,7 @@ pub fn etl_start_clean_job(req: EtlRequest) -> Result<CommandAck, String> {
         return Ok(ack(message));
     }
     let mut steps = Vec::new();
+    let mut clean_targets: Vec<String> = Vec::new();
     for step_name in clean_plan {
         if step_name == "tcp_raw_to_clean" {
             let bound = sql_runner::bind_batch_params(TCP_CLEAN_SQL, &req.import_batch_id, None);
@@ -59,13 +165,44 @@ pub fn etl_start_clean_job(req: EtlRequest) -> Result<CommandAck, String> {
                 &req.import_batch_id,
                 "dwd_tcp_detail_clean",
             )?;
-            steps.push(JobStep {
-                step_name: "tcp_raw_to_clean",
-                source_table: Box::leak(raw.into_boxed_str()),
-                target_table: Box::leak(dwd.into_boxed_str()),
-                sql_template: "001_tcp_raw_to_clean.sql",
-                sql,
-            });
+            let partitions = match raw_id_partitions(&req.settings, &raw) {
+                Ok(value) => value,
+                Err(err) => {
+                    for target in &clean_targets {
+                        let _ = restore_clean_indexes(&req.settings, target);
+                    }
+                    return Err(err);
+                }
+            };
+            if partitions.is_empty() {
+                for target in &clean_targets {
+                    let _ = restore_clean_indexes(&req.settings, target);
+                }
+                return Err(format!("RAW TCP table contains no rows: {raw}"));
+            }
+            if let Err(err) = prepare_clean_target(&req.settings, &dwd) {
+                for target in &clean_targets {
+                    let _ = restore_clean_indexes(&req.settings, target);
+                }
+                return Err(err);
+            }
+            clean_targets.push(dwd.clone());
+            let partition_count = partitions.len();
+            for (index, (start_id, end_id)) in partitions.into_iter().enumerate() {
+                steps.push(JobStep {
+                    step_name: Box::leak(
+                        format!(
+                            "tcp_raw_to_clean_{:03}_of_{partition_count:03}_id_{start_id}_{end_id}",
+                            index + 1
+                        )
+                        .into_boxed_str(),
+                    ),
+                    source_table: Box::leak(raw.clone().into_boxed_str()),
+                    target_table: Box::leak(dwd.clone().into_boxed_str()),
+                    sql_template: "001_tcp_raw_to_clean.sql",
+                    sql: bind_clean_partition(&sql, start_id, end_id),
+                });
+            }
         } else if step_name == "game_raw_to_clean" {
             let bound = sql_runner::bind_batch_params(GAME_CLEAN_SQL, &req.import_batch_id, None);
             let sql = batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &bound)?;
@@ -79,18 +216,73 @@ pub fn etl_start_clean_job(req: EtlRequest) -> Result<CommandAck, String> {
                 &req.import_batch_id,
                 "dwd_game_detail_clean",
             )?;
-            steps.push(JobStep {
-                step_name: "game_raw_to_clean",
-                source_table: Box::leak(raw.into_boxed_str()),
-                target_table: Box::leak(dwd.into_boxed_str()),
-                sql_template: "002_game_raw_to_clean.sql",
-                sql,
-            });
+            let partitions = match raw_id_partitions(&req.settings, &raw) {
+                Ok(value) => value,
+                Err(err) => {
+                    for target in &clean_targets {
+                        let _ = restore_clean_indexes(&req.settings, target);
+                    }
+                    return Err(err);
+                }
+            };
+            if partitions.is_empty() {
+                for target in &clean_targets {
+                    let _ = restore_clean_indexes(&req.settings, target);
+                }
+                return Err(format!("RAW Game table contains no rows: {raw}"));
+            }
+            if let Err(err) = prepare_clean_target(&req.settings, &dwd) {
+                for target in &clean_targets {
+                    let _ = restore_clean_indexes(&req.settings, target);
+                }
+                return Err(err);
+            }
+            clean_targets.push(dwd.clone());
+            let partition_count = partitions.len();
+            for (index, (start_id, end_id)) in partitions.into_iter().enumerate() {
+                steps.push(JobStep {
+                    step_name: Box::leak(
+                        format!(
+                            "game_raw_to_clean_{:03}_of_{partition_count:03}_id_{start_id}_{end_id}",
+                            index + 1
+                        )
+                        .into_boxed_str(),
+                    ),
+                    source_table: Box::leak(raw.clone().into_boxed_str()),
+                    target_table: Box::leak(dwd.clone().into_boxed_str()),
+                    sql_template: "002_game_raw_to_clean.sql",
+                    sql: bind_clean_partition(&sql, start_id, end_id),
+                });
+            }
         }
     }
-    let message = job_runner::run_job(&req.settings, &req.import_batch_id, "raw_to_clean", steps)?;
+    let job_result = job_runner::run_job(&req.settings, &req.import_batch_id, "raw_to_clean", steps);
+    let mut index_errors = Vec::new();
+    for target in &clean_targets {
+        if let Err(err) = restore_clean_indexes(&req.settings, target) {
+            index_errors.push(err);
+        }
+    }
+    let message = match (job_result, index_errors.is_empty()) {
+        (Ok(message), true) => message,
+        (Ok(_), false) => {
+            return Err(format!(
+                "CLEAN rows loaded but secondary index rebuild failed: {}",
+                index_errors.join(" | ")
+            ))
+        }
+        (Err(err), true) => return Err(err),
+        (Err(err), false) => {
+            return Err(format!(
+                "{err}; additionally failed to restore CLEAN indexes: {}",
+                index_errors.join(" | ")
+            ))
+        }
+    };
     let _ = batch_tables::refresh_registry_estimates(&req.settings, &req.import_batch_id);
-    Ok(ack(message))
+    Ok(ack(format!(
+        "{message}; partition_rows={CLEAN_CHUNK_ROWS}; secondary indexes rebuilt after bulk load"
+    )))
 }
 
 fn fetch_batch_data_type(
@@ -140,7 +332,9 @@ fn record_skipped_clean_job(
 
 #[cfg(test)]
 mod tests {
-    use super::{clean_steps_for_data_type, GAME_CLEAN_SQL, TCP_CLEAN_SQL};
+    use super::{
+        bind_clean_partition, clean_steps_for_data_type, GAME_CLEAN_SQL, TCP_CLEAN_SQL,
+    };
 
     fn normalize_stat_time_text(value: &str) -> String {
         value
@@ -211,6 +405,7 @@ mod tests {
             assert!(sql.contains("CHAR(10)"));
             assert!(sql.contains("CHAR(13)"));
             assert!(sql.contains("CONVERT(0xC2A0 USING utf8mb4)"));
+            assert!(!sql.contains("REGEXP_REPLACE"));
             assert!(!sql.contains("CHAR(160)"));
             assert!(sql.contains("stat_time_text"));
             assert!(sql.contains("WARN_INVALID_STAT_TIME"));
@@ -220,6 +415,32 @@ mod tests {
             assert!(!sql.contains("CHAR(9), '')"));
             assert!(!sql.contains("CHAR(10), '')"));
             assert!(!sql.contains("CHAR(13), '')"));
+        }
+    }
+
+    #[test]
+    fn clean_sql_validates_ipv4_before_inet_aton() {
+        for sql in [TCP_CLEAN_SQL, GAME_CLEAN_SQL] {
+            assert!(sql.contains("IS_IPV4(r.account_key) = 1"));
+            assert!(sql.contains("IS_IPV4(r.ip_key) = 1"));
+            assert!(sql.contains("INET_ATON(CASE WHEN IS_IPV4(r.account_key) = 1"));
+            assert!(sql.contains("INET_ATON(CASE WHEN IS_IPV4(r.ip_key) = 1"));
+            assert!(!sql.contains("WHEN INET_ATON(r.account_key) IS NOT NULL"));
+            assert!(!sql.contains("WHEN INET_ATON(r.ip_key) IS NOT NULL"));
+        }
+    }
+
+    #[test]
+    fn clean_sql_is_bounded_by_raw_primary_key_partition() {
+        for sql in [TCP_CLEAN_SQL, GAME_CLEAN_SQL] {
+            assert!(sql.contains("r.id BETWEEN :source_id_start AND :source_id_end"));
+            assert!(sql.contains("FORCE INDEX (PRIMARY)"));
+            assert!(!sql.contains("DELETE FROM :dwd_"));
+            let bound = bind_clean_partition(sql, 500_001, 1_000_000);
+            assert!(bound.starts_with("/* clean_partition raw_id=500001..1000000 */"));
+            assert!(bound.contains("r.id BETWEEN 500001 AND 1000000"));
+            assert!(!bound.contains(":source_id_start"));
+            assert!(!bound.contains(":source_id_end"));
         }
     }
 

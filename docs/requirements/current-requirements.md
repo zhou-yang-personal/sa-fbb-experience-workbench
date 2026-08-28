@@ -314,7 +314,7 @@ App Bundle 公共启动默认值为 App 活跃不少于 3 天，并命中日均�
 22. IP 规则集必须把 `Others` 作为规则版本中的显式组成部分：`Others` 指未命中上方任何已配置 IP 网段的剩余 IP 集合，用户必须在规则页明确配置这部分最终归属的制式（当前业务选择 Cable），不得由前端、后端、数据库默认值或 SQL 隐式写死。该选择必须参与草稿、验证、预览、发布、批次绑定和证据追溯；接入制式分析结果不再使用 UNKNOWN 承接正常的未命中人群。未导入独立 Game 文件时，游戏时长与 MOS 必须显示为“未导入/不可用”，不得用数值 0 参与结论。
 23. Lead 分层和用户分布图必须来自完整 ADS 总体聚合，不得用分页明细或 Top N 代替总体；多日小时趋势应默认压缩为按活跃用户加权的典型 24 小时曲线，同时保留小时证据明细。
 24. 应用启动必须做到零数据库访问：不得自动加载批次列表、恢复流水线、查询 analysis run 或执行就绪检查。所有 MySQL 操作必须由用户点击明确动作后开始；启动、正常退出、Tauri 运行错误和 Rust panic 应写入不含凭据与客户数据的本地运行日志。
-25. 已成功导入 RAW 的 TCP/Game 批次必须支持显式从 RAW 重建分析结果：跳过 CSV 和 RAW 导入，重新执行 Quality Gate、CLEAN/DWD、DWS、ADS、V2、可选 Final Lead 和 Module Ready，并创建新的 analysis run。核心 SQL 脚本中的每条语句必须在实时 pipeline 日志中展示 RUNNING/SUCCESS/FAILED、执行耗时、影响行数和有界语句摘要；同批次活动 SQL 存在时必须拒绝并发重建。
+25. 已成功导入 RAW 的 TCP/Game 批次必须支持显式从 RAW 重建分析结果：跳过 CSV 和 RAW 导入，重新执行分块 CLEAN/DWD、CLEAN 后质量验证、DWS、ADS、V2、可选 Final Lead 和 Module Ready，并创建新的 analysis run。RAW→CLEAN 必须使用有界主键分片和独立提交，批量写入期间避免逐行维护全部二级索引。核心 SQL 脚本中的每条语句必须在实时 pipeline 日志中展示 RUNNING/SUCCESS/FAILED、执行耗时、影响行数和有界语句摘要；同批次活动 SQL 存在时必须拒绝并发重建。
 26. 千万行 DWD 的小时体验聚合不得使用整批单事务。必须按有界日期/小时分片独立提交，持久化成功 checkpoint，支持进程或 MySQL 重启后从未完成分片继续；同一 MySQL 实例只允许一个 DWS/ADS 聚合任务，运行未成功前不得把部分结果标记为可分析。
 
 ## 2.1 已确认的下一版产品需求
