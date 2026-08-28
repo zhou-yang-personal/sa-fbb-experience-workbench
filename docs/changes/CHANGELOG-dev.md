@@ -12,6 +12,8 @@
 
 - Reduced the primary navigation to Panorama, Poor Quality, Cable/FTTH, Opportunities and Data Center; configuration and diagnostics are secondary.
 - Reordered the product narrative so overall metrics, all Apps and all users appear before access segmentation or issue-side evidence.
+- Expanded each panorama perspective with a shared overall baseline, user distributions and full unique-App coverage; the quality page now retains the affected unique-App list after its evidence summary.
+- Added an explicit mutually exclusive unique-App status reconciliation so total Apps equals severe + problem + watch + normal + limited-sample + insufficient-sample.
 - Changed TCP/Game analytical identity to IPv4 only, using User Account first and Local IP as fallback.
 - Added all-non-empty-chart PDF printing, bilingual page copy, explicit GB/TB/Mbps/ms/% units, rule versions, numerators, denominators and sample limitations.
 

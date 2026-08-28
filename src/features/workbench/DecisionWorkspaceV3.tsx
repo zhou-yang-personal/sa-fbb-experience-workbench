@@ -73,7 +73,17 @@ function Distribution({ rows }: { rows: MetricCard[] }) {
 function PrintAppBars({ rows }: { rows: MetricCard[] }) {
   const printable = rows.slice(0, 40);
   const max = Math.max(1, ...printable.map((row) => Number(parseMetricHint(row.hint).observed_users ?? row.value)));
-  return <div className="print-app-bars">{printable.map((row) => { const detail = parseMetricHint(row.hint); const value = Number(detail.observed_users ?? row.value); return <div className="distribution-row" key={row.label}><span>{row.label}</span><div><i style={{ width: `${Math.max(2, value / max * 100)}%` }} /></div><strong>{value.toLocaleString()} 人</strong></div>; })}</div>;
+  return <div className="print-app-bars">{printable.map((row) => { const detail = parseMetricHint(row.hint); const value = Number(detail.observed_users ?? row.value); const status = detail.insight_status ?? 'INSUFFICIENT'; return <div className={`distribution-row is-${status.toLowerCase()}`} key={row.label}><span>{row.label}<small>{status}</small></span><div><i style={{ width: `${Math.max(2, value / max * 100)}%` }} /></div><strong>{value.toLocaleString()} 人</strong></div>; })}</div>;
+}
+
+function AppStatusSummary({ rows, zh }: { rows: MetricCard[]; zh: boolean }) {
+  const order = ['SEVERE', 'PROBLEM', 'WATCH', 'NORMAL', 'LIMITED', 'INSUFFICIENT'];
+  const labels: Record<string, [string, string]> = {
+    SEVERE: ['严重', 'Severe'], PROBLEM: ['问题', 'Problem'], WATCH: ['关注', 'Watch'],
+    NORMAL: ['正常', 'Normal'], LIMITED: ['有限样本', 'Limited sample'], INSUFFICIENT: ['样本不足', 'Insufficient'],
+  };
+  const counts = rows.reduce<Record<string, number>>((all, row) => { const status = parseMetricHint(row.hint).insight_status ?? 'INSUFFICIENT'; all[status] = (all[status] ?? 0) + 1; return all; }, {});
+  return <div className="app-status-summary"><article><span>{zh ? '全部唯一 App' : 'Unique Apps'}</span><strong>{rows.length}</strong></article>{order.map((status) => <article key={status} className={`is-${status.toLowerCase()}`}><span>{labels[status][zh ? 0 : 1]}</span><strong>{counts[status] ?? 0}</strong></article>)}</div>;
 }
 
 function FullPrintReportView({ report, batchName, runId }: { report: FullPrintReport; batchName: string; runId: string }) {
@@ -91,6 +101,9 @@ function FullPrintReportView({ report, batchName, runId }: { report: FullPrintRe
 export function DecisionWorkspaceV3({ c, view }: { c: WorkbenchController; view: DecisionView }) {
   const [perspective, setPerspective] = useState<PanoramaPerspective>('metric');
   const [rows, setRows] = useState<MetricCard[]>([]);
+  const [baselineRows, setBaselineRows] = useState<MetricCard[]>([]);
+  const [distributionRows, setDistributionRows] = useState<MetricCard[]>([]);
+  const [appRows, setAppRows] = useState<MetricCard[]>([]);
   const [status, setStatus] = useState('确认批次和分析运行后，点击一次加载。切换页面不会自动查询。');
   const [loading, setLoading] = useState(false);
   const [printReport, setPrintReport] = useState<FullPrintReport | null>(null);
@@ -99,6 +112,9 @@ export function DecisionWorkspaceV3({ c, view }: { c: WorkbenchController; view:
 
   useEffect(() => {
     setRows([]);
+    setBaselineRows([]);
+    setDistributionRows([]);
+    setAppRows([]);
     setStatus(c.importBatchId && c.analysisRunId ? '当前页面尚未读取；点击加载只查询已聚合结果。' : '请先选择可分析批次。');
   }, [view, c.importBatchId, c.analysisRunId]);
 
@@ -106,13 +122,38 @@ export function DecisionWorkspaceV3({ c, view }: { c: WorkbenchController; view:
     if (disabled) return;
     setLoading(true); setStatus('正在读取已聚合结果…');
     try {
-      const result = view === 'panorama'
-        ? targetPerspective === 'metric' ? await analyticsStructuredApi.decisionMetricPanorama(c.effectiveSettings, c.importBatchId, c.analysisRunId)
-          : targetPerspective === 'app' ? await analyticsStructuredApi.decisionAppPanorama(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 500 })
-            : await analyticsStructuredApi.decisionUserDistributions(c.effectiveSettings, c.importBatchId, c.analysisRunId)
-        : view === 'quality' ? await analyticsStructuredApi.decisionQualityOverview(c.effectiveSettings, c.importBatchId, c.analysisRunId)
-          : view === 'access' ? await analyticsStructuredApi.decisionAccessCompare(c.effectiveSettings, c.importBatchId, c.analysisRunId)
-            : await analyticsStructuredApi.decisionOpportunities(c.effectiveSettings, c.importBatchId, c.analysisRunId);
+      let result: MetricCard[];
+      setBaselineRows([]); setDistributionRows([]); setAppRows([]);
+      if (view === 'panorama') {
+        if (targetPerspective === 'metric') {
+          const [metrics, distributions, apps] = await Promise.all([
+            analyticsStructuredApi.decisionMetricPanorama(c.effectiveSettings, c.importBatchId, c.analysisRunId),
+            analyticsStructuredApi.decisionUserDistributions(c.effectiveSettings, c.importBatchId, c.analysisRunId),
+            analyticsStructuredApi.decisionAppPanorama(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 500 }),
+          ]);
+          result = metrics; setDistributionRows(distributions); setAppRows(apps);
+        } else if (targetPerspective === 'app') {
+          const [apps, metrics] = await Promise.all([
+            analyticsStructuredApi.decisionAppPanorama(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 500 }),
+            analyticsStructuredApi.decisionMetricPanorama(c.effectiveSettings, c.importBatchId, c.analysisRunId),
+          ]);
+          result = apps; setBaselineRows(metrics);
+        } else {
+          const [distributions, metrics] = await Promise.all([
+            analyticsStructuredApi.decisionUserDistributions(c.effectiveSettings, c.importBatchId, c.analysisRunId),
+            analyticsStructuredApi.decisionMetricPanorama(c.effectiveSettings, c.importBatchId, c.analysisRunId),
+          ]);
+          result = distributions; setBaselineRows(metrics);
+        }
+      } else if (view === 'quality') {
+        const [quality, apps] = await Promise.all([
+          analyticsStructuredApi.decisionQualityOverview(c.effectiveSettings, c.importBatchId, c.analysisRunId),
+          analyticsStructuredApi.decisionAppPanorama(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 500 }),
+        ]);
+        result = quality;
+        setAppRows(apps.filter((row) => ['SEVERE', 'PROBLEM', 'WATCH'].includes(parseMetricHint(row.hint).insight_status ?? '')));
+      } else if (view === 'access') result = await analyticsStructuredApi.decisionAccessCompare(c.effectiveSettings, c.importBatchId, c.analysisRunId);
+      else result = await analyticsStructuredApi.decisionOpportunities(c.effectiveSettings, c.importBatchId, c.analysisRunId);
       setRows(result); setStatus(result.length ? `已加载 ${result.length} 项聚合证据。` : '结果为空；如果是潜客页，请先生成四类机会。');
     } catch (error) { setRows([]); setStatus(error instanceof Error ? error.message : String(error)); }
     finally { setLoading(false); }
@@ -151,7 +192,7 @@ export function DecisionWorkspaceV3({ c, view }: { c: WorkbenchController; view:
     }
   }
 
-  function switchPerspective(next: PanoramaPerspective) { setPerspective(next); setRows([]); setStatus('已切换观察角度；点击加载读取对应聚合。'); }
+  function switchPerspective(next: PanoramaPerspective) { setPerspective(next); setRows([]); setBaselineRows([]); setDistributionRows([]); setAppRows([]); setStatus('已切换观察角度；点击加载读取对应聚合。'); }
 
   return <section className="decision-workspace">
     <header className="decision-page-head"><div><span>{zh ? '业务分析工作台' : 'Business analysis workspace'}</span><h1>{copy[view][zh ? 0 : 1]}</h1><p>{view === 'panorama' ? '先完整说明整体、App 和用户分布，再高亮值得关注的部分；不会提前跳到制式或网络定位。' : view === 'quality' ? '先说明质差规模，再区分用户侧、网络侧和应用体验证据；这里表达证据方向，不宣称根因。' : view === 'access' ? '在独立专项中比较 Cable 与 FTTH 的用户、流量、速率、时延和丢包，不污染总体全景。' : '只识别迁转、升套、AP 组网和特定 App Bundle 四类潜客，与体验修复和最终营销资格分开。'}</p></div>
@@ -159,10 +200,10 @@ export function DecisionWorkspaceV3({ c, view }: { c: WorkbenchController; view:
     <div className="decision-status">{status}</div>
     {view === 'panorama' && <div className="perspective-tabs"><button className={perspective === 'metric' ? 'active' : ''} onClick={() => switchPerspective('metric')}>指标视角</button><button className={perspective === 'app' ? 'active' : ''} onClick={() => switchPerspective('app')}>App 视角</button><button className={perspective === 'user' ? 'active' : ''} onClick={() => switchPerspective('user')}>用户视角</button></div>}
     {!rows.length && <article className="decision-empty"><strong>{c.importBatchId ? '等待加载' : '先选择数据批次'}</strong><p>{c.importBatchId ? '页面只查询已经生成的 DWS/ADS；不会启动 RAW 扫描或后台大任务。' : '到“数据中心”选择已有批次或导入新文件。'}</p></article>}
-    {rows.length > 0 && view === 'panorama' && perspective === 'metric' && <><CardGrid rows={rows} /><Explanation>指标视角回答“整体发生了什么”。百分比保留分子、分母和样本量；不可用与 0 分开。vMOS 作为 App 体验证据，不作为单独一级指标。</Explanation></>}
-    {rows.length > 0 && view === 'panorama' && perspective === 'app' && <><AppTable rows={rows} c={c} /><Explanation>每个 App 只出现一次，先展示跨制式总体规模；问题、关注、正常和样本不足互斥，因此分类数量之和等于全部 App 数。</Explanation></>}
-    {rows.length > 0 && view === 'panorama' && perspective === 'user' && <Distribution rows={rows} />}
-    {rows.length > 0 && view === 'quality' && <><CardGrid rows={rows} /><Explanation>同一用户可能同时存在多类证据，因此各类用户数不能相加当作总质差用户。网络侧证据不等于网络设备根因；BRAS/OLT/PON 定位被移到后续按需调查。</Explanation></>}
+    {rows.length > 0 && view === 'panorama' && perspective === 'metric' && <><section className="decision-chapter"><h2>整体指标</h2><CardGrid rows={rows} /><Explanation>指标视角回答“整体发生了什么”。百分比保留分子、分母和样本量；不可用与 0 分开。vMOS 作为 App 体验证据，不作为单独一级指标。</Explanation></section>{distributionRows.length > 0 && <section className="decision-chapter"><h2>各指标的用户分布</h2><Distribution rows={distributionRows} /></section>}{appRows.length > 0 && <section className="decision-chapter"><h2>App 覆盖全景</h2><PrintAppBars rows={appRows} /><Explanation>唯一 App 粒度，展示完整 App 覆盖并保留问题高亮；Cable/FTTH 不在这一层出现。</Explanation></section>}</>}
+    {rows.length > 0 && view === 'panorama' && perspective === 'app' && <>{baselineRows.length > 0 && <section className="decision-chapter"><h2>整体基线</h2><CardGrid rows={baselineRows.slice(0, 7)} /></section>}<section className="decision-chapter"><h2>全部 App 状态构成</h2><AppStatusSummary rows={rows} zh={zh} /><Explanation>状态互斥且全部按唯一 App 统计；右侧六类之和必须等于“全部唯一 App”。</Explanation></section><section className="decision-chapter"><h2>全部 App 业务规模与体验状态</h2><AppTable rows={rows} c={c} /><Explanation>每个 App 只出现一次，先展示跨制式总体规模；严重、问题、关注、正常、有限样本和样本不足互斥，因此分类数量之和等于全部 App 数。</Explanation></section></>}
+    {rows.length > 0 && view === 'panorama' && perspective === 'user' && <>{baselineRows.length > 0 && <section className="decision-chapter"><h2>整体用户基线</h2><CardGrid rows={baselineRows.slice(0, 7)} /></section>}<section className="decision-chapter"><h2>可解释的用户分档</h2><Distribution rows={rows} /></section></>}
+    {rows.length > 0 && view === 'quality' && <><section className="decision-chapter"><h2>质差规模与证据方向</h2><CardGrid rows={rows} /><Explanation>同一用户可能同时存在多类证据，因此各类用户数不能相加当作总质差用户。网络侧证据不等于网络设备根因；BRAS/OLT/PON 定位被移到后续按需调查。</Explanation></section>{appRows.length > 0 ? <section className="decision-chapter"><h2>高亮的唯一 App</h2><AppStatusSummary rows={appRows} zh={zh} /><AppTable rows={appRows} c={c} /><Explanation>这里仍按唯一 App 展示；点击后再看该 App 的用户、速率、时延和丢包分布，不提前按接入制式拆分。</Explanation></section> : <p className="decision-empty">当前充分样本中没有达到关注门槛的 App。</p>}</>}
     {rows.length > 0 && view === 'access' && <div className="access-compare-grid">{rows.map((row) => { const d = parseMetricHint(row.hint); return <article key={row.label} className="access-column"><h2>{row.label}</h2><strong>{Number(row.value).toLocaleString()} 用户</strong><dl><div><dt>流量</dt><dd>{friendlyNumber(d.traffic_gb ?? '0', 'GB')}</dd></div><div><dt>视频有效下载速率</dt><dd>{friendlyNumber(d.effective_download_mbps ?? 'NA', 'Mbps')}</dd></div><div><dt>差观测占比</dt><dd>{friendlyNumber(d.poor_observation_rate_pct ?? 'NA', 'percent')}</dd></div><div><dt>持续质差用户占比</dt><dd>{friendlyNumber(d.persistent_poor_user_rate_pct ?? 'NA', 'percent')}</dd></div><div><dt>用户侧 RTT</dt><dd>{friendlyNumber(d.subscriber_rtt_ms ?? 'NA', 'ms')}</dd></div><div><dt>网络侧 RTT</dt><dd>{friendlyNumber(d.network_rtt_ms ?? 'NA', 'ms')}</dd></div></dl></article>; })}</div>}
     {rows.length > 0 && view === 'opportunities' && <div className="opportunity-grid">{rows.map((row) => { const d = parseMetricHint(row.hint); const names: Record<string, string> = { MIGRATION: 'Cable → FTTH 迁转', SPEED_UPGRADE: '宽带升套', MESH_AP: 'AP / Mesh 组网', APP_BUNDLE: '特定 App Bundle' }; return <article key={row.label} className={`opportunity-card ${d.availability_status === 'UNAVAILABLE' ? 'is-unavailable' : ''}`}><span>{names[row.label] ?? row.label}</span><strong>{d.availability_status === 'UNAVAILABLE' ? '不可用' : `${Number(row.value).toLocaleString()} 人`}</strong><p>{d.availability_status === 'UNAVAILABLE' ? `数据限制：${d.data_limitation_code}` : `高优先级 ${Number(d.high_priority_users ?? 0).toLocaleString()} 人`}</p><small>规则版本 v{d.rule_version}</small></article>; })}</div>}
     {printReport && <FullPrintReportView report={printReport} batchName={c.batchDisplayName || c.importBatchId} runId={c.analysisRunId} />}
