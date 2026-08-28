@@ -176,6 +176,20 @@
   overflow-wrap: anywhere;
 }
 
+.analysis-error-boundary {
+  display: grid;
+  gap: 12px;
+  padding: 28px;
+  color: #6f2118;
+  background: #fff5f2;
+  border: 1px solid #f0b7ae;
+  border-radius: 18px;
+}
+.analysis-error-boundary span { font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.analysis-error-boundary h2,
+.analysis-error-boundary p { margin: 0; }
+.analysis-error-boundary button { justify-self: start; }
+
 @media (max-width: 1180px) {
   .product-shell { grid-template-columns: 236px minmax(0, 1fr); }
   .product-shell > .content { padding: 20px; }

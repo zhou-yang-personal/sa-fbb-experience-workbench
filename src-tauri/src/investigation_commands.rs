@@ -198,6 +198,43 @@ fn clean(value: Option<String>) -> Option<String> {
         .filter(|item| !item.is_empty() && item != "ALL")
 }
 
+// mysql_common's Row::get uses the panicking FromValue conversion. Historical
+// result tables can contain NULL even when the latest schema declares a column
+// NOT NULL, so investigation reads must always use the fallible conversion.
+fn row_string(row: &mysql::Row, index: usize, fallback: &str) -> String {
+    row.get_opt::<Option<String>, _>(index)
+        .and_then(Result::ok)
+        .flatten()
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn row_i64(row: &mysql::Row, index: usize) -> i64 {
+    row.get_opt::<Option<i64>, _>(index)
+        .and_then(Result::ok)
+        .flatten()
+        .unwrap_or_default()
+}
+
+fn row_i32(row: &mysql::Row, index: usize) -> i32 {
+    row.get_opt::<Option<i32>, _>(index)
+        .and_then(Result::ok)
+        .flatten()
+        .unwrap_or_default()
+}
+
+fn row_i8(row: &mysql::Row, index: usize) -> i8 {
+    row.get_opt::<Option<i8>, _>(index)
+        .and_then(Result::ok)
+        .flatten()
+        .unwrap_or_default()
+}
+
+fn row_f64(row: &mysql::Row, index: usize) -> Option<f64> {
+    row.get_opt::<Option<f64>, _>(index)
+        .and_then(Result::ok)
+        .flatten()
+}
+
 #[tauri::command]
 pub fn analytics_get_experience_status_v2(
     req: DashboardRequest,
@@ -278,22 +315,22 @@ pub fn analytics_get_findings_v2(req: DashboardRequest) -> Result<Vec<Experience
         .map_err(|err| format!("failed to query V2 findings: {err}"))?;
     let mut findings: Vec<ExperienceFinding> = rows.map(|row| {
         let row = row.map_err(|err| format!("failed to decode V2 finding: {err}"))?;
-        let id: String = row.get(0).unwrap_or_default();
-        let category: String = row.get(1).unwrap_or_default();
-        let app: String = row.get(2).unwrap_or_default();
-        let access: String = row.get(3).unwrap_or_default();
-        let affected: i64 = row.get(4).unwrap_or_default();
-        let denominator: i64 = row.get(5).unwrap_or_default();
-        let sample: i64 = row.get(6).unwrap_or_default();
-        let affected_rate: Option<f64> = row.get(7);
-        let poor_rate: Option<f64> = row.get(8);
-        let severe_rate: Option<f64> = row.get(9);
-        let severity: String = row.get(10).unwrap_or_else(|| "ATTENTION".into());
-        let driver: String = row.get(11).unwrap_or_default();
-        let evidence: String = row.get(12).unwrap_or_default();
-        let limitation: String = row.get(13).unwrap_or_default();
-        let policy_version: i64 = row.get(14).unwrap_or_default();
-        let min_users: i64 = row.get(15).unwrap_or(30);
+        let id = row_string(&row, 0, "F_APP_UNKNOWN");
+        let category = row_string(&row, 1, "UNCLASSIFIED");
+        let app = row_string(&row, 2, "UNCLASSIFIED");
+        let access = row_string(&row, 3, "UNCLASSIFIED");
+        let affected = row_i64(&row, 4);
+        let denominator = row_i64(&row, 5);
+        let sample = row_i64(&row, 6);
+        let affected_rate = row_f64(&row, 7);
+        let poor_rate = row_f64(&row, 8);
+        let severe_rate = row_f64(&row, 9);
+        let severity = row_string(&row, 10, "ATTENTION");
+        let driver = row_string(&row, 11, "");
+        let evidence = row_string(&row, 12, "");
+        let limitation = row_string(&row, 13, "");
+        let policy_version = row_i64(&row, 14);
+        let min_users = row_i64(&row, 15).max(30);
         let issue_side = if driver.contains("network") { "NETWORK_SIDE" } else if driver.contains("subscriber") || driver.contains("user") || driver.contains("wifi") { "USER_SIDE" } else { "EVIDENCE_INSUFFICIENT" };
         let next_step = match issue_side { "NETWORK_SIDE" => "Validate network/path concentration before opening a network action.", "USER_SIDE" => "Review household/Wi-Fi evidence and affected users before recommending optimization.", _ => "Drill down by time, access type and affected users; current evidence is insufficient for root-cause confirmation." };
         Ok(ExperienceFinding { finding_id: id, finding_type: "PROBLEM_APP".into(), title_zh: format!("{app} 的 {access} 用户出现持续差体验"), title_en: format!("Persistent poor experience for {app} on {access}"), app_category: Some(category), app_name: Some(app), access_type: Some(access), issue_metric: Some(driver.clone()).filter(|item| !item.is_empty()), issue_side: Some(issue_side.into()), baseline_type: "POLICY_THRESHOLD".into(), numerator: affected, denominator, sample_size: sample, affected_users: affected, affected_user_rate_pct: affected_rate, poor_observation_rate_pct: poor_rate, severe_user_rate_pct: severe_rate, severity, confidence: if denominator >= min_users.saturating_mul(3) { "HIGH".into() } else { "MEDIUM".into() }, main_driver: Some(driver).filter(|item| !item.is_empty()), evidence_summary: evidence, data_limitations: Some(limitation).filter(|item| !item.is_empty()), recommended_next_step: next_step.into(), rule_version: policy_version })
@@ -305,17 +342,17 @@ pub fn analytics_get_findings_v2(req: DashboardRequest) -> Result<Vec<Experience
         .map_err(|err| format!("failed to query Cable/FTTH gap findings: {err}"))?;
     for row in gap_rows {
         let row = row.map_err(|err| format!("failed to decode Cable/FTTH gap finding: {err}"))?;
-        let finding_id: String = row.get(0).unwrap_or_default();
-        let category: String = row.get(1).unwrap_or_default();
-        let app: String = row.get(2).unwrap_or_default();
-        let affected: i64 = row.get(3).unwrap_or_default();
-        let denominator: i64 = row.get(4).unwrap_or_default();
-        let sample: i64 = row.get(5).unwrap_or_default();
-        let cable_rate: Option<f64> = row.get(6);
-        let poor_rate: Option<f64> = row.get(7);
-        let severe_rate: Option<f64> = row.get(8);
-        let ftth_rate: Option<f64> = row.get(9);
-        let version: i64 = row.get(10).unwrap_or_default();
+        let finding_id = row_string(&row, 0, "F_ACCESS_UNKNOWN");
+        let category = row_string(&row, 1, "UNCLASSIFIED");
+        let app = row_string(&row, 2, "UNCLASSIFIED");
+        let affected = row_i64(&row, 3);
+        let denominator = row_i64(&row, 4);
+        let sample = row_i64(&row, 5);
+        let cable_rate = row_f64(&row, 6);
+        let poor_rate = row_f64(&row, 7);
+        let severe_rate = row_f64(&row, 8);
+        let ftth_rate = row_f64(&row, 9);
+        let version = row_i64(&row, 10);
         let delta = cable_rate.unwrap_or(0.0) - ftth_rate.unwrap_or(0.0);
         findings.push(ExperienceFinding { finding_id, finding_type:"ACCESS_GAP".into(), title_zh:format!("{app} 的 Cable 持续差体验率明显高于 FTTH"), title_en:format!("Cable persistent poor rate for {app} is materially above FTTH"), app_category:Some(category), app_name:Some(app), access_type:Some("CABLE".into()), issue_metric:Some("persistent_poor_user_rate_pct".into()), issue_side:Some("EVIDENCE_INSUFFICIENT".into()), baseline_type:"FTTH_PEER".into(), numerator:affected, denominator, sample_size:sample, affected_users:affected, affected_user_rate_pct:cable_rate, poor_observation_rate_pct:poor_rate, severe_user_rate_pct:severe_rate, severity:if delta>=20.0{"SEVERE".into()}else{"ATTENTION".into()}, confidence:"HIGH".into(), main_driver:Some("ACCESS_TYPE_GAP".into()), evidence_summary:format!("Cable persistent rate={:.4}%; FTTH peer={:.4}%; delta={delta:.4}pct; same app and analysis run",cable_rate.unwrap_or(0.0),ftth_rate.unwrap_or(0.0)), data_limitations:Some("Access association is evidence, not proof that Cable technology is the root cause.".into()), recommended_next_step:"Drill down by hour and affected users, then validate whether the gap persists under comparable traffic and time scope.".into(), rule_version:version });
     }
@@ -487,20 +524,20 @@ pub fn analytics_get_investigation_evidence(
     rows.map(|row| {
         let row = row.map_err(|err| format!("failed to decode investigation evidence: {err}"))?;
         Ok(InvestigationEvidenceRow {
-            user_key: row.get(0).unwrap_or_default(),
-            access_type: row.get(1).unwrap_or_default(),
-            app_category: row.get(2).unwrap_or_default(),
-            app_name: row.get(3).unwrap_or_default(),
-            valid_obs_rows: row.get(4).unwrap_or_default(),
-            poor_obs_rows: row.get(5).unwrap_or_default(),
-            poor_observation_rate_pct: row.get(6),
-            persistent_poor_user: row.get::<i8, _>(7).unwrap_or_default() != 0,
-            severe_poor_user: row.get::<i8, _>(8).unwrap_or_default() != 0,
-            avg_vmos: row.get(9),
-            avg_subscriber_rtt_ms: row.get(10),
-            avg_network_rtt_ms: row.get(11),
-            avg_user_loss_pct: row.get(12),
-            avg_network_loss_pct: row.get(13),
+            user_key: row_string(&row, 0, "UNIDENTIFIED"),
+            access_type: row_string(&row, 1, "UNCLASSIFIED"),
+            app_category: row_string(&row, 2, "UNCLASSIFIED"),
+            app_name: row_string(&row, 3, "UNCLASSIFIED"),
+            valid_obs_rows: row_i64(&row, 4),
+            poor_obs_rows: row_i64(&row, 5),
+            poor_observation_rate_pct: row_f64(&row, 6),
+            persistent_poor_user: row_i8(&row, 7) != 0,
+            severe_poor_user: row_i8(&row, 8) != 0,
+            avg_vmos: row_f64(&row, 9),
+            avg_subscriber_rtt_ms: row_f64(&row, 10),
+            avg_network_rtt_ms: row_f64(&row, 11),
+            avg_user_loss_pct: row_f64(&row, 12),
+            avg_network_loss_pct: row_f64(&row, 13),
         })
     })
     .collect()
@@ -542,45 +579,26 @@ pub fn analytics_get_investigation_hourly(
     sql.push_str(" ORDER BY stat_date,hour_of_day,user_type LIMIT ?");
     params.push(Value::from(req.page_size.unwrap_or(500).clamp(1, 2000)));
     let mut conn = db::conn(&req.settings)?;
-    conn.exec_map(
-        sql,
-        Params::Positional(params),
-        |(
-            stat_date,
-            hour_of_day,
-            access_type,
-            eligible_users,
-            valid_obs_rows,
-            poor_obs_rows,
-            poor_observation_rate_pct,
-            persistent_poor_users,
-            severe_poor_users,
-            sample_status,
-        ): (
-            String,
-            i32,
-            String,
-            i64,
-            i64,
-            i64,
-            Option<f64>,
-            i64,
-            i64,
-            String,
-        )| InvestigationHourlyRow {
-            stat_date,
-            hour_of_day,
-            access_type,
-            eligible_users,
-            valid_obs_rows,
-            poor_obs_rows,
-            poor_observation_rate_pct,
-            persistent_poor_users,
-            severe_poor_users,
-            sample_status,
-        },
-    )
-    .map_err(|err| format!("failed to query investigation hourly pivot: {err}"))
+    let rows = conn
+        .exec_iter(sql, Params::Positional(params))
+        .map_err(|err| format!("failed to query investigation hourly pivot: {err}"))?;
+    rows.map(|row| {
+        let row =
+            row.map_err(|err| format!("failed to decode investigation hourly pivot: {err}"))?;
+        Ok(InvestigationHourlyRow {
+            stat_date: row_string(&row, 0, ""),
+            hour_of_day: row_i32(&row, 1),
+            access_type: row_string(&row, 2, "UNCLASSIFIED"),
+            eligible_users: row_i64(&row, 3),
+            valid_obs_rows: row_i64(&row, 4),
+            poor_obs_rows: row_i64(&row, 5),
+            poor_observation_rate_pct: row_f64(&row, 6),
+            persistent_poor_users: row_i64(&row, 7),
+            severe_poor_users: row_i64(&row, 8),
+            sample_status: row_string(&row, 9, "INSUFFICIENT_SAMPLE"),
+        })
+    })
+    .collect()
 }
 
 fn add_metric(value: Option<f64>, sum: &mut f64, count: &mut i64) {
@@ -687,12 +705,12 @@ pub fn analytics_get_investigation_server_ips(
     let mut aggregates: HashMap<String, ServerIpAccumulator> = HashMap::new();
     for row in rows {
         let row = row.map_err(|err| format!("failed to decode Server IP evidence: {err}"))?;
-        let raw: String = row.get(0).unwrap_or_default();
-        let user: String = row.get(1).unwrap_or_default();
-        let subscriber_rtt: Option<f64> = row.get(2);
-        let network_rtt: Option<f64> = row.get(3);
-        let user_loss: Option<f64> = row.get(4);
-        let network_loss: Option<f64> = row.get(5);
+        let raw = row_string(&row, 0, "");
+        let user = row_string(&row, 1, "UNIDENTIFIED");
+        let subscriber_rtt = row_f64(&row, 2);
+        let network_rtt = row_f64(&row, 3);
+        let user_loss = row_f64(&row, 4);
+        let network_loss = row_f64(&row, 5);
         let mut row_ips = HashSet::new();
         for token in raw
             .split(|ch: char| ch == ';' || ch == ',' || ch == '|' || ch.is_whitespace())
@@ -750,16 +768,22 @@ pub fn analytics_get_investigation_server_ips(
 
 fn decode_saved(row: mysql::Row) -> SavedInvestigation {
     SavedInvestigation {
-        investigation_id: row.get(0).unwrap_or_default(),
-        import_batch_id: row.get(1).unwrap_or_default(),
-        analysis_run_id: row.get(2).unwrap_or_default(),
-        finding_id: row.get(3),
-        title: row.get(4).unwrap_or_default(),
-        status: row.get(5).unwrap_or_default(),
-        context_json: row.get(6).unwrap_or_else(|| "{}".into()),
-        notes: row.get(7),
-        created_at: row.get(8).unwrap_or_default(),
-        updated_at: row.get(9).unwrap_or_default(),
+        investigation_id: row_string(&row, 0, ""),
+        import_batch_id: row_string(&row, 1, ""),
+        analysis_run_id: row_string(&row, 2, ""),
+        finding_id: row
+            .get_opt::<Option<String>, _>(3)
+            .and_then(Result::ok)
+            .flatten(),
+        title: row_string(&row, 4, "Untitled investigation"),
+        status: row_string(&row, 5, "open"),
+        context_json: row_string(&row, 6, "{}"),
+        notes: row
+            .get_opt::<Option<String>, _>(7)
+            .and_then(Result::ok)
+            .flatten(),
+        created_at: row_string(&row, 8, ""),
+        updated_at: row_string(&row, 9, ""),
     }
 }
 

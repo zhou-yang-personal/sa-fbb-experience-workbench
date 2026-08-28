@@ -6,17 +6,61 @@ import './ExperienceInvestigationHub.css';
 
 export type InvestigationHubView = 'overview' | 'findings' | 'investigation' | 'investigations';
 
-function rate(value?: number) {
-  return value === undefined || value === null ? '—' : `${value.toFixed(2)}%`;
+function finiteNumber(value: unknown) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-function number(value: number) {
-  return new Intl.NumberFormat().format(value);
+function rate(value?: number | null) {
+  const parsed = finiteNumber(value);
+  return parsed === null ? '—' : `${parsed.toFixed(2)}%`;
 }
 
-function deltaRate(value?: number) {
-  if (value === undefined || value === null) return '—';
-  return `${value > 0 ? '+' : ''}${value.toFixed(2)}pct`;
+function number(value: unknown) {
+  const parsed = finiteNumber(value);
+  return parsed === null ? '—' : new Intl.NumberFormat().format(parsed);
+}
+
+function deltaRate(value?: number | null) {
+  const parsed = finiteNumber(value);
+  if (parsed === null) return '—';
+  return `${parsed > 0 ? '+' : ''}${parsed.toFixed(2)}pct`;
+}
+
+function text(value: unknown, fallback: string) {
+  return typeof value === 'string' && value.trim() ? value : fallback;
+}
+
+function normalizeFinding(item: ExperienceFinding, index: number): ExperienceFinding {
+  return {
+    ...item,
+    finding_id: text(item.finding_id, `F_UNKNOWN_${index}`),
+    finding_type: text(item.finding_type, 'UNCLASSIFIED'),
+    title_zh: text(item.title_zh, '未命名体验问题'),
+    title_en: text(item.title_en, 'Untitled experience issue'),
+    baseline_type: text(item.baseline_type, 'POLICY_THRESHOLD'),
+    numerator: finiteNumber(item.numerator) ?? 0,
+    denominator: finiteNumber(item.denominator) ?? 0,
+    sample_size: finiteNumber(item.sample_size) ?? 0,
+    affected_users: finiteNumber(item.affected_users) ?? 0,
+    severity: text(item.severity, 'ATTENTION'),
+    confidence: text(item.confidence, 'UNCONFIRMED'),
+    evidence_summary: text(item.evidence_summary, ''),
+    recommended_next_step: text(item.recommended_next_step, ''),
+    rule_version: finiteNumber(item.rule_version) ?? 0,
+  };
+}
+
+function normalizeCoverage(item: DataCoverageItemV2, index: number): DataCoverageItemV2 {
+  return {
+    ...item,
+    dimension: text(item.dimension, `DIMENSION_${index}`),
+    status: text(item.status, 'UNAVAILABLE'),
+    available_rows: finiteNumber(item.available_rows) ?? 0,
+    total_rows: finiteNumber(item.total_rows) ?? 0,
+    coverage_pct: finiteNumber(item.coverage_pct) ?? undefined,
+  };
 }
 
 function coverageLabel(item: DataCoverageItemV2, zh: boolean) {
@@ -27,12 +71,13 @@ function coverageLabel(item: DataCoverageItemV2, zh: boolean) {
   return labels[item.dimension]?.[zh ? 0 : 1] ?? item.dimension;
 }
 
-function statusText(status: string, zh: boolean) {
+function statusText(status: unknown, zh: boolean) {
   const labels: Record<string, [string, string]> = {
     AVAILABLE: ['可用', 'Available'], NOT_IMPORTED: ['未导入', 'Not imported'], UNAVAILABLE: ['不可用', 'Unavailable'],
     LIMITED: ['能力有限', 'Limited'], INSUFFICIENT_SAMPLE: ['样本不足', 'Insufficient sample'],
   };
-  return labels[status]?.[zh ? 0 : 1] ?? status;
+  const normalized = text(status, 'UNAVAILABLE');
+  return labels[normalized]?.[zh ? 0 : 1] ?? normalized;
 }
 
 export function ExperienceInvestigationHub({ c, view, onNavigate }: { c: WorkbenchController; view: InvestigationHubView; onNavigate: (view: InvestigationHubView) => void }) {
@@ -79,8 +124,8 @@ export function ExperienceInvestigationHub({ c, view, onNavigate }: { c: Workben
       if (results.every((item) => item.status === 'rejected')) throw new Error(issues.join('；'));
       return {
         nextStatus: results[0].status === 'fulfilled' ? results[0].value : null,
-        nextFindings: results[1].status === 'fulfilled' ? results[1].value : [],
-        nextCoverage: results[2].status === 'fulfilled' ? results[2].value : [],
+        nextFindings: results[1].status === 'fulfilled' ? results[1].value.map(normalizeFinding) : [],
+        nextCoverage: results[2].status === 'fulfilled' ? results[2].value.map(normalizeCoverage) : [],
         nextVerification: results[3].status === 'fulfilled' ? results[3].value : null,
         issues,
       };
@@ -146,7 +191,7 @@ export function ExperienceInvestigationHub({ c, view, onNavigate }: { c: Workben
 
   if (view === 'investigations') return <section className="experience-hub">
     <header className="workspace-page-header"><div><p className="eyebrow">INVESTIGATIONS</p><h2>{zh ? '已保存调查' : 'Saved investigations'}</h2><p>{zh ? '保存的是分析上下文和 Finding 引用，不复制大表数据。' : 'Saved state keeps context and finding references, not large-table copies.'}</p></div><button className="primary-button" disabled={disabled} onClick={loadSaved}>{zh ? '加载调查' : 'Load investigations'}</button></header>
-    <div className="investigation-list">{saved.map((item) => <article key={item.investigation_id}><div><span>{item.status}</span><h3>{item.title}</h3><p>{item.analysis_run_id} · {item.updated_at}</p></div><button onClick={() => restoreInvestigation(item)}>{zh ? '继续调查' : 'Continue'}</button></article>)}{!saved.length && <p className="empty-panel">{zh ? '尚未加载或没有已保存调查。' : 'No saved investigations loaded.'}</p>}</div>
+    <div className="investigation-list">{saved.map((item, index) => <article key={text(item.investigation_id, `investigation-${index}`)}><div><span>{text(item.status, zh ? '状态未知' : 'Unknown status')}</span><h3>{text(item.title, zh ? '未命名调查' : 'Untitled investigation')}</h3><p>{text(item.analysis_run_id, '—')} · {text(item.updated_at, '—')}</p></div><button onClick={() => restoreInvestigation(item)}>{zh ? '继续调查' : 'Continue'}</button></article>)}{!saved.length && <p className="empty-panel">{zh ? '尚未加载或没有已保存调查。' : 'No saved investigations loaded.'}</p>}</div>
   </section>;
 
   if (view === 'investigation') return <section className="experience-hub investigation-workspace-v2">
@@ -156,7 +201,7 @@ export function ExperienceInvestigationHub({ c, view, onNavigate }: { c: Workben
       <article className="panel"><span className="panel-kicker">{zh ? '体验证据' : 'Experience evidence'}</span><h3>{selectedFinding?.main_driver ?? c.analysisContext.issue_metric ?? (zh ? '待下钻' : 'Pending drill-down')}</h3><dl><div><dt>{zh ? '持续用户' : 'Persistent users'}</dt><dd>{selectedFinding ? number(selectedFinding.affected_users) : '—'}</dd></div><div><dt>{zh ? '差观测率' : 'Poor obs rate'}</dt><dd>{rate(selectedFinding?.poor_observation_rate_pct)}</dd></div><div><dt>{zh ? '严重用户率' : 'Severe user rate'}</dt><dd>{rate(selectedFinding?.severe_user_rate_pct)}</dd></div></dl></article>
       <article className="panel action-judgement"><span className="panel-kicker">{zh ? '判断与行动' : 'Judgement & action'}</span><h3>{selectedFinding?.issue_side ?? (zh ? '当前证据不足' : 'Evidence insufficient')}</h3><p>{selectedFinding?.recommended_next_step ?? (zh ? '先加载受控下钻证据，再决定网络侧检查、家庭侧优化、继续观察或机会复核。' : 'Load controlled evidence before choosing network checks, household optimization, observation or opportunity review.')}</p><small>{zh ? '这不是已确认根因。' : 'This is not a confirmed root cause.'}</small></article>
     </div>
-    <section className="hourly-pivot-v2"><header><div><h3>{zh ? '时间范围下钻' : 'Time pivot'}</h3><p>{zh ? '仅展示满足所选 App / 接入条件的小时 ADS；样本不足不会进入异常判断。' : 'Hourly ADS for the selected app/access scope; insufficient samples are excluded from anomaly judgement.'}</p></div></header><div className="hourly-pivot-grid">{hourly.map((row) => <button type="button" className={row.sample_status === 'SUFFICIENT' ? '' : 'is-insufficient'} key={`${row.stat_date}-${row.hour_of_day}-${row.access_type}`} onClick={() => c.applyAnalysisContext({ date_from: row.stat_date, date_to: row.stat_date, hour_from: row.hour_of_day, hour_to: row.hour_of_day, access_type: row.access_type })}><span>{row.stat_date} · {String(row.hour_of_day).padStart(2, '0')}:00</span><strong>{rate(row.poor_observation_rate_pct)}</strong><small>{row.access_type} · {number(row.eligible_users)} {zh ? '用户' : 'users'} · {statusText(row.sample_status, zh)}</small></button>)}{!hourly.length && <p className="empty-panel">{zh ? '加载调查证据后显示时间分布。' : 'Load investigation evidence to see time distribution.'}</p>}</div></section>
+    <section className="hourly-pivot-v2"><header><div><h3>{zh ? '时间范围下钻' : 'Time pivot'}</h3><p>{zh ? '仅展示满足所选 App / 接入条件的小时 ADS；样本不足不会进入异常判断。' : 'Hourly ADS for the selected app/access scope; insufficient samples are excluded from anomaly judgement.'}</p></div></header><div className="hourly-pivot-grid">{hourly.map((row, index) => <button type="button" className={row.sample_status === 'SUFFICIENT' ? '' : 'is-insufficient'} key={`${text(row.stat_date, 'date')}-${number(row.hour_of_day)}-${text(row.access_type, 'access')}-${index}`} onClick={() => c.applyAnalysisContext({ date_from: row.stat_date, date_to: row.stat_date, hour_from: row.hour_of_day, hour_to: row.hour_of_day, access_type: row.access_type })}><span>{text(row.stat_date, '—')} · {String(finiteNumber(row.hour_of_day) ?? 0).padStart(2, '0')}:00</span><strong>{rate(row.poor_observation_rate_pct)}</strong><small>{text(row.access_type, 'UNCLASSIFIED')} · {number(row.eligible_users)} {zh ? '用户' : 'users'} · {statusText(row.sample_status, zh)}</small></button>)}{!hourly.length && <p className="empty-panel">{zh ? '加载调查证据后显示时间分布。' : 'Load investigation evidence to see time distribution.'}</p>}</div></section>
     <section className="evidence-table-v2"><header><h3>{zh ? '受影响用户证据' : 'Affected-user evidence'}</h3><span>{message}</span></header><div className="evidence-grid evidence-grid-head"><span>{zh ? '用户' : 'User'}</span><span>{zh ? '有效/差观测' : 'Valid / poor'}</span><span>{zh ? '差观测率' : 'Poor rate'}</span><span>vMOS</span><span>{zh ? '用户/网络 RTT' : 'User / network RTT'}</span><span>{zh ? '用户/网络丢包' : 'User / network loss'}</span></div>{evidence.map((row) => <button type="button" className="evidence-grid" key={`${row.user_key}-${row.app_name}`} onClick={() => c.applyAnalysisContext({ user_key: row.user_key })}><span><strong>{row.user_key}</strong><small>{row.access_type} · {row.app_name}</small></span><span>{row.valid_obs_rows} / {row.poor_obs_rows}</span><span>{rate(row.poor_observation_rate_pct)}</span><span>{row.avg_vmos?.toFixed(2) ?? '—'}</span><span>{row.avg_subscriber_rtt_ms?.toFixed(1) ?? '—'} / {row.avg_network_rtt_ms?.toFixed(1) ?? '—'}</span><span>{row.avg_user_loss_pct?.toFixed(3) ?? '—'} / {row.avg_network_loss_pct?.toFixed(3) ?? '—'}</span></button>)}{!evidence.length && <p className="empty-panel">{zh ? '点击“加载调查证据”，查询只读取 DWS，不扫描 RAW。' : 'Load evidence; the query reads DWS and never scans RAW.'}</p>}</section>
     <section className="server-ip-evidence-v2"><header><div><h3>{zh ? 'Server IP / 内容路径证据' : 'Server IP / content-path evidence'}</h3><p>{zh ? '仅对当前 App 的优先受影响用户做受控解析：最多 200 名用户、2 万条 DWD 观测；不全量拆分，也不代表已确认内容源根因。' : 'Controlled parsing for the current App: at most 200 priority users and 20,000 DWD observations; no full explosion and no confirmed content-source root cause.'}</p></div></header><div className="server-ip-grid server-ip-grid-head"><span>Server IP</span><span>{zh ? '观测用户' : 'Observed users'}</span><span>{zh ? '观测行' : 'Rows'}</span><span>{zh ? '用户/网络 RTT' : 'User / network RTT'}</span><span>{zh ? '用户/网络丢包' : 'User / network loss'}</span></div>{serverIps.map((row) => <button type="button" className="server-ip-grid" key={row.server_ip} onClick={() => c.applyAnalysisContext({ server_ip: row.server_ip })}><strong>{row.server_ip}</strong><span>{number(row.observed_users)}</span><span>{number(row.observation_rows)}</span><span>{row.avg_subscriber_rtt_ms?.toFixed(1) ?? '—'} / {row.avg_network_rtt_ms?.toFixed(1) ?? '—'}</span><span>{row.avg_user_loss_pct?.toFixed(3) ?? '—'} / {row.avg_network_loss_pct?.toFixed(3) ?? '—'}</span></button>)}{!serverIps.length && <p className="empty-panel">{c.analysisContext.app_name ? (zh ? '当前范围没有可用 Server IP；旧 CLEAN 结果需要用 1.0.50 重跑后才会保留该字段。' : 'No Server IP is available in this scope; older CLEAN results must be rebuilt with 1.0.50 to retain this field.') : (zh ? '先从 Finding 选择一个 App。' : 'Select an App from a Finding first.')}</p>}</section>
   </section>;
@@ -173,5 +218,14 @@ export function ExperienceInvestigationHub({ c, view, onNavigate }: { c: Workben
 }
 
 function FindingList({ findings, zh, onOpen }: { findings: ExperienceFinding[]; zh: boolean; onOpen: (finding: ExperienceFinding) => void }) {
-  return <div className="finding-list-v2">{findings.map((finding) => <article key={finding.finding_id} className={`finding-${finding.severity.toLowerCase()}`}><header><span>{finding.severity} · {finding.confidence}</span><small>{finding.finding_id}</small></header><h3>{zh ? finding.title_zh : finding.title_en}</h3><p>{zh ? `影响 ${number(finding.affected_users)} / ${number(finding.denominator)} 名合格用户，持续差体验占比 ${rate(finding.affected_user_rate_pct)}。` : `${number(finding.affected_users)} / ${number(finding.denominator)} eligible users affected; persistent rate ${rate(finding.affected_user_rate_pct)}.`}</p><dl><div><dt>{zh ? '差观测率' : 'Poor obs rate'}</dt><dd>{rate(finding.poor_observation_rate_pct)}</dd></div><div><dt>{zh ? '严重用户率' : 'Severe user rate'}</dt><dd>{rate(finding.severe_user_rate_pct)}</dd></div><div><dt>{zh ? '规则版本' : 'Rule version'}</dt><dd>v{finding.rule_version}</dd></div></dl><button className="primary-button" onClick={() => onOpen(finding)}>{zh ? '进入调查' : 'Investigate'}</button></article>)}{!findings.length && <p className="empty-panel">{zh ? '当前没有满足最低样本与 Finding 门槛的问题，或尚未加载。' : 'No rule-qualified findings, or data is not loaded.'}</p>}</div>;
+  return <div className="finding-list-v2">{findings.map((finding, index) => {
+    const severity = text(finding.severity, 'ATTENTION');
+    return <article key={text(finding.finding_id, `finding-${index}`)} className={`finding-${severity.toLowerCase()}`}>
+      <header><span>{severity} · {text(finding.confidence, 'UNCONFIRMED')}</span><small>{text(finding.finding_id, '—')}</small></header>
+      <h3>{text(zh ? finding.title_zh : finding.title_en, zh ? '未命名体验问题' : 'Untitled experience issue')}</h3>
+      <p>{zh ? `影响 ${number(finding.affected_users)} / ${number(finding.denominator)} 名合格用户，持续差体验占比 ${rate(finding.affected_user_rate_pct)}。` : `${number(finding.affected_users)} / ${number(finding.denominator)} eligible users affected; persistent rate ${rate(finding.affected_user_rate_pct)}.`}</p>
+      <dl><div><dt>{zh ? '差观测率' : 'Poor obs rate'}</dt><dd>{rate(finding.poor_observation_rate_pct)}</dd></div><div><dt>{zh ? '严重用户率' : 'Severe user rate'}</dt><dd>{rate(finding.severe_user_rate_pct)}</dd></div><div><dt>{zh ? '规则版本' : 'Rule version'}</dt><dd>v{number(finding.rule_version)}</dd></div></dl>
+      <button className="primary-button" onClick={() => onOpen(finding)}>{zh ? '进入调查' : 'Investigate'}</button>
+    </article>;
+  })}{!findings.length && <p className="empty-panel">{zh ? '当前没有满足最低样本与 Finding 门槛的问题，或尚未加载。' : 'No rule-qualified findings, or data is not loaded.'}</p>}</div>;
 }

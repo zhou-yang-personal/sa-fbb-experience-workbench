@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.57
+1.0.58
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,14 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.58 update
+
+- Replaced panicking `mysql_common` conversions across Finding, investigation evidence, hourly evidence, Server IP and saved-investigation reads with nullable fallible row decoding.
+- Normalized legacy Finding and coverage payloads before rendering and made number/status formatting tolerant of null or malformed values.
+- Added an analysis-workspace error boundary so an unexpected WebView render error shows a recoverable message instead of taking down the product UI.
+- Frontend type check, production build and low-disk `cargo check --offline` passed on Linux; the existing Rust warnings remain. Live Windows/MySQL validation is still required.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.57 update
 

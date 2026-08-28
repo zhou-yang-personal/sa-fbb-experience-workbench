@@ -1,5 +1,20 @@
 # CHANGELOG-dev
 
+## 1.0.58 - 2026-08-28
+
+### Fixed
+
+- Replaced panic-prone MySQL conversions in the investigation workflow with fallible nullable row decoding for legacy V2 and saved-investigation data.
+- Hardened Finding, coverage, numeric and status rendering against null or malformed historical payloads.
+- Added a page-level analysis error boundary with a recovery route back to the overview.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-28.
+- `npm run build`: passed on 2026-08-28; the existing ECharts chunk-size warning remains.
+- `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 CARGO_PROFILE_DEV_DEBUG=0 RUSTFLAGS='-C debuginfo=0' cargo check --offline`: passed on 2026-08-28 with existing warnings only.
+- Live Windows/WebView2/MySQL validation remains pending for the 1.0.58 artifact.
+
 ## 1.0.57 - 2026-08-27
 
 ### Fixed

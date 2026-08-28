@@ -4,8 +4,8 @@ use crate::db;
 use crate::models::{MetricCard, MySqlSettings};
 use crate::sql_runner;
 
-pub const APP_VERSION: &str = "1.0.57";
-pub const MAPPING_SEED_VERSION: &str = "1.0.57";
+pub const APP_VERSION: &str = "1.0.58";
+pub const MAPPING_SEED_VERSION: &str = "1.0.58";
 
 const MAP_SEED: &str = include_str!("../../database/seeds/002_default_mapping_seed.sql");
 
@@ -183,7 +183,7 @@ mod tests {
 
     #[test]
     fn critical_aliases_track_universal_video_contract() {
-        assert_eq!(MAPPING_SEED_VERSION, "1.0.57");
+        assert_eq!(MAPPING_SEED_VERSION, "1.0.58");
         assert!(CRITICAL_ALIASES
             .iter()
             .any(|item| *item == ("tcp", "user_account", "subscriber_account")));

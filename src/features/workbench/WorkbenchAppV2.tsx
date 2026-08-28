@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AnalysisErrorBoundary } from './AnalysisErrorBoundary';
 import { AnalysisWorkspace } from './AnalysisWorkspace';
 import { ConfigurationPanel } from './ConfigurationPanel';
 import { ImportPanel } from './ImportPanel';
@@ -115,7 +116,9 @@ export function WorkbenchAppV2() {
           {c.currentAction && <strong>Running: {c.currentAction}</strong>}
         </section>
         <section className="section-shell guided-section-shell">
-          {renderSection()}
+          <AnalysisErrorBoundary language={c.language} resetKey={activeSection} onReset={() => setActiveSection('overview')}>
+            {renderSection()}
+          </AnalysisErrorBoundary>
         </section>
       </section>
       <RunLogDrawer open={logOpen} log={c.log} onClose={() => setLogOpen(false)} />
