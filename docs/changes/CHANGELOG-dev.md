@@ -1,5 +1,22 @@
 # CHANGELOG-dev
 
+## 1.0.66 - 2026-08-28
+
+### Changed
+
+- Replaced DWS/ADS application-only heartbeats with 15-second MySQL activity probes using `PROCESSLIST`, the aggregation named lock, the active subtask and hourly partition checkpoint.
+- Active statements now report connection ID, SQL elapsed seconds, MySQL state and a bounded statement preview.
+- Three consecutive samples without a batch statement become a warning for suspected stalling; probe failures are reported explicitly and never claim SQL liveness.
+- Updated the task monitor's health summary to show the latest database-activity result.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-28.
+- `npm run build`: passed on 2026-08-28.
+- `cargo test --offline`: 62 passed, 0 failed on 2026-08-28; existing warnings remain.
+- No schema, aggregation-result, dependency or lock-file changes.
+- Live Windows/MySQL verification remains pending.
+
 ## 1.0.65 - 2026-08-28
 
 ### Fixed

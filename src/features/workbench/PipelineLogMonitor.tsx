@@ -77,6 +77,17 @@ export function PipelineLogMonitor({ logs, status, polling, pollingError, lastPo
   }, [keyword, level, logs, newestFirst, step]);
   const visible = newestFirst ? filtered.slice(0, 600) : filtered.slice(-600);
   const newestSequence = logs.length ? logs[logs.length - 1].sequence : 0;
+  const latestDatabaseActivity = [...logs].reverse().find((row) =>
+    row.message.includes('SQL 已确认存活')
+    || row.message.includes('未发现本批次活动 SQL')
+    || row.message.includes('数据库活动探测失败'));
+  const databaseActivityStatus = latestDatabaseActivity?.message.includes('SQL 已确认存活')
+    ? 'SQL 已确认存活'
+    : latestDatabaseActivity?.level === 'warning'
+      ? '需要检查'
+      : latestDatabaseActivity
+        ? '当前采样无 SQL'
+        : '等待首次探测';
   const running = Boolean(status) && !isTerminal(status?.status);
   const silenceMs = lastLogReceivedAt ? Math.max(0, now - lastLogReceivedAt) : 0;
   const heartbeatDelayed = running && autoRefreshEnabled && lastLogReceivedAt !== null && silenceMs >= 45_000;
@@ -96,7 +107,7 @@ export function PipelineLogMonitor({ logs, status, polling, pollingError, lastPo
         <div>
           <p className="eyebrow">Pipeline observability</p>
           <h3>任务实时监控</h3>
-          <p className="muted-row">单通道增量刷新、按 sequence 去重；长步骤每15秒写入应用线程心跳，小时聚合另行显示分片与SQL连接状态。时间按本地PC时区 {localTimeZone()} 显示。</p>
+          <p className="muted-row">单通道增量刷新、按 sequence 去重；DWS/ADS 长步骤每15秒核验 MySQL PROCESSLIST、任务锁、子任务和小时分片。时间按本地PC时区 {localTimeZone()} 显示。</p>
         </div>
         <div className="log-summary">
           <span className={`status-pill ${monitorTone}`}>{pollingError ? '刷新异常' : polling ? '正在刷新' : autoRefreshEnabled ? '自动刷新' : '已暂停'}</span>
@@ -109,7 +120,7 @@ export function PipelineLogMonitor({ logs, status, polling, pollingError, lastPo
       <div className={`pipeline-monitor-health ${heartbeatDelayed || pollingError ? 'is-warning' : ''}`}>
         <div><span>当前步骤</span><strong>{stepLabels[status?.current_step ?? ''] ?? status?.current_step ?? '-'}</strong><small>{status?.message ?? '等待任务状态'}</small></div>
         <div><span>状态轮询</span><strong>{pollingError || (autoRefreshEnabled ? '连接正常' : '用户暂停')}</strong><small>最近成功刷新：{relativeAge(now, lastPollAt)}</small></div>
-        <div><span>日志心跳</span><strong>{lastLogReceivedAt ? `静默 ${duration(silenceMs)}` : '等待首条日志'}</strong><small>{heartbeatDelayed ? '超过45秒未收到日志；可能是数据库繁忙、连接受阻或进程中断' : !autoRefreshEnabled ? '自动刷新已暂停，恢复后继续接收日志' : running ? '心跳只表示应用线程可写日志；SQL状态以connection_id和分片日志为准' : '任务未运行或已经结束'}</small></div>
+        <div><span>数据库活动</span><strong>{databaseActivityStatus}</strong><small>{heartbeatDelayed ? '超过45秒未收到任何新日志；可能是数据库连接受阻或进程中断' : !autoRefreshEnabled ? '自动刷新已暂停，恢复后继续接收探测结果' : latestDatabaseActivity ? `最近探测：${formatLocalDateTime(latestDatabaseActivity.timestamp)}` : running ? '等待后端核验 SQL、任务锁和 checkpoint' : '任务未运行或已经结束'}</small></div>
         <div><span>计划进度</span><strong>{Number(status?.percent ?? 0).toFixed(0)}%</strong><small>累计运行 {duration(Number(status?.elapsed_ms ?? 0))}</small></div>
       </div>
 

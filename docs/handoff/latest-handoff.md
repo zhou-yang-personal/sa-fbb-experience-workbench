@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.65
+1.0.66
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,14 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → CLEAN/DWD → Post-clean Quality Gate → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.66 update
+
+- Replaced the DWS/ADS application-only heartbeat with a 15-second MySQL activity probe covering `PROCESSLIST`, the aggregation named-lock owner, the active aggregation subtask and hourly partition checkpoint.
+- Confirmed statements report connection ID, MySQL elapsed seconds, state and SQL preview. Three consecutive samples without a batch statement become a warning and explicitly identify a suspected stall.
+- Probe failures are warnings and never claim SQL liveness. The task monitor now summarizes the latest database activity result instead of repeating an application-thread disclaimer.
+- No schema, aggregation result, dependency or lock-file behavior changed. Live Windows/MySQL verification remains pending.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.65 update
 

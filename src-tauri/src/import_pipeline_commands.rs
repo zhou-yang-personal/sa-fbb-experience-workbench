@@ -234,6 +234,127 @@ fn step_heartbeat_message(step: PipelineStepDef, elapsed_ms: i64) -> String {
     )
 }
 
+#[derive(Debug)]
+struct DwsSqlActivitySnapshot {
+    active_statements: Vec<String>,
+    aggregation_lock_connection_id: Option<u64>,
+    checkpoint_context: String,
+}
+
+fn dws_sql_activity_message(
+    step: PipelineStepDef,
+    elapsed_ms: i64,
+    snapshot: Result<&DwsSqlActivitySnapshot, &str>,
+    consecutive_idle_samples: u32,
+) -> (String, &'static str) {
+    let elapsed = format_elapsed(elapsed_ms);
+    match snapshot {
+        Ok(activity) if !activity.active_statements.is_empty() => (
+            format!(
+                "{}数据库活动确认：SQL 已确认存活；活动语句数={}；{}；{}；本步骤已持续 {}",
+                step.label,
+                activity.active_statements.len(),
+                activity.active_statements[0],
+                activity.checkpoint_context,
+                elapsed,
+            ),
+            "info",
+        ),
+        Ok(activity) => {
+            let idle_seconds = consecutive_idle_samples.saturating_mul(15);
+            let lock = activity
+                .aggregation_lock_connection_id
+                .map(|id| format!("聚合任务锁仍由 connection_id={id} 持有"))
+                .unwrap_or_else(|| "未检测到聚合任务锁持有者".to_string());
+            let warning = consecutive_idle_samples >= 3;
+            let assessment = if warning {
+                "连续采样未发现活动 SQL，任务疑似停滞；请检查后续 SQL 日志或 MySQL PROCESSLIST"
+            } else {
+                "本次采样未捕获活动 SQL，可能处于语句切换或客户端处理间隙"
+            };
+            (
+                format!(
+                    "{}数据库活动检查：MySQL 连接正常；{}；{}；连续 {} 次（约 {} 秒）未发现本批次活动 SQL；{}；本步骤已持续 {}",
+                    step.label,
+                    lock,
+                    activity.checkpoint_context,
+                    consecutive_idle_samples,
+                    idle_seconds,
+                    assessment,
+                    elapsed,
+                ),
+                if warning { "warning" } else { "info" },
+            )
+        }
+        Err(error) => (
+            format!(
+                "{}数据库活动探测失败：{}；无法确认当前 SQL 状态；本步骤已持续 {}",
+                step.label, error, elapsed,
+            ),
+            "warning",
+        ),
+    }
+}
+
+fn probe_dws_sql_activity(
+    settings: &MySqlSettings,
+    pipeline_run_id: &str,
+) -> Result<DwsSqlActivitySnapshot, String> {
+    let mut conn = db::conn(settings)?;
+    let import_batch_id: Option<String> = conn
+        .exec_first(
+            "SELECT import_batch_id FROM meta_pipeline_run WHERE pipeline_run_id=?",
+            (pipeline_run_id,),
+        )
+        .map_err(|err| format!("failed to read pipeline batch for SQL activity probe: {err}"))?;
+    let import_batch_id = import_batch_id
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "pipeline has no import_batch_id".to_string())?;
+    let aggregation_lock_connection_id: Option<u64> = conn
+        .exec_first(
+            "SELECT CAST(IS_USED_LOCK(?) AS UNSIGNED)",
+            (db::AGGREGATION_LOCK_NAME,),
+        )
+        .map_err(|err| format!("failed to inspect aggregation lock owner: {err}"))?
+        .flatten();
+    let subtask: Option<(String, i64)> = conn
+        .exec_first(
+            "SELECT subtask_name,CAST(TIMESTAMPDIFF(SECOND,started_at,UTC_TIMESTAMP()) AS SIGNED) FROM meta_aggregation_subtask_checkpoint WHERE pipeline_run_id=? AND stage_name='dws_ads_aggregate' AND status='running' ORDER BY started_at DESC LIMIT 1",
+            (pipeline_run_id,),
+        )
+        .unwrap_or(None);
+    let partition: Option<(String, i32, Option<u64>, i64)> = conn
+        .exec_first(
+            "SELECT DATE_FORMAT(partition_date,'%Y-%m-%d'),partition_hour,connection_id,CAST(TIMESTAMPDIFF(SECOND,started_at,UTC_TIMESTAMP()) AS SIGNED) FROM meta_aggregation_partition_checkpoint WHERE pipeline_run_id=? AND stage_name='hourly_v2' AND status='running' ORDER BY started_at DESC LIMIT 1",
+            (pipeline_run_id,),
+        )
+        .unwrap_or(None);
+    let mut context_parts = Vec::new();
+    if let Some((subtask_name, seconds)) = subtask {
+        context_parts.push(format!(
+            "当前子任务={subtask_name}（{}）",
+            format_elapsed(seconds.max(0).saturating_mul(1_000))
+        ));
+    }
+    if let Some((date, hour, connection_id, seconds)) = partition {
+        context_parts.push(format!(
+            "当前小时分片={date}T{hour:02}:00，connection_id={}，已执行 {}",
+            connection_id
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            format_elapsed(seconds.max(0).saturating_mul(1_000)),
+        ));
+    }
+    if context_parts.is_empty() {
+        context_parts.push("当前 checkpoint 尚未记录活动子任务或小时分片".to_string());
+    }
+    Ok(DwsSqlActivitySnapshot {
+        active_statements: active_batch_statements(settings, &import_batch_id)?,
+        aggregation_lock_connection_id,
+        checkpoint_context: context_parts.join("；"),
+    })
+}
+
 fn spawn_raw_import_reporter(
     settings: MySqlSettings,
     pipeline_run_id: String,
@@ -299,29 +420,57 @@ fn spawn_step_reporter(
     total_started: std::time::Instant,
 ) -> (std::sync::mpsc::Sender<()>, std::thread::JoinHandle<()>) {
     let (stop_tx, stop_rx) = std::sync::mpsc::channel();
-    let reporter = std::thread::spawn(move || loop {
-        match stop_rx.recv_timeout(std::time::Duration::from_secs(15)) {
-            Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                let step_elapsed_ms = now_elapsed_ms(step_started);
-                let total_elapsed_ms = now_elapsed_ms(total_started);
-                let message = step_heartbeat_message(step, step_elapsed_ms);
-                let _ = update_running_step_heartbeat(
-                    &settings,
-                    &pipeline_run_id,
-                    step_index,
-                    &message,
-                    step_elapsed_ms,
-                    total_elapsed_ms,
-                );
-                let _ = append_log(
-                    &settings,
-                    &pipeline_run_id,
-                    "info",
-                    Some(step.name),
-                    &message,
-                    total_elapsed_ms,
-                );
+    let reporter = std::thread::spawn(move || {
+        let mut consecutive_idle_samples = 0_u32;
+        loop {
+            match stop_rx.recv_timeout(std::time::Duration::from_secs(15)) {
+                Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    let step_elapsed_ms = now_elapsed_ms(step_started);
+                    let total_elapsed_ms = now_elapsed_ms(total_started);
+                    let (message, level) = if step.name == "dws_ads_aggregate" {
+                        match probe_dws_sql_activity(&settings, &pipeline_run_id) {
+                            Ok(snapshot) => {
+                                if snapshot.active_statements.is_empty() {
+                                    consecutive_idle_samples =
+                                        consecutive_idle_samples.saturating_add(1);
+                                } else {
+                                    consecutive_idle_samples = 0;
+                                }
+                                dws_sql_activity_message(
+                                    step,
+                                    step_elapsed_ms,
+                                    Ok(&snapshot),
+                                    consecutive_idle_samples,
+                                )
+                            }
+                            Err(err) => dws_sql_activity_message(
+                                step,
+                                step_elapsed_ms,
+                                Err(&err),
+                                consecutive_idle_samples,
+                            ),
+                        }
+                    } else {
+                        (step_heartbeat_message(step, step_elapsed_ms), "info")
+                    };
+                    let _ = update_running_step_heartbeat(
+                        &settings,
+                        &pipeline_run_id,
+                        step_index,
+                        &message,
+                        step_elapsed_ms,
+                        total_elapsed_ms,
+                    );
+                    let _ = append_log(
+                        &settings,
+                        &pipeline_run_id,
+                        level,
+                        Some(step.name),
+                        &message,
+                        total_elapsed_ms,
+                    );
+                }
             }
         }
     });
@@ -1324,7 +1473,7 @@ fn active_batch_statements(
                 .any(|needle| normalized.contains(needle))
                 .then(|| {
                     format!(
-                        "connection={id}, seconds={seconds}, state={}, sql={}",
+                        "connection_id={id}, sql_elapsed_seconds={seconds}, mysql_state={}, sql={}",
                         state.unwrap_or_else(|| "-".to_string()),
                         sql.chars().take(240).collect::<String>()
                     )
@@ -2237,8 +2386,9 @@ pub fn import_pipeline_get_logs(
 #[cfg(test)]
 mod tests {
     use super::{
-        final_status_for_step_failure, pipeline_plan, raw_import_heartbeat_message,
-        raw_import_stall_hint, step_heartbeat_message, PipelineOutcome, AGGREGATE_SUBTASKS,
+        dws_sql_activity_message, final_status_for_step_failure, pipeline_plan,
+        raw_import_heartbeat_message, raw_import_stall_hint, step_heartbeat_message,
+        DwsSqlActivitySnapshot, PipelineOutcome, PipelineStepDef, AGGREGATE_SUBTASKS,
         REBUILD_PIPELINE_STEPS, RESUME_PIPELINE_STEPS,
     };
 
@@ -2362,5 +2512,41 @@ mod tests {
         assert!(message.contains("2 分 15 秒"));
         assert!(message.contains("仅表示应用线程可写日志"));
         assert!(message.contains("不等同于当前 SQL 一定存活"));
+    }
+
+    #[test]
+    fn dws_heartbeat_reports_confirmed_mysql_statement() {
+        let step = PipelineStepDef {
+            name: "dws_ads_aggregate",
+            label: "DWS/ADS/V2 重建",
+        };
+        let snapshot = DwsSqlActivitySnapshot {
+            active_statements: vec!["connection_id=42, sql_elapsed_seconds=19, mysql_state=executing, sql=INSERT INTO dws_x".to_string()],
+            aggregation_lock_connection_id: Some(40),
+            checkpoint_context: "当前子任务=app_rank（19 秒）".to_string(),
+        };
+        let (message, level) = dws_sql_activity_message(step, 40_000, Ok(&snapshot), 0);
+        assert_eq!(level, "info");
+        assert!(message.contains("SQL 已确认存活"));
+        assert!(message.contains("connection_id=42"));
+        assert!(message.contains("当前子任务=app_rank"));
+    }
+
+    #[test]
+    fn dws_heartbeat_warns_after_three_idle_samples() {
+        let step = PipelineStepDef {
+            name: "dws_ads_aggregate",
+            label: "DWS/ADS/V2 重建",
+        };
+        let snapshot = DwsSqlActivitySnapshot {
+            active_statements: Vec::new(),
+            aggregation_lock_connection_id: Some(40),
+            checkpoint_context: "当前子任务=app_rank（1 分 2 秒）".to_string(),
+        };
+        let (message, level) = dws_sql_activity_message(step, 62_000, Ok(&snapshot), 3);
+        assert_eq!(level, "warning");
+        assert!(message.contains("连续 3 次"));
+        assert!(message.contains("任务疑似停滞"));
+        assert!(message.contains("connection_id=40"));
     }
 }
