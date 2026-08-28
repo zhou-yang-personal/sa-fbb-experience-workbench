@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.64
+1.0.65
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,14 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → CLEAN/DWD → Post-clean Quality Gate → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.65 update
+
+- Fixed execution-log drawer overflow by constraining every nested grid, list, entry and message block to the drawer's content width.
+- Split filtering controls from copy actions so buttons wrap as a group instead of forcing a five-column toolbar beyond the frame.
+- Long SQL, command names, timestamps and errors now wrap safely; each message keeps its bounded vertical scrolling behavior.
+- No database, aggregation, dependency or lock-file behavior changed. Live Windows/WebView2 visual verification remains pending.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.64 update
 

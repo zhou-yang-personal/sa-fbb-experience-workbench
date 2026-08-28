@@ -69,15 +69,19 @@ export function ExecutionLog({ log, compact = false }: ExecutionLogProps) {
       </div>}
 
       <div className="table-toolbar log-toolbar">
-        <input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Search command / field / error / result" />
-        <select value={filter} onChange={(e) => setFilter(e.target.value as LogFilter)}>
-          <option value="all">All status</option>
-          <option value="success">Success only</option>
-          <option value="failure">Failure only</option>
-        </select>
-        <button type="button" onClick={() => { setFilter('all'); setKeyword(''); }}>清空筛选</button>
-        <button type="button" disabled={!failedRows.length} onClick={() => copyText(failedText)}>复制失败信息</button>
-        <button type="button" disabled={!log.length} onClick={() => copyText(allText)}>复制全部日志</button>
+        <div className="log-toolbar-fields">
+          <input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Search command / field / error / result" />
+          <select value={filter} onChange={(e) => setFilter(e.target.value as LogFilter)}>
+            <option value="all">All status</option>
+            <option value="success">Success only</option>
+            <option value="failure">Failure only</option>
+          </select>
+        </div>
+        <div className="log-toolbar-actions">
+          <button type="button" onClick={() => { setFilter('all'); setKeyword(''); }}>清空筛选</button>
+          <button type="button" disabled={!failedRows.length} onClick={() => copyText(failedText)}>复制失败信息</button>
+          <button type="button" disabled={!log.length} onClick={() => copyText(allText)}>复制全部日志</button>
+        </div>
       </div>
 
       <div className="log-list structured-log-list">

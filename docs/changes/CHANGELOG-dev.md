@@ -1,5 +1,20 @@
 # CHANGELOG-dev
 
+## 1.0.65 - 2026-08-28
+
+### Fixed
+
+- Constrained the execution-log drawer, toolbar, list, entries and message blocks to the available content width.
+- Split search/status controls from wrapping copy actions so the toolbar no longer overflows at intermediate widths.
+- Made long SQL, command names, timestamps, errors and result previews wrap inside the frame while retaining bounded vertical scrolling.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-28.
+- `npm run build`: passed on 2026-08-28.
+- No database, aggregation, dependency or lock-file changes.
+- Live Windows/WebView2 visual verification remains pending.
+
 ## 1.0.64 - 2026-08-28
 
 ### Fixed
