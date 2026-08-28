@@ -13,8 +13,36 @@ fn order_sql(sort_by: &str) -> &'static str {
     }
 }
 
+fn row_string(row: &mysql::Row, index: usize, fallback: &str) -> String {
+    row.get_opt::<Option<String>, _>(index)
+        .and_then(Result::ok)
+        .flatten()
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn row_i64(row: &mysql::Row, index: usize) -> i64 {
+    row.get_opt::<Option<i64>, _>(index)
+        .and_then(Result::ok)
+        .flatten()
+        .unwrap_or_default()
+}
+
+fn row_f64(row: &mysql::Row, index: usize) -> f64 {
+    row_optional_f64(row, index).unwrap_or_default()
+}
+
+fn row_optional_f64(row: &mysql::Row, index: usize) -> Option<f64> {
+    row.get_opt::<Option<f64>, _>(index)
+        .and_then(Result::ok)
+        .flatten()
+}
+
 #[tauri::command]
 pub fn analytics_get_app_rank(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
+    crate::command_guard::run("analytics_get_app_rank", || analytics_get_app_rank_inner(req))
+}
+
+fn analytics_get_app_rank_inner(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
     let run_id = req.run_id();
     let mut conn = db::conn(&req.settings)?;
     let page_size = req.page_size(80, 500);
@@ -53,26 +81,26 @@ pub fn analytics_get_app_rank(req: DashboardRequest) -> Result<Vec<MetricCard>, 
                 .map(|row| {
                     let row = row
                         .map_err(|err| format!("failed to decode V2 App experience row: {err}"))?;
-                    let category: String = row.get(0).unwrap_or_default();
-                    let app_name: String = row.get(1).unwrap_or_default();
-                    let user_type: String = row.get(2).unwrap_or_default();
-                    let observed_users: i64 = row.get(3).unwrap_or_default();
-                    let eligible_users: i64 = row.get(4).unwrap_or_default();
-                    let valid_obs: i64 = row.get(5).unwrap_or_default();
-                    let poor_obs: i64 = row.get(6).unwrap_or_default();
-                    let poor_obs_rate: Option<f64> = row.get(7);
-                    let ever_users: i64 = row.get(8).unwrap_or_default();
-                    let ever_rate: Option<f64> = row.get(9);
-                    let persistent_users: i64 = row.get(10).unwrap_or_default();
-                    let persistent_rate: Option<f64> = row.get(11);
-                    let severe_users: i64 = row.get(12).unwrap_or_default();
-                    let severe_rate: Option<f64> = row.get(13);
-                    let sample_status: String = row.get(14).unwrap_or_default();
-                    let attention_level: String = row.get(15).unwrap_or_default();
-                    let issue: String = row.get(16).unwrap_or_default();
-                    let traffic_gb: f64 = row.get(17).unwrap_or_default();
-                    let duration_hours: f64 = row.get(18).unwrap_or_default();
-                    let policy_version: i64 = row.get(19).unwrap_or_default();
+                    let category = row_string(&row, 0, "UNKNOWN");
+                    let app_name = row_string(&row, 1, "ALL");
+                    let user_type = row_string(&row, 2, "UNKNOWN");
+                    let observed_users = row_i64(&row, 3);
+                    let eligible_users = row_i64(&row, 4);
+                    let valid_obs = row_i64(&row, 5);
+                    let poor_obs = row_i64(&row, 6);
+                    let poor_obs_rate = row_optional_f64(&row, 7);
+                    let ever_users = row_i64(&row, 8);
+                    let ever_rate = row_optional_f64(&row, 9);
+                    let persistent_users = row_i64(&row, 10);
+                    let persistent_rate = row_optional_f64(&row, 11);
+                    let severe_users = row_i64(&row, 12);
+                    let severe_rate = row_optional_f64(&row, 13);
+                    let sample_status = row_string(&row, 14, "INSUFFICIENT_SAMPLE");
+                    let attention_level = row_string(&row, 15, "UNCLASSIFIED");
+                    let issue = row_string(&row, 16, "");
+                    let traffic_gb = row_f64(&row, 17);
+                    let duration_hours = row_f64(&row, 18);
+                    let policy_version = row_i64(&row, 19);
                     let rate = |value: Option<f64>| {
                         value
                             .map(|item| format!("{item:.4}"))
@@ -127,21 +155,21 @@ pub fn analytics_get_app_rank(req: DashboardRequest) -> Result<Vec<MetricCard>, 
             return rows
                 .map(|row| {
                     let row = row.map_err(|err| format!("failed to decode analytics app ADS row: {err}"))?;
-                    let category: String = row.get(0).unwrap_or_default();
-                    let app_name: String = row.get(1).unwrap_or_default();
-                    let user_type: String = row.get(2).unwrap_or_default();
-                    let users: i64 = row.get(3).unwrap_or_default();
-                    let gb: f64 = row.get(4).unwrap_or_default();
-                    let hours: f64 = row.get(5).unwrap_or_default();
-                    let poor_users: i64 = row.get(6).unwrap_or_default();
-                    let poor_pct: f64 = row.get(7).unwrap_or_default();
-                    let vmos: f64 = row.get(8).unwrap_or_default();
-                    let mos: f64 = row.get(9).unwrap_or_default();
-                    let subscriber_rtt: f64 = row.get(10).unwrap_or_default();
-                    let network_rtt: f64 = row.get(11).unwrap_or_default();
-                    let user_loss: f64 = row.get(12).unwrap_or_default();
-                    let network_loss: f64 = row.get(13).unwrap_or_default();
-                    let issue: String = row.get(14).unwrap_or_default();
+                    let category = row_string(&row, 0, "UNKNOWN");
+                    let app_name = row_string(&row, 1, "ALL");
+                    let user_type = row_string(&row, 2, "UNKNOWN");
+                    let users = row_i64(&row, 3);
+                    let gb = row_f64(&row, 4);
+                    let hours = row_f64(&row, 5);
+                    let poor_users = row_i64(&row, 6);
+                    let poor_pct = row_f64(&row, 7);
+                    let vmos = row_f64(&row, 8);
+                    let mos = row_f64(&row, 9);
+                    let subscriber_rtt = row_f64(&row, 10);
+                    let network_rtt = row_f64(&row, 11);
+                    let user_loss = row_f64(&row, 12);
+                    let network_loss = row_f64(&row, 13);
+                    let issue = row_string(&row, 14, "");
                     Ok(MetricCard {
                         label: format!("{category} {app_name} {user_type}"),
                         value: users.to_string(),
@@ -157,9 +185,19 @@ pub fn analytics_get_app_rank(req: DashboardRequest) -> Result<Vec<MetricCard>, 
         "dws_app_category_daily",
     )?;
     let sql = format!("SELECT COALESCE(app_category,'UNKNOWN') AS app_category, COALESCE(user_type,'UNKNOWN') AS user_type, CAST(SUM(active_users) AS SIGNED) AS users, CAST(ROUND(COALESCE(SUM(total_download_gb),0),2) AS DOUBLE) AS traffic_gb, CAST(ROUND(COALESCE(SUM(total_game_hours),0),2) AS DOUBLE) AS duration_hours FROM `{table}` WHERE import_batch_id=? AND (? IS NULL OR COALESCE(app_category,'UNKNOWN') LIKE ? OR COALESCE(user_type,'UNKNOWN') LIKE ?) GROUP BY COALESCE(app_category,'UNKNOWN'), COALESCE(user_type,'UNKNOWN') HAVING users >= ? ORDER BY {} LIMIT ? OFFSET ?", order_sql(&req.sort_by()));
-    conn.exec_map(sql, (&req.import_batch_id, keyword.clone(), keyword.clone(), keyword, req.min_value(), page_size, offset), |(category, user_type, users, gb, hours): (String, String, i64, f64, f64)| MetricCard {
-        label: format!("{category} {user_type}"),
-        value: users.to_string(),
-        hint: format!("source=dws_app_category_daily, app_category={category}, user_type={user_type}, users={users}, traffic_gb={gb:.2}, duration_hours={hours:.2}, page_size={page_size}, offset={offset}"),
-    }).map_err(|err| format!("failed to query analytics app rank: {err}"))
+    let rows = conn.exec_iter(sql, (&req.import_batch_id, keyword.clone(), keyword.clone(), keyword, req.min_value(), page_size, offset))
+        .map_err(|err| format!("failed to query analytics app rank: {err}"))?;
+    rows.map(|row| {
+        let row = row.map_err(|err| format!("failed to decode analytics app fallback row: {err}"))?;
+        let category = row_string(&row, 0, "UNKNOWN");
+        let user_type = row_string(&row, 1, "UNKNOWN");
+        let users = row_i64(&row, 2);
+        let gb = row_f64(&row, 3);
+        let hours = row_f64(&row, 4);
+        Ok(MetricCard {
+            label: format!("{category} {user_type}"),
+            value: users.to_string(),
+            hint: format!("source=dws_app_category_daily, app_category={category}, app_name=ALL, user_type={user_type}, users={users}, traffic_gb={gb:.2}, duration_hours={hours:.2}, sample_status=UNAVAILABLE, attention_level=UNCLASSIFIED, page_size={page_size}, offset={offset}"),
+        })
+    }).collect()
 }

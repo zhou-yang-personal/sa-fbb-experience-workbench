@@ -6,6 +6,10 @@ use crate::models::{DashboardRequest, MetricCard};
 
 #[tauri::command]
 pub fn analytics_get_lead_evidence_page(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
+    crate::command_guard::run("analytics_get_lead_evidence_page", || analytics_get_lead_evidence_page_inner(req))
+}
+
+fn analytics_get_lead_evidence_page_inner(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
     let run_id = req.run_id();
     let mut conn = db::conn(&req.settings)?;
     let page_size = req.page_size(200, 500);

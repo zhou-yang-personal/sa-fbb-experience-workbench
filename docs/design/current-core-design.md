@@ -1,5 +1,13 @@
 # SA FBB Experience Workbench｜当前核心架构设计
 
+## 1.0.59 全量洞察与问题高亮
+
+体验总览是完整洞察入口，不以 Finding 替代全量分布。总览显式加载 ADS/DWS 后同时展示 App 组合状态、用户覆盖、业务规模、持续问题、用户需求、接入趋势、网络/路径证据和机会分层；Findings 保留为独立的异常清单和 Investigation 入口。
+
+应用体验的展示粒度为 `App × Access Type`。所有已物化组合必须保留，前端直接使用当前 analysis run 绑定策略生成的 `sample_status` 和 `attention_level` 高亮 Normal、Attention、Severe、Insufficient Sample 与 Legacy/Unclassified，禁止在 React 中另设隐藏问题阈值。样本不足与空指标不得按 0 或正常展示。
+
+结构化看板查询必须为只读操作并使用有界 ADS/DWS 结果。命令边界捕获历史数据类型转换 panic，单个数据集失败只能降级为可见错误，不能终止桌面进程；schema migration 只能出现在初始化或显式维护流程，不能由“加载当前看板”触发。
+
 ## 1. 设计结论
 
 本项目定位为 **SA 家宽应用体验数据本地分析工作台**，不是普通 BI。第一阶段目标是把 SA TCP / Game CSV 大文件在本地稳定入库、库内清洗、聚合分析，并输出 Cable-to-Fiber 迁转升套机会名单和统计看板。

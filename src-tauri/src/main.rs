@@ -16,6 +16,7 @@ mod analytics_network_commands;
 mod analytics_user_commands;
 mod batch_delete_commands;
 mod batch_tables;
+mod command_guard;
 mod config_commands;
 mod dashboard_commands;
 mod dataset_profile_commands;

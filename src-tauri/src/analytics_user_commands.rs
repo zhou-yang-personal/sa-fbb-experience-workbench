@@ -19,6 +19,10 @@ fn order_sql(sort_by: &str) -> &'static str {
 
 #[tauri::command]
 pub fn analytics_get_user_profiles(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
+    crate::command_guard::run("analytics_get_user_profiles", || analytics_get_user_profiles_inner(req))
+}
+
+fn analytics_get_user_profiles_inner(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
     let run_id = req.run_id();
     let mut conn = db::conn(&req.settings)?;
     let page_size = req.page_size(160, 500);
@@ -64,6 +68,10 @@ pub fn analytics_get_user_profiles(req: DashboardRequest) -> Result<Vec<MetricCa
 
 #[tauri::command]
 pub fn analytics_get_user_summary(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
+    crate::command_guard::run("analytics_get_user_summary", || analytics_get_user_summary_inner(req))
+}
+
+fn analytics_get_user_summary_inner(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
     let run_id = req.run_id();
     let mut conn = db::conn(&req.settings)?;
     let table = batch_tables::resolve_table(

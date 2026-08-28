@@ -9,6 +9,7 @@ import { chartExplanationCatalog, type ChartExplanationId } from './chartExplana
 import type { WorkbenchController } from './useWorkbenchController';
 
 type ChartKind = 'bar' | 'line' | 'donut';
+type InsightStatus = 'healthy' | 'watch' | 'problem' | 'insufficient' | 'unclassified';
 export type AnalyticsTab = 'overview' | 'apps' | 'quality' | 'cable' | 'users' | 'leads';
 
 type StructuredDataset = {
@@ -38,6 +39,7 @@ type ChartPoint = {
   label: string;
   value: number;
   series?: string;
+  status?: InsightStatus;
   source?: MetricCard;
 };
 
@@ -82,7 +84,7 @@ const emptyDataset: StructuredDataset = {
 };
 
 const viewDatasets: Record<AnalyticsTab, DatasetKey[]> = {
-  overview: ['coverage', 'kpis', 'appRank', 'networkHotspots', 'leadSummary', 'hourlyTrend'],
+  overview: ['coverage', 'kpis', 'appRank', 'hourlyTrend', 'networkHotspots', 'userSummary', 'leadSummary'],
   apps: ['coverage', 'appRank'],
   quality: ['coverage', 'networkHotspots'],
   cable: ['coverage', 'hourlyTrend'],
@@ -111,8 +113,8 @@ function hasMeaningfulEvidence(key: DatasetKey, rows: MetricCard[]) {
 }
 
 const pageCopy: Record<AnalyticsTab, { eyebrow: string; title: string; description: string }> = {
-  overview: { eyebrow: 'Decision cockpit', title: '经营与体验总览', description: '先确认数据可信度，再查看问题影响、网络行动和合格机会。' },
-  apps: { eyebrow: 'Application experience', title: '应用体验', description: '按真实 App、接入类型和问题侧识别受影响用户与业务需求。' },
+  overview: { eyebrow: 'Comprehensive insights', title: '全量体验洞察', description: '保留完整业务与体验分布，在同一视图中高亮关注项和严重项，再进入问题调查。' },
+  apps: { eyebrow: 'Application portfolio', title: '应用体验全景', description: '展示全部 App × 接入类型组合及业务规模、样本、体验状态；问题项高亮，但正常项不会被隐藏。' },
   quality: { eyebrow: 'Network / path evidence', title: '网络 / 路径证据', description: '只在真实字段与足够样本支持时展示可疑聚集；缺失拓扑不包装为热点或已确认根因。' },
   cable: { eyebrow: 'Access benchmark', title: 'Cable vs FTTH', description: '在相同时间口径下比较速率、时延、丢包和体验结果。' },
   users: { eyebrow: 'User evidence', title: '用户洞察', description: '查看用户需求、体验、接入识别和机会证据，而不是只看一个评分。' },
@@ -132,6 +134,23 @@ function textFromHint(row: MetricCard, key: string, fallback = '') {
   return parseMetricHint(row.hint)[key] || fallback;
 }
 
+function appInsightStatus(row: MetricCard): InsightStatus {
+  const detail = parseMetricHint(row.hint);
+  if (detail.sample_status === 'INSUFFICIENT_SAMPLE') return 'insufficient';
+  if (detail.attention_level === 'SEVERE') return 'problem';
+  if (detail.attention_level === 'ATTENTION') return 'watch';
+  if (detail.attention_level === 'NORMAL' && detail.sample_status === 'SUFFICIENT') return 'healthy';
+  return 'unclassified';
+}
+
+const insightStatusMeta: Record<InsightStatus, { zh: string; en: string; color: string; rank: number }> = {
+  problem: { zh: '问题', en: 'Severe', color: '#d92d20', rank: 0 },
+  watch: { zh: '关注', en: 'Attention', color: '#f79009', rank: 1 },
+  healthy: { zh: '正常', en: 'Normal', color: '#12b76a', rank: 2 },
+  insufficient: { zh: '样本不足', en: 'Insufficient', color: '#98a2b3', rank: 3 },
+  unclassified: { zh: '未分级', en: 'Legacy / unavailable', color: '#2e90fa', rank: 4 },
+};
+
 function compact(value: number) {
   if (!Number.isFinite(value)) return '-';
   if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
@@ -148,8 +167,30 @@ function appPoints(rows: MetricCard[], key: string): ChartPoint[] {
     const app = textFromHint(row, 'app_name', row.label);
     const requiresSufficientSample = ['poor_experience_users', 'poor_experience_user_pct', 'persistent_poor_users', 'persistent_poor_user_rate_pct', 'severe_poor_user_rate_pct'].includes(key);
     const excluded = requiresSufficientSample && detail.sample_status === 'INSUFFICIENT_SAMPLE';
-    return { label: `${app} · ${access}`, value: excluded ? 0 : fromHint(row, key), series: access, source: row };
+    return { label: `${app} · ${access}`, value: excluded ? 0 : fromHint(row, key), series: access, status: appInsightStatus(row), source: row };
   }).filter((row) => row.value > 0);
+}
+
+function appPopulationPoints(rows: MetricCard[], key: 'eligible_users' | 'traffic_gb'): ChartPoint[] {
+  return rows.map((row) => {
+    const app = textFromHint(row, 'app_name', row.label);
+    const access = textFromHint(row, 'user_type', 'UNKNOWN');
+    const value = key === 'eligible_users'
+      ? fromHint(row, 'eligible_users') || fromHint(row, 'users')
+      : fromHint(row, key);
+    return { label: `${app} · ${access}`, value, series: access, status: appInsightStatus(row), source: row };
+  }).filter((row) => row.value > 0);
+}
+
+function appStatusPoints(rows: MetricCard[]): ChartPoint[] {
+  const counts = rows.reduce<Record<InsightStatus, number>>((result, row) => {
+    result[appInsightStatus(row)] += 1;
+    return result;
+  }, { healthy: 0, watch: 0, problem: 0, insufficient: 0, unclassified: 0 });
+  return (Object.keys(counts) as InsightStatus[])
+    .filter((status) => counts[status] > 0)
+    .sort((left, right) => insightStatusMeta[left].rank - insightStatusMeta[right].rank)
+    .map((status) => ({ label: insightStatusMeta[status].zh, value: counts[status], status }));
 }
 
 function hotspotPoints(rows: MetricCard[], key: string): ChartPoint[] {
@@ -261,7 +302,10 @@ function exportSections(filtered: ReturnType<typeof filteredDataset>): ExportSec
       title: pageCopy.overview.title,
       description: pageCopy.overview.description,
       charts: [
-        { id: 'overview-app-users', title: '问题 App 持续差体验用户', subtitle: '满足持续性与最低样本规则的唯一用户', explanationId: 'app_affected_users', kind: 'bar', points: appPoints(filtered.appRank, 'persistent_poor_users') },
+        { id: 'overview-app-status', title: '全部 App 体验状态构成', subtitle: '完整 App × 接入组合，问题项在全量分布中高亮', explanationId: 'app_portfolio_status', kind: 'donut', points: appStatusPoints(filtered.appRank) },
+        { id: 'overview-app-population', title: 'App 用户覆盖全景', subtitle: '按合格用户规模展示，颜色代表策略状态', explanationId: 'app_population', kind: 'bar', points: appPopulationPoints(filtered.appRank, 'eligible_users') },
+        { id: 'overview-app-users', title: '高亮问题 App 持续差体验用户', subtitle: '满足持续性与最低样本规则的唯一用户', explanationId: 'app_affected_users', kind: 'bar', points: appPoints(filtered.appRank, 'persistent_poor_users') },
+        { id: 'overview-user-demand', title: '全量用户需求分层', subtitle: '完整人群的需求结构', explanationId: 'user_demand_band', kind: 'bar', points: cohortPoints(filtered.userSummary, 'demand_band') },
         { id: 'overview-hotspots', title: '网络 / 路径可疑聚集', subtitle: '只有真实网络对象和足够样本才可解释为热点', explanationId: 'topology_poor_user_rate', kind: 'bar', points: hotspotPoints(filtered.networkHotspots, 'severity') },
         { id: 'overview-leads', title: '机会与排除分层', subtitle: '按用户计数；A0/A2 不得进入直接营销', explanationId: 'lead_stage', kind: 'bar', points: leadStages },
         { id: 'overview-hourly-rate', title: '典型日接入类型速率', subtitle: '按活跃用户加权的 7 日小时均值，Mbps', explanationId: 'typical_effective_rate', kind: 'line', points: typicalHourlyPoints(filtered.hourlyTrend, 'effective_mbps') },
@@ -272,7 +316,9 @@ function exportSections(filtered: ReturnType<typeof filteredDataset>): ExportSec
       title: pageCopy.apps.title,
       description: pageCopy.apps.description,
       charts: [
-        { id: 'apps-users', title: 'App 持续差体验用户', subtitle: '满足持续性与最低样本规则的唯一用户', explanationId: 'app_affected_users', kind: 'bar', points: appPoints(filtered.appRank, 'persistent_poor_users') },
+        { id: 'apps-status', title: '全部 App 体验状态构成', subtitle: '完整 App × 接入组合，问题项在全量分布中高亮', explanationId: 'app_portfolio_status', kind: 'donut', points: appStatusPoints(filtered.appRank) },
+        { id: 'apps-population', title: 'App 用户覆盖全景', subtitle: '按合格用户规模展示，颜色代表策略状态', explanationId: 'app_population', kind: 'bar', points: appPopulationPoints(filtered.appRank, 'eligible_users') },
+        { id: 'apps-users', title: '高亮：持续差体验用户', subtitle: '满足持续性与最低样本规则的唯一用户', explanationId: 'app_affected_users', kind: 'bar', points: appPoints(filtered.appRank, 'persistent_poor_users') },
         { id: 'apps-persistent-rate', title: 'App 持续差体验用户占比', subtitle: '持续差体验用户 / 合格用户，单位 %', explanationId: 'app_affected_user_rate', kind: 'bar', points: appPoints(filtered.appRank, 'persistent_poor_user_rate_pct') },
         { id: 'apps-observation-rate', title: 'App 差体验观测占比', subtitle: '差体验观测 / 有效观测，单位 %', explanationId: 'app_poor_observation_rate', kind: 'bar', points: appPoints(filtered.appRank, 'poor_observation_rate_pct') },
         { id: 'apps-ever-rate', title: 'App 曾受影响用户占比', subtitle: '至少异常一次的合格用户 / 合格用户，单位 %', explanationId: 'app_ever_affected_user_rate', kind: 'bar', points: appPoints(filtered.appRank, 'ever_affected_user_rate_pct') },
@@ -330,6 +376,7 @@ function chartOption(kind: ChartKind, title: string, subtitle: string, incoming:
   const grid = '#e7ecf3';
   const palette = ['#2563eb', '#d97706', '#64748b', '#7c3aed', '#0f766e'];
   const points = kind === 'line' ? incoming : [...incoming].sort((a, b) => b.value - a.value).slice(0, 12);
+  const pointColor = (point: ChartPoint) => point.status ? insightStatusMeta[point.status].color : palette[0];
   const base = {
     color: palette,
     title: { text: title, subtext: subtitle, textStyle: { color: ink, fontSize: 16, fontWeight: 650 }, subtextStyle: { color: muted, fontSize: 11, lineHeight: 16 } },
@@ -342,7 +389,7 @@ function chartOption(kind: ChartKind, title: string, subtitle: string, incoming:
     return {
       ...base,
       legend: { bottom: 0, type: 'scroll', textStyle: { color: muted } },
-      series: [{ type: 'pie', radius: ['48%', '70%'], center: ['50%', '48%'], data: points.map((point) => ({ name: point.label, value: point.value })), label: { color: ink, formatter: '{b}\n{c}' } }],
+      series: [{ type: 'pie', radius: ['48%', '70%'], center: ['50%', '48%'], data: points.map((point) => ({ name: point.label, value: point.value, itemStyle: { color: pointColor(point) } })), label: { color: ink, formatter: '{b}\n{c}' } }],
     };
   }
   if (kind === 'line') {
@@ -368,7 +415,7 @@ function chartOption(kind: ChartKind, title: string, subtitle: string, incoming:
     grid: { left: 150, right: 28, top: 76, bottom: 34 },
     xAxis: { type: 'value', min: 0, axisLabel: { color: muted }, splitLine: { lineStyle: { color: grid } } },
     yAxis: { type: 'category', data: points.map((point) => point.label).reverse(), axisLabel: { color: ink, width: 130, overflow: 'truncate' }, axisLine: { show: false } },
-    series: [{ type: 'bar', data: points.map((point) => point.value).reverse(), barMaxWidth: 22, itemStyle: { color: palette[0], borderRadius: [0, 4, 4, 0] }, label: { show: true, position: 'right', color: muted, formatter: ({ value }: { value: number }) => compact(value) } }],
+    series: [{ type: 'bar', data: points.map((point) => ({ value: point.value, itemStyle: { color: pointColor(point), borderRadius: [0, 4, 4, 0] } })).reverse(), barMaxWidth: 22, label: { show: true, position: 'right', color: muted, formatter: ({ value }: { value: number }) => compact(value) } }],
   };
 }
 
@@ -410,6 +457,60 @@ function AnalyticsChart({ title, subtitle, explanationId, kind, points, onSelect
 
 function KpiStrip({ items }: { items: Array<{ label: string; value: string; hint: string; tone?: string }> }) {
   return <section className="analytics-kpi-strip">{items.map((item) => <article key={item.label} className={`analytics-kpi-card ${item.tone ? `tone-${item.tone}` : ''}`}><span>{item.label}</span><strong>{item.value}</strong><small>{item.hint}</small></article>)}</section>;
+}
+
+function displayMetric(detail: Record<string, string>, key: string, suffix = '') {
+  const value = detail[key];
+  if (value === undefined || value === '' || value === 'NA' || value === 'NULL') return '—';
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return value;
+  return `${compact(numeric)}${suffix}`;
+}
+
+function AppPortfolioTable({ rows, onSelect }: { rows: MetricCard[]; onSelect: (row: MetricCard) => void }) {
+  const ordered = useMemo(() => [...rows].sort((left, right) => {
+    const status = insightStatusMeta[appInsightStatus(left)].rank - insightStatusMeta[appInsightStatus(right)].rank;
+    if (status !== 0) return status;
+    return (fromHint(right, 'eligible_users') || fromHint(right, 'users')) - (fromHint(left, 'eligible_users') || fromHint(left, 'users'));
+  }), [rows]);
+  return <article className="analytics-card analytics-table-card app-portfolio-card">
+    <div className="analytics-section-head">
+      <div><h3>全部 App 体验组合</h3><p>每行是 App × 接入类型；完整保留正常、关注、问题、样本不足与旧口径未分级对象。</p></div>
+      <span>{ordered.length} combinations</span>
+    </div>
+    <div className="app-status-legend">
+      {(Object.keys(insightStatusMeta) as InsightStatus[]).map((status) => <span key={status}><i style={{ background: insightStatusMeta[status].color }} />{insightStatusMeta[status].zh} · {insightStatusMeta[status].en}</span>)}
+    </div>
+    <div className="analytics-table-wrap app-portfolio-table-wrap">
+      <table className="analytics-table app-portfolio-table">
+        <thead><tr><th>状态</th><th>App / 分类</th><th>接入</th><th>观测用户</th><th>合格用户</th><th>有效观测</th><th>差观测占比</th><th>持续差用户</th><th>持续差占比</th><th>严重占比</th><th>业务量</th><th>主要证据</th><th>下钻</th></tr></thead>
+        <tbody>
+          {ordered.map((row, index) => {
+            const detail = parseMetricHint(row.hint);
+            const status = appInsightStatus(row);
+            const meta = insightStatusMeta[status];
+            return <tr key={`${row.label}-${index}`} className={`app-status-row status-${status}`}>
+              <td><span className={`app-status-badge status-${status}`}>{meta.zh}</span></td>
+              <td><strong>{detail.app_name || row.label}</strong><small>{detail.app_category || 'UNKNOWN'}</small></td>
+              <td>{detail.user_type || 'UNKNOWN'}</td>
+              <td>{displayMetric(detail, 'observed_users')}</td>
+              <td>{displayMetric(detail, detail.eligible_users === undefined ? 'users' : 'eligible_users')}</td>
+              <td>{displayMetric(detail, 'valid_obs_rows')}</td>
+              <td>{displayMetric(detail, 'poor_observation_rate_pct', '%')}</td>
+              <td>{displayMetric(detail, 'persistent_poor_users')}</td>
+              <td>{displayMetric(detail, 'persistent_poor_user_rate_pct', '%')}</td>
+              <td>{displayMetric(detail, 'severe_poor_user_rate_pct', '%')}</td>
+              <td>{displayMetric(detail, 'traffic_gb', ' GB')}</td>
+              <td title={detail.issue_driver || ''}>{detail.issue_driver || (status === 'healthy' ? '当前策略未标记异常' : '—')}</td>
+              <td><button type="button" onClick={() => onSelect(row)}>加入上下文</button></td>
+            </tr>;
+          })}
+          {!ordered.length && <tr><td colSpan={13}>当前筛选下没有 App 聚合结果。</td></tr>}
+        </tbody>
+      </table>
+    </div>
+    <p className="app-portfolio-note">状态直接读取本次 analysis run 绑定策略生成的 sample_status 与 attention_level；页面不另设隐藏阈值。百分比为“—”表示不可用，不按 0 展示。</p>
+  </article>;
 }
 
 function EvidenceDrawer({ row, onClose }: { row: MetricCard; onClose: () => void }) {
@@ -485,7 +586,7 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
   function loadDataset(key: DatasetKey, importBatchId = c.importBatchId, analysisRunId = c.analysisRunId, settings: MySqlSettings = c.effectiveSettings) {
     if (key === 'coverage') return analyticsStructuredApi.coverage(settings, importBatchId, analysisRunId);
     if (key === 'kpis') return analyticsStructuredApi.kpis(settings, importBatchId, analysisRunId);
-    if (key === 'appRank') return analyticsStructuredApi.appRank(settings, importBatchId, analysisRunId, { pageSize: 200 });
+    if (key === 'appRank') return analyticsStructuredApi.appRank(settings, importBatchId, analysisRunId, { pageSize: 500 });
     if (key === 'hourlyTrend') return analyticsStructuredApi.hourlyTrend(settings, importBatchId, analysisRunId, { pageSize: 500, sortBy: 'hour' });
     if (key === 'networkHotspots') return analyticsStructuredApi.networkHotspots(settings, importBatchId, analysisRunId, { pageSize: 200, sortBy: 'users' });
     if (key === 'userSummary') return analyticsStructuredApi.userSummary(settings, importBatchId, analysisRunId);
@@ -720,19 +821,35 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
   }).length;
   const a1 = leadStages.find((stage) => stage.label.startsWith('A1_'))?.value ?? 0;
   const a2 = leadStages.find((stage) => stage.label.startsWith('A2_'))?.value ?? 0;
-  const issueApps = new Set(filtered.appRank.filter((row) => fromHint(row, 'poor_experience_user_pct') > 0).map((row) => textFromHint(row, 'app_name', row.label))).size;
+  const appStatuses = filtered.appRank.reduce<Record<InsightStatus, number>>((result, row) => {
+    result[appInsightStatus(row)] += 1;
+    return result;
+  }, { healthy: 0, watch: 0, problem: 0, insufficient: 0, unclassified: 0 });
+  const allApps = new Set(filtered.appRank.map((row) => textFromHint(row, 'app_name', row.label))).size;
+  const issueApps = new Set(filtered.appRank
+    .filter((row) => ['watch', 'problem'].includes(appInsightStatus(row)))
+    .map((row) => textFromHint(row, 'app_name', row.label))).size;
   const severeHotspots = new Set(filtered.networkHotspots
     .filter((row) => textFromHint(row, 'bottleneck') === 'NETWORK_SIDE_SEVERE')
     .map((row) => {
       const detail = parseMetricHint(row.hint);
       return [detail.bras, detail.olt, detail.pon].join('|');
     })).size;
-  const kpis = [
+  const overviewKpis = [
     { label: '接入分类观测覆盖率', value: `${coverage.toFixed(1)}%`, hint: '已识别 Cable/FTTH 的用户小时观测 / 全部用户小时观测', tone: coverage < 90 ? 'warning' : 'normal' },
-    { label: '问题 App', value: String(issueApps), hint: '当前筛选下差体验用户占比大于 0 的真实 App' },
+    { label: '全部 App', value: String(allApps), hint: `当前已加载 ${filtered.appRank.length} 个 App × 接入组合，问题项在完整分布中高亮` },
+    { label: '规则标记 App', value: String(issueApps), hint: '本次策略标记为 Attention 或 Severe 的真实 App', tone: issueApps ? 'warning' : 'normal' },
     { label: '网络侧可疑聚集', value: String(severeHotspots), hint: '主问题侧偏网络且存在可识别网络对象；仍需进一步验证', tone: severeHotspots ? 'danger' : 'normal' },
     { label: 'A1 候选', value: String(a1), hint: '仍需 CRM、覆盖和可触达资格校验' },
     { label: 'A2 先修障', value: String(a2), hint: '网络严重异常，禁止直接营销', tone: a2 ? 'warning' : 'normal' },
+  ];
+  const appKpis = [
+    { label: '全部 App', value: String(allApps), hint: `${filtered.appRank.length} 个 App × 接入类型组合` },
+    { label: '正常组合', value: String(appStatuses.healthy), hint: '样本充足，当前策略 attention_level=NORMAL' },
+    { label: '关注组合', value: String(appStatuses.watch), hint: '当前策略 attention_level=ATTENTION', tone: appStatuses.watch ? 'warning' : 'normal' },
+    { label: '问题组合', value: String(appStatuses.problem), hint: '当前策略 attention_level=SEVERE', tone: appStatuses.problem ? 'danger' : 'normal' },
+    { label: '样本不足', value: String(appStatuses.insufficient), hint: '不进入问题排名，但保留在完整视图中' },
+    { label: '未分级', value: String(appStatuses.unclassified), hint: '旧聚合或无 V2 状态；不可按正常解释', tone: appStatuses.unclassified ? 'warning' : 'normal' },
   ];
   const copy = pageCopy[activeView];
   const selectEvidence = (row: MetricCard) => {
@@ -817,24 +934,32 @@ export function AnalyticsDashboard({ c, activeView, batchContext, onOpenImport }
       <article className={gameImported ? 'is-ready' : 'is-info'}><span>游戏数据覆盖</span><strong>{gameImported ? '已导入' : '本批次未导入'}</strong><small>{gameImported ? '游戏时长与 MOS 可用于本次分析。' : '游戏来自独立文件；本次不展示游戏时长/MOS，也不把缺失解释为 0。'}</small></article>
       {(activeView === 'quality' || activeView === 'overview') && <article className={topologyKnownRows > 0 ? 'is-warning' : 'is-info'}><span>网络拓扑覆盖</span><strong>{topologyKnownRows} 个含已知拓扑的聚合节点</strong><small>当前源数据 OLT/PON 缺失时，只能做问题侧与 BRAS 粒度判断，不能下钻到 OLT/PON。</small></article>}
     </section>}
-    <KpiStrip items={kpis} />
+    <KpiStrip items={activeView === 'apps' ? appKpis : overviewKpis} />
 
     {activeView === 'overview' && <div className="analytics-layout">
-      <AnalyticsChart title="问题 App 持续差体验用户" subtitle="满足持续性与最低样本规则的唯一用户；点击查看证据" explanationId="app_affected_users" kind="bar" points={appPoints(filtered.appRank, 'persistent_poor_users')} onSelect={selectEvidence} />
+      <AnalyticsChart title="全部 App 体验状态构成" subtitle="完整 App × 接入组合；问题与关注项高亮，正常和样本不足项均保留" explanationId="app_portfolio_status" kind="donut" points={appStatusPoints(filtered.appRank)} onSelect={selectEvidence} />
+      <AnalyticsChart title="App 用户覆盖全景" subtitle="按合格用户数展示业务覆盖，颜色代表策略状态" explanationId="app_population" kind="bar" points={appPopulationPoints(filtered.appRank, 'eligible_users')} onSelect={selectEvidence} />
+      <AnalyticsChart title="App 业务规模与状态" subtitle="按 TCP 下载流量展示主要 App，问题状态不等同于流量高低" explanationId="app_tcp_traffic" kind="bar" points={appPopulationPoints(filtered.appRank, 'traffic_gb')} onSelect={selectEvidence} />
+      <AnalyticsChart title="高亮问题 App 持续差体验用户" subtitle="从全量组合中突出满足持续性与最低样本规则的影响用户" explanationId="app_affected_users" kind="bar" points={appPoints(filtered.appRank, 'persistent_poor_users')} onSelect={selectEvidence} />
+      <AnalyticsChart title="全量用户需求分层" subtitle="完整人群的需求结构；高需求不等于体验差或可营销" explanationId="user_demand_band" kind="bar" points={cohortPoints(filtered.userSummary, 'demand_band')} onSelect={selectEvidence} />
       <AnalyticsChart title="网络 / 路径可疑聚集率" subtitle="只有真实网络对象和足够样本才可进一步确认热点" explanationId="topology_poor_user_rate" kind="bar" points={hotspotPoints(filtered.networkHotspots, 'severity')} onSelect={selectEvidence} />
       <AnalyticsChart title="机会与排除分层" subtitle="按用户计数；A0/A2 不得进入直接营销" explanationId="lead_stage" kind="bar" points={leadStages} onSelect={selectEvidence} />
       <AnalyticsChart title="典型日接入类型速率" subtitle="按活跃用户加权的 7 日小时均值，Mbps" explanationId="typical_effective_rate" kind="line" points={typicalHourlyPoints(filtered.hourlyTrend, 'effective_mbps')} onSelect={selectEvidence} />
+      <AppPortfolioTable rows={filtered.appRank} onSelect={selectEvidence} />
       <AnalyticsEvidenceTable title="总览指标与来源" rows={data.kpis} />
     </div>}
 
     {activeView === 'apps' && <div className="analytics-layout">
-      <AnalyticsChart title="App 持续差体验用户" subtitle="满足持续性与最低样本规则的唯一用户数" explanationId="app_affected_users" kind="bar" points={appPoints(filtered.appRank, 'persistent_poor_users')} onSelect={selectEvidence} />
+      <AnalyticsChart title="全部 App 体验状态构成" subtitle="完整 App × 接入组合；按已绑定策略分为正常、关注、问题、样本不足和未分级" explanationId="app_portfolio_status" kind="donut" points={appStatusPoints(filtered.appRank)} onSelect={selectEvidence} />
+      <AnalyticsChart title="App 用户覆盖全景" subtitle="按合格用户规模展示全部组合，颜色用于高亮体验状态" explanationId="app_population" kind="bar" points={appPopulationPoints(filtered.appRank, 'eligible_users')} onSelect={selectEvidence} />
+      <AnalyticsChart title="App TCP 下载流量与体验状态" subtitle="业务规模与体验状态放在同一视图；流量高不等于体验差" explanationId="app_tcp_traffic" kind="bar" points={appPopulationPoints(filtered.appRank, 'traffic_gb')} onSelect={selectEvidence} />
+      <AnalyticsChart title="高亮：持续差体验用户" subtitle="仅在全量视图中突出满足持续性与最低样本规则的唯一用户数" explanationId="app_affected_users" kind="bar" points={appPoints(filtered.appRank, 'persistent_poor_users')} onSelect={selectEvidence} />
       <AnalyticsChart title="App 持续差体验用户占比" subtitle="持续差体验用户 / 合格用户，单位 %" explanationId="app_affected_user_rate" kind="bar" points={appPoints(filtered.appRank, 'persistent_poor_user_rate_pct')} onSelect={selectEvidence} />
       <AnalyticsChart title="App 差体验观测占比" subtitle="差体验观测 / 有效观测，单位 %" explanationId="app_poor_observation_rate" kind="bar" points={appPoints(filtered.appRank, 'poor_observation_rate_pct')} onSelect={selectEvidence} />
       <AnalyticsChart title="App 曾受影响用户占比" subtitle="至少异常一次的合格用户 / 合格用户，单位 %" explanationId="app_ever_affected_user_rate" kind="bar" points={appPoints(filtered.appRank, 'ever_affected_user_rate_pct')} onSelect={selectEvidence} />
       <AnalyticsChart title="App 严重差体验用户占比" subtitle="严重差体验用户 / 合格用户，单位 %" explanationId="app_severe_user_rate" kind="bar" points={appPoints(filtered.appRank, 'severe_poor_user_rate_pct')} onSelect={selectEvidence} />
-      <AnalyticsChart title="App TCP 下载流量" subtitle="当前 TCP 文件的下载流量 GB；游戏时长仅在 Game 文件导入后提供" explanationId="app_tcp_traffic" kind="bar" points={appPoints(filtered.appRank, 'traffic_gb')} onSelect={selectEvidence} />
-      <AnalyticsEvidenceTable title="应用体验证据" rows={filtered.appRank} limit={220} />
+      <AppPortfolioTable rows={filtered.appRank} onSelect={selectEvidence} />
+      <AnalyticsEvidenceTable title="应用体验原始聚合证据" rows={filtered.appRank} limit={500} />
     </div>}
 
     {activeView === 'quality' && <div className="analytics-layout">

@@ -10,7 +10,7 @@ import { ExperienceInvestigationHub, type InvestigationHubView } from './Experie
 import type { WorkbenchController } from './useWorkbenchController';
 import { workbenchApi } from './workbenchApi';
 
-type LegacyAnalyticsView = 'apps' | 'quality' | 'cable' | 'users' | 'leads';
+type LegacyAnalyticsView = 'overview' | 'apps' | 'quality' | 'cable' | 'users' | 'leads';
 type AnalyticsView = LegacyAnalyticsView | InvestigationHubView;
 
 export function AnalysisWorkspace({ c, activeView, onOpenImport, onNavigate }: { c: WorkbenchController; activeView: AnalyticsView; onOpenImport: () => void; onNavigate: (view: InvestigationHubView) => void }) {
@@ -212,7 +212,7 @@ export function AnalysisWorkspace({ c, activeView, onOpenImport, onNavigate }: {
         {resultsNotGenerated && <p className="muted-row status-failure-text">当前批次尚未完成分析结果生成，请回到数据导入，完成 CLEAN/DWS/ADS 后再查看。</p>}
       </article>
 
-      {(['overview', 'findings', 'investigation', 'investigations'] as AnalyticsView[]).includes(activeView)
+      {(['findings', 'investigation', 'investigations'] as AnalyticsView[]).includes(activeView)
         ? <ExperienceInvestigationHub c={c} view={activeView as InvestigationHubView} onNavigate={onNavigate} />
         : <AnalyticsDashboard c={c} activeView={activeView as LegacyAnalyticsView} batchContext={selectedBatch} onOpenImport={onOpenImport} />}
 

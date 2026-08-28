@@ -12,6 +12,10 @@ fn run_id(req: &DashboardRequest) -> String {
 
 #[tauri::command]
 pub fn analytics_get_lead_evidence(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
+    crate::command_guard::run("analytics_get_lead_evidence", || analytics_get_lead_evidence_inner(req))
+}
+
+fn analytics_get_lead_evidence_inner(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
     let run_id = run_id(&req);
     let mut conn = db::conn(&req.settings)?;
     let lead_table = batch_tables::resolve_table(
@@ -35,6 +39,10 @@ pub fn analytics_get_lead_evidence(req: DashboardRequest) -> Result<Vec<MetricCa
 
 #[tauri::command]
 pub fn analytics_get_lead_stage_summary(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
+    crate::command_guard::run("analytics_get_lead_stage_summary", || analytics_get_lead_stage_summary_inner(req))
+}
+
+fn analytics_get_lead_stage_summary_inner(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
     let run_id = run_id(&req);
     let mut conn = db::conn(&req.settings)?;
     let detail_table = batch_tables::resolve_table(

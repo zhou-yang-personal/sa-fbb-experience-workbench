@@ -15,8 +15,33 @@ fn order_sql(sort_by: &str) -> &'static str {
     }
 }
 
+fn row_string(row: &mysql::Row, index: usize, fallback: &str) -> String {
+    row.get_opt::<Option<String>, _>(index)
+        .and_then(Result::ok)
+        .flatten()
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn row_i64(row: &mysql::Row, index: usize) -> i64 {
+    row.get_opt::<Option<i64>, _>(index)
+        .and_then(Result::ok)
+        .flatten()
+        .unwrap_or_default()
+}
+
+fn row_f64(row: &mysql::Row, index: usize) -> f64 {
+    row.get_opt::<Option<f64>, _>(index)
+        .and_then(Result::ok)
+        .flatten()
+        .unwrap_or_default()
+}
+
 #[tauri::command]
 pub fn analytics_get_network_hotspots(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
+    crate::command_guard::run("analytics_get_network_hotspots", || analytics_get_network_hotspots_inner(req))
+}
+
+fn analytics_get_network_hotspots_inner(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
     let run_id = req.run_id();
     let mut conn = db::conn(&req.settings)?;
     let page_size = req.page_size(100, 500);
@@ -57,20 +82,20 @@ pub fn analytics_get_network_hotspots(req: DashboardRequest) -> Result<Vec<Metri
             return rows
                 .map(|row| {
                     let row = row.map_err(|err| format!("failed to decode analytics network ADS row: {err}"))?;
-                    let bras: String = row.get(0).unwrap_or_default();
-                    let olt: String = row.get(1).unwrap_or_default();
-                    let pon: String = row.get(2).unwrap_or_default();
-                    let bottleneck: String = row.get(3).unwrap_or_default();
-                    let user_type: String = row.get(4).unwrap_or_default();
-                    let users: i64 = row.get(5).unwrap_or_default();
-                    let severity: f64 = row.get(6).unwrap_or_default();
-                    let gb: f64 = row.get(7).unwrap_or_default();
-                    let sub_rtt: f64 = row.get(8).unwrap_or_default();
-                    let net_rtt: f64 = row.get(9).unwrap_or_default();
-                    let user_loss: f64 = row.get(10).unwrap_or_default();
-                    let net_loss: f64 = row.get(11).unwrap_or_default();
-                    let wifi_delay: f64 = row.get(12).unwrap_or_default();
-                    let action: String = row.get(13).unwrap_or_default();
+                    let bras = row_string(&row, 0, "UNKNOWN");
+                    let olt = row_string(&row, 1, "UNKNOWN");
+                    let pon = row_string(&row, 2, "UNKNOWN");
+                    let bottleneck = row_string(&row, 3, "UNKNOWN");
+                    let user_type = row_string(&row, 4, "UNKNOWN");
+                    let users = row_i64(&row, 5);
+                    let severity = row_f64(&row, 6);
+                    let gb = row_f64(&row, 7);
+                    let sub_rtt = row_f64(&row, 8);
+                    let net_rtt = row_f64(&row, 9);
+                    let user_loss = row_f64(&row, 10);
+                    let net_loss = row_f64(&row, 11);
+                    let wifi_delay = row_f64(&row, 12);
+                    let action = row_string(&row, 13, "MONITOR");
                     Ok(MetricCard {
                         label: format!("{bras} / {olt} / {pon}"),
                         value: format!("{severity:.2}"),

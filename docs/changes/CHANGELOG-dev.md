@@ -1,5 +1,26 @@
 # CHANGELOG-dev
 
+## 1.0.59 - 2026-08-28
+
+### Fixed
+
+- Replaced panic-prone App and network ADS row conversions with nullable fallible decoding and added a command-level panic guard to every structured legacy dashboard query.
+- Removed schema migration work from the dashboard coverage read path; loading a dashboard is now read-only.
+
+### Changed
+
+- Restored Overview as the comprehensive insights entry point while retaining Findings as a dedicated highlighted exception and investigation workflow.
+- Rebuilt Application Experience around the complete App-by-access portfolio, with policy-derived normal, attention, severe, insufficient-sample and legacy-unclassified states.
+- Added full-population App coverage, traffic and status views plus a wide evidence table containing metric numerators, denominators, sample state, policy version and drill-down actions.
+- Increased the bounded App ADS page size from 200 to 500 so the current 246-combination portfolio is not truncated; no RAW/DWD scan is introduced.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-28.
+- `npm run build`: passed on 2026-08-28; the existing ECharts chunk-size warning remains.
+- `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 CARGO_PROFILE_DEV_DEBUG=0 RUSTFLAGS='-C debuginfo=0' cargo check --offline`: passed on 2026-08-28 with existing warnings only.
+- Live Windows/WebView2/customer-MySQL validation remains pending for the 1.0.59 artifact.
+
 ## 1.0.58 - 2026-08-28
 
 ### Fixed

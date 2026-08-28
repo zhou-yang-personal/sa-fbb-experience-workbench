@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.58
+1.0.59
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,15 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.59 update
+
+- Restored the Overview route as a comprehensive, explicitly loaded DWS/ADS dashboard. Findings remains a separate exception list and investigation entry rather than replacing the full insight view.
+- Application Experience now retains every loaded App-by-access combination and highlights policy-derived Attention/Severe states alongside Normal, Insufficient Sample and legacy Unclassified rows.
+- Added full App status composition, eligible-user coverage, traffic context and a numerator/denominator evidence table with shared-context drill-down.
+- Added dashboard command panic isolation and nullable App/network ADS decoding. The coverage query no longer performs migrations during a read action.
+- Frontend type check/build and low-disk Rust check passed on Linux. Live Windows/WebView2 and customer MySQL validation is still required.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.58 update
 

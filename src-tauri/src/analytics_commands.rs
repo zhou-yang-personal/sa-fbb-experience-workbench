@@ -12,6 +12,10 @@ fn run_id(req: &DashboardRequest) -> String {
 
 #[tauri::command]
 pub fn analytics_get_kpi_summary(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
+    crate::command_guard::run("analytics_get_kpi_summary", || analytics_get_kpi_summary_inner(req))
+}
+
+fn analytics_get_kpi_summary_inner(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
     let run_id = run_id(&req);
     let mut conn = db::conn(&req.settings)?;
     let user_table = batch_tables::resolve_table(
@@ -82,8 +86,11 @@ pub fn analytics_get_kpi_summary(req: DashboardRequest) -> Result<Vec<MetricCard
 
 #[tauri::command]
 pub fn analytics_get_data_coverage(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
+    crate::command_guard::run("analytics_get_data_coverage", || analytics_get_data_coverage_inner(req))
+}
+
+fn analytics_get_data_coverage_inner(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
     let mut conn = db::conn(&req.settings)?;
-    crate::migrations::ensure_access_columns_for_table(&mut conn, "meta_access_rule_set")?;
     let raw_tcp =
         batch_tables::resolve_table(&req.settings, &req.import_batch_id, "raw_tcp_detail_import")?;
     let raw_game = batch_tables::resolve_table(

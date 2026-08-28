@@ -16,6 +16,10 @@ fn order_sql(sort_by: &str) -> &'static str {
 
 #[tauri::command]
 pub fn analytics_get_hourly_trend(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
+    crate::command_guard::run("analytics_get_hourly_trend", || analytics_get_hourly_trend_inner(req))
+}
+
+fn analytics_get_hourly_trend_inner(req: DashboardRequest) -> Result<Vec<MetricCard>, String> {
     let run_id = req.run_id();
     let mut conn = db::conn(&req.settings)?;
     let page_size = req.page_size(120, 500);
