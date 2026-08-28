@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS meta_decision_rule_profile (
   severe_app_poor_rate_pct DECIMAL(9,4) NOT NULL,
   severe_app_persistent_user_rate_pct DECIMAL(9,4) NOT NULL,
   severe_app_severe_user_rate_pct DECIMAL(9,4) NOT NULL,
+  mesh_min_coverage_pct DECIMAL(9,4) NOT NULL,
+  mesh_min_rtt_delta_ms DECIMAL(18,6) NOT NULL,
+  mesh_min_loss_delta_pct DECIMAL(18,6) NOT NULL,
   rule_snapshot JSON NULL,
   notes TEXT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -120,6 +123,7 @@ INSERT IGNORE INTO meta_decision_rule_profile (
   attention_app_poor_rate_pct, attention_app_persistent_user_rate_pct,
   severe_app_poor_rate_pct, severe_app_persistent_user_rate_pct,
   severe_app_severe_user_rate_pct,
+  mesh_min_coverage_pct, mesh_min_rtt_delta_ms, mesh_min_loss_delta_pct,
   rule_snapshot, notes, published_at
 ) VALUES (
   'DECISION_RULE_DEFAULT_V1', 1, 'Decision workspace default V1', 'published',
@@ -127,6 +131,7 @@ INSERT IGNORE INTO meta_decision_rule_profile (
   20, 23, 5.0, 10.0, 20.0, 30.0, 10,
   2, 10, 2, 3,
   30, 100, 10.0, 5.0, 40.0, 20.0, 10.0,
+  30.0, 30.0, 1.0,
   JSON_OBJECT(
     'minimum_user_observations',3,
     'minimum_app_users',10,
@@ -154,6 +159,9 @@ INSERT IGNORE INTO meta_decision_rule_profile (
     'severe_app_poor_rate_pct',40.0,
     'severe_app_persistent_user_rate_pct',20.0,
     'severe_app_severe_user_rate_pct',10.0
+    ,'mesh_min_coverage_pct',30.0
+    ,'mesh_min_rtt_delta_ms',30.0
+    ,'mesh_min_loss_delta_pct',1.0
   ),
   'Editable defaults. Clone to a draft, validate, then publish a new immutable version.',
   CURRENT_TIMESTAMP

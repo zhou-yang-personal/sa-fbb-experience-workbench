@@ -39,6 +39,9 @@ pub struct DecisionRuleProfileRow {
     pub severe_app_poor_rate_pct: f64,
     pub severe_app_persistent_user_rate_pct: f64,
     pub severe_app_severe_user_rate_pct: f64,
+    pub mesh_min_coverage_pct: f64,
+    pub mesh_min_rtt_delta_ms: f64,
+    pub mesh_min_loss_delta_pct: f64,
     pub notes: Option<String>,
     pub updated_at: String,
 }
@@ -75,12 +78,15 @@ fn decode_rule(row: mysql::Row) -> Result<DecisionRuleProfileRow, String> {
         severe_app_poor_rate_pct: row.get(27).unwrap_or_default(),
         severe_app_persistent_user_rate_pct: row.get(28).unwrap_or_default(),
         severe_app_severe_user_rate_pct: row.get(29).unwrap_or_default(),
-        notes: row.get(30),
-        updated_at: row.get(31).unwrap_or_default(),
+        mesh_min_coverage_pct: row.get(30).unwrap_or_default(),
+        mesh_min_rtt_delta_ms: row.get(31).unwrap_or_default(),
+        mesh_min_loss_delta_pct: row.get(32).unwrap_or_default(),
+        notes: row.get(33),
+        updated_at: row.get(34).unwrap_or_default(),
     })
 }
 
-const RULE_SELECT: &str = "SELECT rule_profile_id,version,profile_name,status,minimum_user_observations,minimum_app_users,minimum_app_observations,CAST(persistent_poor_rate_pct AS DOUBLE),CAST(problem_app_poor_rate_pct AS DOUBLE),CAST(problem_app_persistent_user_rate_pct AS DOUBLE),CAST(heavy_traffic_gb AS DOUBLE),CAST(heavy_usage_hours AS DOUBLE),CAST(peak_hour_start AS SIGNED),CAST(peak_hour_end AS SIGNED),CAST(migration_min_traffic_gb AS DOUBLE),CAST(speed_upgrade_min_traffic_gb AS DOUBLE),CAST(speed_upgrade_max_effective_mbps AS DOUBLE),CAST(mesh_min_wifi_delay_ms AS DOUBLE),CAST(app_bundle_min_observations AS SIGNED),CAST(opportunity_min_active_days AS SIGNED),CAST(opportunity_min_observations AS SIGNED),CAST(speed_upgrade_min_conditions AS SIGNED),CAST(app_bundle_min_active_days AS SIGNED),CAST(sufficient_app_users AS SIGNED),CAST(sufficient_app_observations AS SIGNED),CAST(attention_app_poor_rate_pct AS DOUBLE),CAST(attention_app_persistent_user_rate_pct AS DOUBLE),CAST(severe_app_poor_rate_pct AS DOUBLE),CAST(severe_app_persistent_user_rate_pct AS DOUBLE),CAST(severe_app_severe_user_rate_pct AS DOUBLE),notes,DATE_FORMAT(updated_at,'%Y-%m-%d %H:%i:%s') FROM meta_decision_rule_profile";
+const RULE_SELECT: &str = "SELECT rule_profile_id,version,profile_name,status,minimum_user_observations,minimum_app_users,minimum_app_observations,CAST(persistent_poor_rate_pct AS DOUBLE),CAST(problem_app_poor_rate_pct AS DOUBLE),CAST(problem_app_persistent_user_rate_pct AS DOUBLE),CAST(heavy_traffic_gb AS DOUBLE),CAST(heavy_usage_hours AS DOUBLE),CAST(peak_hour_start AS SIGNED),CAST(peak_hour_end AS SIGNED),CAST(migration_min_traffic_gb AS DOUBLE),CAST(speed_upgrade_min_traffic_gb AS DOUBLE),CAST(speed_upgrade_max_effective_mbps AS DOUBLE),CAST(mesh_min_wifi_delay_ms AS DOUBLE),CAST(app_bundle_min_observations AS SIGNED),CAST(opportunity_min_active_days AS SIGNED),CAST(opportunity_min_observations AS SIGNED),CAST(speed_upgrade_min_conditions AS SIGNED),CAST(app_bundle_min_active_days AS SIGNED),CAST(sufficient_app_users AS SIGNED),CAST(sufficient_app_observations AS SIGNED),CAST(attention_app_poor_rate_pct AS DOUBLE),CAST(attention_app_persistent_user_rate_pct AS DOUBLE),CAST(severe_app_poor_rate_pct AS DOUBLE),CAST(severe_app_persistent_user_rate_pct AS DOUBLE),CAST(severe_app_severe_user_rate_pct AS DOUBLE),CAST(mesh_min_coverage_pct AS DOUBLE),CAST(mesh_min_rtt_delta_ms AS DOUBLE),CAST(mesh_min_loss_delta_pct AS DOUBLE),notes,DATE_FORMAT(updated_at,'%Y-%m-%d %H:%i:%s') FROM meta_decision_rule_profile";
 
 #[tauri::command]
 pub fn decision_rule_list(settings: crate::models::MySqlSettings) -> Result<Vec<DecisionRuleProfileRow>, String> {
@@ -99,7 +105,7 @@ pub fn decision_rule_create_draft(settings: crate::models::MySqlSettings) -> Res
     let existing: Option<String> = conn.exec_first("SELECT rule_profile_id FROM meta_decision_rule_profile WHERE status='draft' ORDER BY version DESC LIMIT 1", ()).map_err(|err| format!("failed to inspect decision draft: {err}"))?;
     if let Some(id) = existing { return Ok(ack(format!("existing decision rule draft reused: {id}"))); }
     let id = format!("DECISION_RULE_{}", Uuid::new_v4().simple());
-    conn.exec_drop(format!("INSERT INTO meta_decision_rule_profile (rule_profile_id,version,profile_name,status,minimum_user_observations,minimum_app_users,minimum_app_observations,persistent_poor_rate_pct,problem_app_poor_rate_pct,problem_app_persistent_user_rate_pct,heavy_traffic_gb,heavy_usage_hours,peak_hour_start,peak_hour_end,migration_min_traffic_gb,speed_upgrade_min_traffic_gb,speed_upgrade_max_effective_mbps,mesh_min_wifi_delay_ms,app_bundle_min_observations,opportunity_min_active_days,opportunity_min_observations,speed_upgrade_min_conditions,app_bundle_min_active_days,sufficient_app_users,sufficient_app_observations,attention_app_poor_rate_pct,attention_app_persistent_user_rate_pct,severe_app_poor_rate_pct,severe_app_persistent_user_rate_pct,severe_app_severe_user_rate_pct,rule_snapshot,notes) SELECT ?,COALESCE((SELECT MAX(version)+1 FROM (SELECT version FROM meta_decision_rule_profile) versions),1),CONCAT(profile_name,' copy'),'draft',minimum_user_observations,minimum_app_users,minimum_app_observations,persistent_poor_rate_pct,problem_app_poor_rate_pct,problem_app_persistent_user_rate_pct,heavy_traffic_gb,heavy_usage_hours,peak_hour_start,peak_hour_end,migration_min_traffic_gb,speed_upgrade_min_traffic_gb,speed_upgrade_max_effective_mbps,mesh_min_wifi_delay_ms,app_bundle_min_observations,opportunity_min_active_days,opportunity_min_observations,speed_upgrade_min_conditions,app_bundle_min_active_days,sufficient_app_users,sufficient_app_observations,attention_app_poor_rate_pct,attention_app_persistent_user_rate_pct,severe_app_poor_rate_pct,severe_app_persistent_user_rate_pct,severe_app_severe_user_rate_pct,rule_snapshot,'Draft cloned from latest published profile' FROM meta_decision_rule_profile WHERE status='published' ORDER BY version DESC LIMIT 1"), (&id,)).map_err(|err| format!("failed to create decision rule draft: {err}"))?;
+    conn.exec_drop(format!("INSERT INTO meta_decision_rule_profile (rule_profile_id,version,profile_name,status,minimum_user_observations,minimum_app_users,minimum_app_observations,persistent_poor_rate_pct,problem_app_poor_rate_pct,problem_app_persistent_user_rate_pct,heavy_traffic_gb,heavy_usage_hours,peak_hour_start,peak_hour_end,migration_min_traffic_gb,speed_upgrade_min_traffic_gb,speed_upgrade_max_effective_mbps,mesh_min_wifi_delay_ms,app_bundle_min_observations,opportunity_min_active_days,opportunity_min_observations,speed_upgrade_min_conditions,app_bundle_min_active_days,sufficient_app_users,sufficient_app_observations,attention_app_poor_rate_pct,attention_app_persistent_user_rate_pct,severe_app_poor_rate_pct,severe_app_persistent_user_rate_pct,severe_app_severe_user_rate_pct,mesh_min_coverage_pct,mesh_min_rtt_delta_ms,mesh_min_loss_delta_pct,rule_snapshot,notes) SELECT ?,COALESCE((SELECT MAX(version)+1 FROM (SELECT version FROM meta_decision_rule_profile) versions),1),CONCAT(profile_name,' copy'),'draft',minimum_user_observations,minimum_app_users,minimum_app_observations,persistent_poor_rate_pct,problem_app_poor_rate_pct,problem_app_persistent_user_rate_pct,heavy_traffic_gb,heavy_usage_hours,peak_hour_start,peak_hour_end,migration_min_traffic_gb,speed_upgrade_min_traffic_gb,speed_upgrade_max_effective_mbps,mesh_min_wifi_delay_ms,app_bundle_min_observations,opportunity_min_active_days,opportunity_min_observations,speed_upgrade_min_conditions,app_bundle_min_active_days,sufficient_app_users,sufficient_app_observations,attention_app_poor_rate_pct,attention_app_persistent_user_rate_pct,severe_app_poor_rate_pct,severe_app_persistent_user_rate_pct,severe_app_severe_user_rate_pct,mesh_min_coverage_pct,mesh_min_rtt_delta_ms,mesh_min_loss_delta_pct,rule_snapshot,'Draft cloned from latest published profile' FROM meta_decision_rule_profile WHERE status='published' ORDER BY version DESC LIMIT 1"), (&id,)).map_err(|err| format!("failed to create decision rule draft: {err}"))?;
     Ok(ack(format!("decision rule draft created: {id}")))
 }
 
@@ -107,7 +113,7 @@ pub fn decision_rule_create_draft(settings: crate::models::MySqlSettings) -> Res
 pub fn decision_rule_update(settings: crate::models::MySqlSettings, rule: DecisionRuleProfileRow) -> Result<CommandAck, String> {
     if rule.status != "draft" { return Err("only a draft decision rule can be edited".to_string()); }
     if rule.minimum_user_observations < 1 || rule.minimum_app_users < 1 || rule.minimum_app_observations < 1 || rule.sufficient_app_users < rule.minimum_app_users || rule.sufficient_app_observations < rule.minimum_app_observations || rule.opportunity_min_active_days < 1 || rule.opportunity_min_observations < 1 || rule.speed_upgrade_min_conditions < 1 || rule.app_bundle_min_active_days < 1 { return Err("sample thresholds must be positive and sufficient must be at least limited".to_string()); }
-    let rates = [rule.persistent_poor_rate_pct, rule.attention_app_poor_rate_pct, rule.attention_app_persistent_user_rate_pct, rule.problem_app_poor_rate_pct, rule.problem_app_persistent_user_rate_pct, rule.severe_app_poor_rate_pct, rule.severe_app_persistent_user_rate_pct, rule.severe_app_severe_user_rate_pct];
+    let rates = [rule.persistent_poor_rate_pct, rule.attention_app_poor_rate_pct, rule.attention_app_persistent_user_rate_pct, rule.problem_app_poor_rate_pct, rule.problem_app_persistent_user_rate_pct, rule.severe_app_poor_rate_pct, rule.severe_app_persistent_user_rate_pct, rule.severe_app_severe_user_rate_pct, rule.mesh_min_coverage_pct];
     if rates.iter().any(|value| !(0.0..=100.0).contains(value)) { return Err("rate thresholds must be between 0 and 100".to_string()); }
     if rule.attention_app_poor_rate_pct > rule.problem_app_poor_rate_pct
         || rule.problem_app_poor_rate_pct > rule.severe_app_poor_rate_pct
@@ -119,8 +125,9 @@ pub fn decision_rule_update(settings: crate::models::MySqlSettings, rule: Decisi
         return Err("App thresholds must increase from attention to problem to severe".to_string());
     }
     if !(0..=23).contains(&rule.peak_hour_start) || !(0..=23).contains(&rule.peak_hour_end) { return Err("peak hours must be between 0 and 23".to_string()); }
+    if rule.mesh_min_rtt_delta_ms < 0.0 || rule.mesh_min_loss_delta_pct < 0.0 { return Err("mesh evidence deltas cannot be negative".to_string()); }
     let mut conn = db::conn(&settings)?;
-    conn.exec_drop("UPDATE meta_decision_rule_profile SET profile_name=:name,minimum_user_observations=:min_user_obs,minimum_app_users=:min_app_users,minimum_app_observations=:min_app_obs,sufficient_app_users=:sufficient_users,sufficient_app_observations=:sufficient_obs,persistent_poor_rate_pct=:persistent_rate,attention_app_poor_rate_pct=:attention_poor,attention_app_persistent_user_rate_pct=:attention_persistent,problem_app_poor_rate_pct=:app_poor_rate,problem_app_persistent_user_rate_pct=:app_persistent_rate,severe_app_poor_rate_pct=:severe_poor,severe_app_persistent_user_rate_pct=:severe_persistent,severe_app_severe_user_rate_pct=:severe_user,heavy_traffic_gb=:heavy_traffic,heavy_usage_hours=:heavy_hours,peak_hour_start=:peak_start,peak_hour_end=:peak_end,migration_min_traffic_gb=:migration_traffic,speed_upgrade_min_traffic_gb=:upgrade_traffic,speed_upgrade_max_effective_mbps=:upgrade_rate,mesh_min_wifi_delay_ms=:mesh_delay,app_bundle_min_observations=:bundle_obs,opportunity_min_active_days=:opportunity_days,opportunity_min_observations=:opportunity_obs,speed_upgrade_min_conditions=:upgrade_conditions,app_bundle_min_active_days=:bundle_days,notes=:notes,rule_snapshot=JSON_OBJECT('minimum_user_observations',:min_user_obs,'minimum_app_users',:min_app_users,'minimum_app_observations',:min_app_obs,'sufficient_app_users',:sufficient_users,'sufficient_app_observations',:sufficient_obs,'persistent_poor_rate_pct',:persistent_rate,'attention_app_poor_rate_pct',:attention_poor,'attention_app_persistent_user_rate_pct',:attention_persistent,'problem_app_poor_rate_pct',:app_poor_rate,'problem_app_persistent_user_rate_pct',:app_persistent_rate,'severe_app_poor_rate_pct',:severe_poor,'severe_app_persistent_user_rate_pct',:severe_persistent,'severe_app_severe_user_rate_pct',:severe_user,'heavy_traffic_gb',:heavy_traffic,'heavy_usage_hours',:heavy_hours,'peak_hour_start',:peak_start,'peak_hour_end',:peak_end,'migration_min_traffic_gb',:migration_traffic,'speed_upgrade_min_traffic_gb',:upgrade_traffic,'speed_upgrade_max_effective_mbps',:upgrade_rate,'mesh_min_wifi_delay_ms',:mesh_delay,'app_bundle_min_observations',:bundle_obs,'opportunity_min_active_days',:opportunity_days,'opportunity_min_observations',:opportunity_obs,'speed_upgrade_min_conditions',:upgrade_conditions,'app_bundle_min_active_days',:bundle_days) WHERE rule_profile_id=:id AND status='draft'", params! {
+    conn.exec_drop("UPDATE meta_decision_rule_profile SET profile_name=:name,minimum_user_observations=:min_user_obs,minimum_app_users=:min_app_users,minimum_app_observations=:min_app_obs,sufficient_app_users=:sufficient_users,sufficient_app_observations=:sufficient_obs,persistent_poor_rate_pct=:persistent_rate,attention_app_poor_rate_pct=:attention_poor,attention_app_persistent_user_rate_pct=:attention_persistent,problem_app_poor_rate_pct=:app_poor_rate,problem_app_persistent_user_rate_pct=:app_persistent_rate,severe_app_poor_rate_pct=:severe_poor,severe_app_persistent_user_rate_pct=:severe_persistent,severe_app_severe_user_rate_pct=:severe_user,heavy_traffic_gb=:heavy_traffic,heavy_usage_hours=:heavy_hours,peak_hour_start=:peak_start,peak_hour_end=:peak_end,migration_min_traffic_gb=:migration_traffic,speed_upgrade_min_traffic_gb=:upgrade_traffic,speed_upgrade_max_effective_mbps=:upgrade_rate,mesh_min_wifi_delay_ms=:mesh_delay,mesh_min_coverage_pct=:mesh_coverage,mesh_min_rtt_delta_ms=:mesh_rtt_delta,mesh_min_loss_delta_pct=:mesh_loss_delta,app_bundle_min_observations=:bundle_obs,opportunity_min_active_days=:opportunity_days,opportunity_min_observations=:opportunity_obs,speed_upgrade_min_conditions=:upgrade_conditions,app_bundle_min_active_days=:bundle_days,notes=:notes,rule_snapshot=JSON_OBJECT('minimum_user_observations',:min_user_obs,'minimum_app_users',:min_app_users,'minimum_app_observations',:min_app_obs,'sufficient_app_users',:sufficient_users,'sufficient_app_observations',:sufficient_obs,'persistent_poor_rate_pct',:persistent_rate,'attention_app_poor_rate_pct',:attention_poor,'attention_app_persistent_user_rate_pct',:attention_persistent,'problem_app_poor_rate_pct',:app_poor_rate,'problem_app_persistent_user_rate_pct',:app_persistent_rate,'severe_app_poor_rate_pct',:severe_poor,'severe_app_persistent_user_rate_pct',:severe_persistent,'severe_app_severe_user_rate_pct',:severe_user,'heavy_traffic_gb',:heavy_traffic,'heavy_usage_hours',:heavy_hours,'peak_hour_start',:peak_start,'peak_hour_end',:peak_end,'migration_min_traffic_gb',:migration_traffic,'speed_upgrade_min_traffic_gb',:upgrade_traffic,'speed_upgrade_max_effective_mbps',:upgrade_rate,'mesh_min_wifi_delay_ms',:mesh_delay,'mesh_min_coverage_pct',:mesh_coverage,'mesh_min_rtt_delta_ms',:mesh_rtt_delta,'mesh_min_loss_delta_pct',:mesh_loss_delta,'app_bundle_min_observations',:bundle_obs,'opportunity_min_active_days',:opportunity_days,'opportunity_min_observations',:opportunity_obs,'speed_upgrade_min_conditions',:upgrade_conditions,'app_bundle_min_active_days',:bundle_days) WHERE rule_profile_id=:id AND status='draft'", params! {
         "name" => &rule.profile_name,
         "min_user_obs" => rule.minimum_user_observations,
         "min_app_users" => rule.minimum_app_users,
@@ -143,6 +150,9 @@ pub fn decision_rule_update(settings: crate::models::MySqlSettings, rule: Decisi
         "upgrade_traffic" => rule.speed_upgrade_min_traffic_gb,
         "upgrade_rate" => rule.speed_upgrade_max_effective_mbps,
         "mesh_delay" => rule.mesh_min_wifi_delay_ms,
+        "mesh_coverage" => rule.mesh_min_coverage_pct,
+        "mesh_rtt_delta" => rule.mesh_min_rtt_delta_ms,
+        "mesh_loss_delta" => rule.mesh_min_loss_delta_pct,
         "bundle_obs" => rule.app_bundle_min_observations,
         "opportunity_days" => rule.opportunity_min_active_days,
         "opportunity_obs" => rule.opportunity_min_observations,
@@ -425,7 +435,9 @@ pub(crate) fn materialize_opportunities(req: EtlRequest) -> Result<CommandAck, S
         ), users AS (
           SELECT p.user_key,MAX(p.user_type) user_type,SUM(p.total_download_gb) traffic_gb,
                  SUM(p.total_effective_duration_hours) usage_hours,MAX(a.active_days) active_days,
-                 SUM(observation_rows) observations,AVG(avg_effective_download_mbps) effective_mbps
+                 SUM(observation_rows) observations,AVG(avg_effective_download_mbps) effective_mbps,
+                 AVG(avg_wifi_delay_ms) wifi_delay,AVG(avg_subscriber_rtt_ms) subscriber_rtt,
+                 AVG(avg_network_rtt_ms) network_rtt,AVG(avg_user_loss_pct) user_loss,AVG(avg_network_loss_pct) network_loss
           FROM `{source}` p
           JOIN (SELECT user_key,COUNT(DISTINCT stat_date) active_days FROM `{hourly_source}` WHERE analysis_run_id=? GROUP BY user_key) a ON a.user_key=p.user_key
           WHERE p.analysis_run_id=? GROUP BY p.user_key
@@ -461,6 +473,19 @@ pub(crate) fn materialize_opportunities(req: EtlRequest) -> Result<CommandAck, S
              + (u.usage_hours/NULLIF(u.active_days,0)>=r.heavy_usage_hours+1)
              + (u.observations/NULLIF(u.active_days,0)>=r.app_bundle_min_observations*3))>=r.speed_upgrade_min_conditions
         UNION ALL
+        SELECT ?,?,u.user_key,'MESH_AP','STANDARD',
+               COALESCE(u.wifi_delay,u.subscriber_rtt-u.network_rtt),'ms',
+               CONCAT('wifi delay=',COALESCE(ROUND(u.wifi_delay,2),'NA'),' ms; RTT delta=',COALESCE(ROUND(u.subscriber_rtt-u.network_rtt,2),'NA'),' ms; loss delta=',COALESCE(ROUND(u.user_loss-u.network_loss,2),'NA'),' pct'),
+               NULL,r.version
+        FROM users u CROSS JOIN rules r
+        WHERE u.active_days>=r.opportunity_min_active_days AND u.observations>=r.opportunity_min_observations
+          AND (u.wifi_delay>=r.mesh_min_wifi_delay_ms
+            OR u.subscriber_rtt-u.network_rtt>=r.mesh_min_rtt_delta_ms
+            OR u.user_loss-u.network_loss>=r.mesh_min_loss_delta_pct)
+          AND (SELECT COUNT(*)*100.0/NULLIF((SELECT COUNT(*) FROM users),0) FROM users x
+               WHERE x.wifi_delay IS NOT NULL OR (x.subscriber_rtt IS NOT NULL AND x.network_rtt IS NOT NULL)
+                  OR (x.user_loss IS NOT NULL AND x.network_loss IS NOT NULL))>=r.mesh_min_coverage_pct
+        UNION ALL
         SELECT ?,?,u.user_key,'APP_BUNDLE',
                CASE WHEN b.observations/NULLIF(b.active_days,0)>=r.app_bundle_min_observations*3 THEN 'HIGH' ELSE 'STANDARD' END,
                b.observations/NULLIF(b.active_days,0),'observations/day',
@@ -470,9 +495,16 @@ pub(crate) fn materialize_opportunities(req: EtlRequest) -> Result<CommandAck, S
         WHERE b.active_days>=r.app_bundle_min_active_days
           AND b.observations/NULLIF(b.active_days,0)>=r.app_bundle_min_observations
     "#);
-    tx.exec_drop(insert_sql, (&run_id,&run_id,&run_id,&run_id,&run_id,&run_id,&req.import_batch_id,&run_id,&req.import_batch_id,&run_id,&req.import_batch_id)).map_err(|err| format!("failed to materialize opportunity users: {err}"))?;
+    tx.exec_drop(insert_sql, mysql::Params::Positional(vec![
+        run_id.clone().into(), run_id.clone().into(), run_id.clone().into(), run_id.clone().into(), run_id.clone().into(),
+        run_id.clone().into(), req.import_batch_id.clone().into(),
+        run_id.clone().into(), req.import_batch_id.clone().into(),
+        run_id.clone().into(), req.import_batch_id.clone().into(),
+        run_id.clone().into(), req.import_batch_id.clone().into(),
+    ])).map_err(|err| format!("failed to materialize opportunity users: {err}"))?;
     tx.exec_drop("INSERT INTO ads_opportunity_summary_v3 (analysis_run_id,import_batch_id,opportunity_type,candidate_users,high_priority_users,total_evidence_value,evidence_unit,availability_status,data_limitation_code,rule_profile_version) SELECT analysis_run_id,import_batch_id,opportunity_type,COUNT(*),SUM(opportunity_level='HIGH'),SUM(evidence_value),MAX(evidence_unit),'AVAILABLE',NULL,MAX(rule_profile_version) FROM ads_opportunity_user_v3 WHERE analysis_run_id=? GROUP BY analysis_run_id,import_batch_id,opportunity_type", (&run_id,)).map_err(|err| format!("failed to summarize opportunities: {err}"))?;
-    tx.exec_drop("INSERT INTO ads_opportunity_summary_v3 (analysis_run_id,import_batch_id,opportunity_type,candidate_users,high_priority_users,total_evidence_value,evidence_unit,availability_status,data_limitation_code,rule_profile_version) SELECT ?,?,'MESH_AP',0,0,NULL,NULL,'UNAVAILABLE','WIFI_DELAY_NOT_AGGREGATED',rule_profile_version FROM meta_analysis_run_decision_binding WHERE analysis_run_id=?", (&run_id,&req.import_batch_id,&run_id)).map_err(|err| format!("failed to record mesh availability: {err}"))?;
+    let mesh_fallback = format!("INSERT INTO ads_opportunity_summary_v3 (analysis_run_id,import_batch_id,opportunity_type,candidate_users,high_priority_users,total_evidence_value,evidence_unit,availability_status,data_limitation_code,rule_profile_version) SELECT ?,?,'MESH_AP',0,0,NULL,NULL,CASE WHEN c.coverage_pct>=p.mesh_min_coverage_pct THEN 'AVAILABLE' ELSE 'UNAVAILABLE' END,CASE WHEN c.coverage_pct>=p.mesh_min_coverage_pct THEN NULL ELSE 'HOME_SIDE_EVIDENCE_COVERAGE_BELOW_THRESHOLD' END,p.version FROM meta_analysis_run_decision_binding b JOIN meta_decision_rule_profile p ON p.rule_profile_id=b.rule_profile_id AND p.version=b.rule_profile_version CROSS JOIN (SELECT COUNT(DISTINCT CASE WHEN avg_wifi_delay_ms IS NOT NULL OR (avg_subscriber_rtt_ms IS NOT NULL AND avg_network_rtt_ms IS NOT NULL) OR (avg_user_loss_pct IS NOT NULL AND avg_network_loss_pct IS NOT NULL) THEN user_key END)*100.0/NULLIF(COUNT(DISTINCT user_key),0) coverage_pct FROM `{source}` WHERE analysis_run_id=?) c WHERE b.analysis_run_id=? AND NOT EXISTS (SELECT 1 FROM ads_opportunity_summary_v3 s WHERE s.analysis_run_id=? AND s.opportunity_type='MESH_AP')");
+    tx.exec_drop(mesh_fallback, (&run_id,&req.import_batch_id,&run_id,&run_id,&run_id)).map_err(|err| format!("failed to record mesh availability: {err}"))?;
     tx.commit().map_err(|err| format!("failed to commit opportunities: {err}"))?;
     Ok(ack(format!("decision opportunities materialized: analysis_run_id={run_id}")))
 }

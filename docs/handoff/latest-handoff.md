@@ -27,7 +27,7 @@ CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final
 - Added migration 011 with versioned decision rules, run-level snapshots, four opportunity outputs and subtask checkpoints.
 - Added configurable thresholds for sample eligibility, persistent quality, problem Apps, heavy use, peak hours and opportunity qualification.
 - Existing RAW batches can regenerate TCP effective/video duration, average download rate, throughput, connection success/delay and fluency into CLEAN/DWD and the user-by-App DWS; no CSV re-import is required.
-- Added migration, speed-upgrade, mesh/AP and App Bundle opportunity materialization as an independently logged pipeline subtask. Mesh/AP reports unavailable until Wi-Fi evidence is aggregated.
+- Added migration, speed-upgrade, mesh/AP and App Bundle opportunity materialization as an independently logged pipeline subtask. Mesh/AP validates evidence coverage before generating candidates.
 - DWS/ADS resume now skips completed subtasks and retries only incomplete work; hourly partitions retain their finer-grained checkpoints.
 - TCP/Game user keys now use IPv4 only (User Account first, Local IP fallback). MAC and non-IP accounts no longer define analytical users.
 - PDF export prepares all non-empty business chart sections for the selected batch/run and excludes the interactive App detail table by default.

@@ -553,6 +553,9 @@ export interface DecisionRuleProfileRow {
   severe_app_poor_rate_pct: number;
   severe_app_persistent_user_rate_pct: number;
   severe_app_severe_user_rate_pct: number;
+  mesh_min_coverage_pct: number;
+  mesh_min_rtt_delta_ms: number;
+  mesh_min_loss_delta_pct: number;
   notes?: string;
   updated_at: string;
 }

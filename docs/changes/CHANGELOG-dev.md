@@ -9,6 +9,7 @@
 - Added previously discarded TCP duration, average-rate, throughput, connection and fluency fields to CLEAN/DWD and the reusable user-by-App period DWS; existing RAW batches can regenerate them without re-importing CSV.
 - Added migration, speed upgrade, AP/mesh and App Bundle opportunity materialization with explicit availability and limitation states.
 - Opportunity candidates now enforce configurable active-day, observation and matched-condition gates and use daily traffic/duration/observation evidence instead of opaque demand scores.
+- Mesh/AP candidates now require configurable home-side evidence coverage and use Wi-Fi delay, RTT delta or loss delta; insufficient coverage remains unavailable instead of becoming zero candidates.
 
 ### Changed
 

@@ -133,6 +133,9 @@ pub fn ensure_access_columns_for_table(
             ("severe_app_poor_rate_pct", "DECIMAL(9,4) NOT NULL DEFAULT 40"),
             ("severe_app_persistent_user_rate_pct", "DECIMAL(9,4) NOT NULL DEFAULT 20"),
             ("severe_app_severe_user_rate_pct", "DECIMAL(9,4) NOT NULL DEFAULT 10"),
+            ("mesh_min_coverage_pct", "DECIMAL(9,4) NOT NULL DEFAULT 30"),
+            ("mesh_min_rtt_delta_ms", "DECIMAL(18,6) NOT NULL DEFAULT 30"),
+            ("mesh_min_loss_delta_pct", "DECIMAL(18,6) NOT NULL DEFAULT 1"),
         ]
     } else if table.starts_with("dwd_tcp_detail_clean") {
         &[
@@ -187,6 +190,7 @@ pub fn ensure_access_columns_for_table(
             ("avg_downstream_rtt_ms", "DECIMAL(18,6) NULL"),
             ("avg_user_up_loss_pct", "DECIMAL(18,6) NULL"),
             ("avg_network_up_loss_pct", "DECIMAL(18,6) NULL"),
+            ("avg_wifi_delay_ms", "DECIMAL(18,6) NULL"),
         ]
     } else if table.starts_with("dws_user_app_hourly_experience_v2") {
         &[
