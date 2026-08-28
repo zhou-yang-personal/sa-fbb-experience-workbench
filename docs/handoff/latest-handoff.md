@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.62
+1.0.63
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,13 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.63 update
+
+- Fixed the access-rule import confirmation checkbox at 16px in the product theme so generic input width and padding cannot stretch it.
+- The confirmation copy now consumes the remaining column and wraps safely; stale-takeover confirmations retain the same layout contract.
+- No database, aggregation, dependency or lock-file behavior changed. Live Windows/WebView2 visual verification remains pending.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.62 update
 

@@ -1,5 +1,18 @@
 # CHANGELOG-dev
 
+## 1.0.63 - 2026-08-28
+
+### Fixed
+
+- Prevented the generic product-shell input rule from stretching the access-rule import confirmation checkbox.
+- Standardized rule confirmation and stale-takeover controls on a fixed 16px checkbox with a wrapping text column.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-28.
+- `npm run build`: passed on 2026-08-28.
+- No database, aggregation, dependency or lock-file changes.
+
 ## 1.0.62 - 2026-08-28
 
 ### Fixed
