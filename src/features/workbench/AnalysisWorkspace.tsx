@@ -62,7 +62,7 @@ export function AnalysisWorkspace({ c, activeView, onOpenImport }: { c: Workbenc
 
   return <section className="workbench-section-stack analysis-workspace decision-analysis-shell">
     <article className="analysis-context-compact">
-      <div><span>当前数据</span><strong>{c.batchDisplayName || '未选择批次'}</strong><small>{c.analysisRunId || '没有可分析运行'}</small></div>
+      <div><strong title={c.batchDisplayName || c.importBatchId}>{c.batchDisplayName || '未选择数据批次'}</strong>{c.importBatchId && <small>{c.dataType.toUpperCase()}</small>}</div>
       <div className="hub-actions"><button type="button" onClick={() => setShowSelector((value) => !value)}>{showSelector ? '收起批次' : '切换数据批次'}</button>{!c.importBatchId && <button type="button" className="primary" onClick={onOpenImport}>去数据中心</button>}</div>
     </article>
     {showSelector && <BatchSelector batches={batches} selectedBatchId={c.importBatchId} onRefresh={refreshBatches} onDeleteBatches={deleteBatches} statusText={status} onSelectBatch={(batch) => { void selectBatch(batch); }} />}

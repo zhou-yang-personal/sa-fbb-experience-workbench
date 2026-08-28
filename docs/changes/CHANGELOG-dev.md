@@ -1,5 +1,20 @@
 # CHANGELOG-dev
 
+## 1.0.61 - 2026-08-28
+
+### Changed
+
+- Removed duplicated product copy, version card, global-scope placeholder, technical context and batch/run metadata from the analysis landing area.
+- Compacted batch selection, page title, load and PDF actions into low-height toolbars; analysis-path controls appear only when filters exist.
+- Moved language selection and the application version to the sidebar so the first viewport prioritizes analysis content.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-28.
+- `npm run build`: passed on 2026-08-28.
+- `cargo check --offline`: passed on 2026-08-28 with the existing 23 warnings.
+- No database, aggregation, dependency or lock-file changes.
+
 ## 1.0.60 - 2026-08-28
 
 ### Added

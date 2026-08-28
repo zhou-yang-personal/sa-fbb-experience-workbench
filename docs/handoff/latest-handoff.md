@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.60
+1.0.61
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,14 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.61 update
+
+- Removed the repeated hero, version card, global-scope placeholder, technical context and duplicate batch/run block from the analysis landing area.
+- Reduced the selected batch and page actions to compact toolbars; analysis-path controls render only after the operator creates a drill-down filter.
+- Moved language and version controls to the sidebar so the default viewport prioritizes analytical content.
+- No query, aggregation, schema or dependency behavior changed. Live Windows/WebView2 visual verification remains pending.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.60 update
 

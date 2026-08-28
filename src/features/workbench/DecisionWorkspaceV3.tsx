@@ -104,7 +104,7 @@ export function DecisionWorkspaceV3({ c, view }: { c: WorkbenchController; view:
   const [baselineRows, setBaselineRows] = useState<MetricCard[]>([]);
   const [distributionRows, setDistributionRows] = useState<MetricCard[]>([]);
   const [appRows, setAppRows] = useState<MetricCard[]>([]);
-  const [status, setStatus] = useState('确认批次和分析运行后，点击一次加载。切换页面不会自动查询。');
+  const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [printReport, setPrintReport] = useState<FullPrintReport | null>(null);
   const zh = c.language === 'zh-CN';
@@ -115,7 +115,7 @@ export function DecisionWorkspaceV3({ c, view }: { c: WorkbenchController; view:
     setBaselineRows([]);
     setDistributionRows([]);
     setAppRows([]);
-    setStatus(c.importBatchId && c.analysisRunId ? '当前页面尚未读取；点击加载只查询已聚合结果。' : '请先选择可分析批次。');
+    setStatus(c.importBatchId && c.analysisRunId ? '' : '请先选择可分析批次。');
   }, [view, c.importBatchId, c.analysisRunId]);
 
   async function load(targetPerspective = perspective) {
@@ -195,11 +195,11 @@ export function DecisionWorkspaceV3({ c, view }: { c: WorkbenchController; view:
   function switchPerspective(next: PanoramaPerspective) { setPerspective(next); setRows([]); setBaselineRows([]); setDistributionRows([]); setAppRows([]); setStatus('已切换观察角度；点击加载读取对应聚合。'); }
 
   return <section className="decision-workspace">
-    <header className="decision-page-head"><div><span>{zh ? '业务分析工作台' : 'Business analysis workspace'}</span><h1>{copy[view][zh ? 0 : 1]}</h1><p>{view === 'panorama' ? '先完整说明整体、App 和用户分布，再高亮值得关注的部分；不会提前跳到制式或网络定位。' : view === 'quality' ? '先说明质差规模，再区分用户侧、网络侧和应用体验证据；这里表达证据方向，不宣称根因。' : view === 'access' ? '在独立专项中比较 Cable 与 FTTH 的用户、流量、速率、时延和丢包，不污染总体全景。' : '只识别迁转、升套、AP 组网和特定 App Bundle 四类潜客，与体验修复和最终营销资格分开。'}</p></div>
-      <div className="decision-load-actions"><button type="button" className="primary" disabled={disabled} onClick={() => load()}>{loading ? '加载中…' : '加载当前页面'}</button>{view === 'opportunities' && <button type="button" disabled={disabled} onClick={generateOpportunities}>按规则生成潜客</button>}<button type="button" disabled={disabled} onClick={exportAllCharts}>{zh ? '导出全部图表 PDF' : 'Export all charts PDF'}</button></div></header>
-    <div className="decision-status">{status}</div>
+    <header className="decision-page-head"><h1>{copy[view][zh ? 0 : 1]}</h1>
+      <div className="decision-load-actions"><button type="button" className="primary" disabled={disabled} onClick={() => load()}>{loading ? '加载中…' : (zh ? '加载' : 'Load')}</button>{view === 'opportunities' && <button type="button" disabled={disabled} onClick={generateOpportunities}>{zh ? '生成潜客' : 'Generate'}</button>}<button type="button" disabled={disabled} onClick={exportAllCharts}>{zh ? '导出 PDF' : 'Export PDF'}</button></div></header>
+    {status && <div className="decision-status">{status}</div>}
     {view === 'panorama' && <div className="perspective-tabs"><button className={perspective === 'metric' ? 'active' : ''} onClick={() => switchPerspective('metric')}>指标视角</button><button className={perspective === 'app' ? 'active' : ''} onClick={() => switchPerspective('app')}>App 视角</button><button className={perspective === 'user' ? 'active' : ''} onClick={() => switchPerspective('user')}>用户视角</button></div>}
-    {!rows.length && <article className="decision-empty"><strong>{c.importBatchId ? '等待加载' : '先选择数据批次'}</strong><p>{c.importBatchId ? '页面只查询已经生成的 DWS/ADS；不会启动 RAW 扫描或后台大任务。' : '到“数据中心”选择已有批次或导入新文件。'}</p></article>}
+    {!rows.length && <article className="decision-empty"><strong>{c.importBatchId ? (zh ? '点击“加载”查看分析结果' : 'Select Load to view results') : (zh ? '先选择数据批次' : 'Select a batch')}</strong></article>}
     {rows.length > 0 && view === 'panorama' && perspective === 'metric' && <><section className="decision-chapter"><h2>整体指标</h2><CardGrid rows={rows} /><Explanation>指标视角回答“整体发生了什么”。百分比保留分子、分母和样本量；不可用与 0 分开。vMOS 作为 App 体验证据，不作为单独一级指标。</Explanation></section>{distributionRows.length > 0 && <section className="decision-chapter"><h2>各指标的用户分布</h2><Distribution rows={distributionRows} /></section>}{appRows.length > 0 && <section className="decision-chapter"><h2>App 覆盖全景</h2><PrintAppBars rows={appRows} /><Explanation>唯一 App 粒度，展示完整 App 覆盖并保留问题高亮；Cable/FTTH 不在这一层出现。</Explanation></section>}</>}
     {rows.length > 0 && view === 'panorama' && perspective === 'app' && <>{baselineRows.length > 0 && <section className="decision-chapter"><h2>整体基线</h2><CardGrid rows={baselineRows.slice(0, 7)} /></section>}<section className="decision-chapter"><h2>全部 App 状态构成</h2><AppStatusSummary rows={rows} zh={zh} /><Explanation>状态互斥且全部按唯一 App 统计；右侧六类之和必须等于“全部唯一 App”。</Explanation></section><section className="decision-chapter"><h2>全部 App 业务规模与体验状态</h2><AppTable rows={rows} c={c} /><Explanation>每个 App 只出现一次，先展示跨制式总体规模；严重、问题、关注、正常、有限样本和样本不足互斥，因此分类数量之和等于全部 App 数。</Explanation></section></>}
     {rows.length > 0 && view === 'panorama' && perspective === 'user' && <>{baselineRows.length > 0 && <section className="decision-chapter"><h2>整体用户基线</h2><CardGrid rows={baselineRows.slice(0, 7)} /></section>}<section className="decision-chapter"><h2>可解释的用户分档</h2><Distribution rows={rows} /></section></>}

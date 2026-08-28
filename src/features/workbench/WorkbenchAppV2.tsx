@@ -6,7 +6,6 @@ import { ImportPanel } from './ImportPanel';
 import { RunLogDrawer } from './RunLogDrawer';
 import { SystemPanel } from './SystemPanel';
 import { WorkbenchContextBar } from './WorkbenchContextBar';
-import { WorkbenchHeader } from './WorkbenchHeader';
 import { useWorkbenchController } from './useWorkbenchController';
 import './extra.css';
 import './AnalyticsDashboard.css';
@@ -68,7 +67,7 @@ export function WorkbenchAppV2() {
   return (
     <main className="app-shell guided-shell product-shell">
       <aside className="sidebar guided-sidebar product-sidebar">
-        <div className="brand">SA FBB Experience Workbench</div>
+        <div className="brand"><span>SA FBB Experience Workbench</span><small>v1.0.61</small></div>
         <nav className="product-nav" aria-label="Product navigation">
           {(['primary', 'secondary'] as const).map((group) => <div className="nav-group" key={group}>
             <p>{group === 'primary' ? (languageIndex === 0 ? '分析工作台' : 'Workspace') : (languageIndex === 0 ? '设置与支持' : 'Settings & support')}</p>
@@ -85,23 +84,19 @@ export function WorkbenchAppV2() {
           <small>{c.currentAction || c.lastActionMessage || '无运行中动作'}</small>
           <button type="button" onClick={() => setLogOpen(true)}>查看执行日志</button>
         </div>
+        <label className="sidebar-language">
+          <span>{languageIndex === 0 ? '语言' : 'Language'}</span>
+          <select aria-label="Language" value={c.language} onChange={(event) => c.setLanguage(event.target.value as 'zh-CN' | 'en-US')}>
+            <option value="zh-CN">中文</option>
+            <option value="en-US">English</option>
+          </select>
+        </label>
       </aside>
       <section className="content">
-        <WorkbenchHeader language={c.language} />
         <WorkbenchContextBar
-          settings={c.settings}
-          dataType={c.dataType}
-          importMode={c.importMode}
-          filePath={c.filePath}
-          importBatchId={c.importBatchId}
-          batchDisplayName={c.batchDisplayName}
-          analysisRunId={c.analysisRunId}
-          outputPath={c.outputPath}
-          batch={c.batch}
           language={c.language}
           analysisContext={c.analysisContext}
           canGoBack={c.analysisContextHistory.length > 0}
-          onLanguageChange={c.setLanguage}
           onRemoveFilter={c.removeAnalysisContext}
           onClearFilters={c.clearAnalysisContext}
           onBack={c.backAnalysisContext}
