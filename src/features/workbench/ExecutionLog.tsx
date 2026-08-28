@@ -6,6 +6,7 @@ type LogFilter = 'all' | ExecutionLogStatus;
 
 interface ExecutionLogProps {
   log: ExecutionLogEntry[];
+  compact?: boolean;
 }
 
 function copyText(text: string) {
@@ -28,7 +29,7 @@ function formatEntry(entry: ExecutionLogEntry) {
   return lines.join('\n');
 }
 
-export function ExecutionLog({ log }: ExecutionLogProps) {
+export function ExecutionLog({ log, compact = false }: ExecutionLogProps) {
   const [filter, setFilter] = useState<LogFilter>('all');
   const [keyword, setKeyword] = useState('');
 
@@ -48,7 +49,7 @@ export function ExecutionLog({ log }: ExecutionLogProps) {
 
   return (
     <section className="panel execution-log-panel">
-      <div className="log-header">
+      {!compact && <div className="log-header">
         <div>
           <h2>诊断日志</h2>
           <p className="muted-row">记录命令、错误、耗时和返回预览。字段映射、质量门禁、ETL 失败都应在这里看到可复制诊断信息。时间按本地 PC 时区 {localTimeZone()} 显示。</p>
@@ -59,7 +60,13 @@ export function ExecutionLog({ log }: ExecutionLogProps) {
           <span>{successRows.length} success</span>
           <span>{failedRows.length} failed</span>
         </div>
-      </div>
+      </div>}
+      {compact && <div className="log-summary log-summary-compact">
+        <span>{localTimeZone()}</span>
+        <span>{log.length} 条</span>
+        <span className="log-count-success">成功 {successRows.length}</span>
+        <span className="log-count-failure">失败 {failedRows.length}</span>
+      </div>}
 
       <div className="table-toolbar log-toolbar">
         <input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Search command / field / error / result" />

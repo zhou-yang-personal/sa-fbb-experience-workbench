@@ -133,9 +133,25 @@
 .product-shell .status-failure-text { color: var(--danger); }
 
 .product-shell .run-log-drawer-backdrop { background: rgba(16, 24, 40, .55); }
-.product-shell .run-log-drawer { color: var(--ink); background: #fff; border-left-color: var(--line); }
-.product-shell .log-entry { color: var(--ink); background: #f8fafc; border-color: var(--line); }
-.product-shell .log-entry pre { color: #475467; background: #eef2f6; }
+.product-shell .run-log-drawer { display: grid; grid-template-rows: auto minmax(0, 1fr); width: min(720px, 100vw); height: 100dvh; padding: 0; overflow: hidden; color: var(--ink); background: #fff; border-left-color: var(--line); }
+.product-shell .run-log-drawer-head { align-items: center; min-height: 68px; margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); background: #fff; }
+.product-shell .run-log-drawer-head h2 { margin: 0; font-size: 18px; }
+.product-shell .run-log-drawer-head p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+.product-shell .run-log-drawer-close { flex: 0 0 auto; padding: 6px 10px; }
+.product-shell .run-log-drawer .execution-log-panel { display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-width: 0; min-height: 0; margin: 0; padding: 12px 16px 16px; border: 0; border-radius: 0; box-shadow: none; }
+.product-shell .run-log-drawer .log-summary-compact { justify-content: flex-start; }
+.product-shell .run-log-drawer .log-summary span { color: #475467; background: #f8fafc; border-color: var(--line); }
+.product-shell .run-log-drawer .log-summary .log-count-success { color: #067647; background: #ecfdf3; border-color: #abefc6; }
+.product-shell .run-log-drawer .log-summary .log-count-failure { color: #b42318; background: #fef3f2; border-color: #fecdca; }
+.product-shell .run-log-drawer .log-toolbar { display: grid; grid-template-columns: minmax(180px, 1fr) 130px auto auto auto; gap: 7px; margin: 10px 0; align-items: center; }
+.product-shell .run-log-drawer .log-toolbar input { width: 100%; min-width: 0; }
+.product-shell .run-log-drawer .log-toolbar select { width: 130px; min-width: 0; }
+.product-shell .run-log-drawer .log-toolbar button { width: auto; padding: 7px 9px; white-space: nowrap; }
+.product-shell .run-log-drawer .structured-log-list { min-height: 0; max-height: none; padding: 0 5px 0 0; overflow: auto; overscroll-behavior: contain; }
+.product-shell .run-log-drawer .log-entry { min-width: 0; padding: 10px 12px; color: var(--ink); background: #f8fafc; border-color: var(--line); }
+.product-shell .run-log-drawer .log-entry-head strong { color: var(--ink); }
+.product-shell .run-log-drawer .log-entry pre { max-height: 160px; margin: 7px 0 0; padding: 9px 10px; overflow: auto; color: #475467; background: #eef2f6; border-radius: 8px; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.product-shell .run-log-drawer .log-meta { margin-bottom: 0; color: var(--muted); }
 .product-shell .pipeline-log-monitor { display: grid; gap: 14px; }
 .product-shell .pipeline-log-monitor-head { align-items: flex-start; }
 .product-shell .pipeline-log-monitor-head h3 { margin: 4px 0 5px; }
@@ -210,4 +226,11 @@
   .product-shell .analysis-context-strip { grid-template-columns: 1fr; }
   .product-shell .analysis-context-actions { justify-content: flex-start; }
   .product-shell .pipeline-monitor-health { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .product-shell .run-log-drawer .log-toolbar { grid-template-columns: minmax(0, 1fr) auto; }
+  .product-shell .run-log-drawer .log-toolbar input { grid-column: 1 / -1; }
+  .product-shell .run-log-drawer .log-toolbar select { width: 100%; }
+  .product-shell .run-log-drawer .log-toolbar button { white-space: normal; }
 }

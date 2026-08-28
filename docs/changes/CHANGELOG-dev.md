@@ -1,5 +1,19 @@
 # CHANGELOG-dev
 
+## 1.0.62 - 2026-08-28
+
+### Fixed
+
+- Replaced the nested page-panel execution log with a single-header, single-scroll-region drawer.
+- Prevented the search, status and copy controls from stretching or wrapping into malformed layouts.
+- Added bounded long-text rendering, responsive narrow-window behavior and backdrop-click closing.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-28.
+- `npm run build`: passed on 2026-08-28.
+- No database, aggregation, dependency or lock-file changes.
+
 ## 1.0.61 - 2026-08-28
 
 ### Changed

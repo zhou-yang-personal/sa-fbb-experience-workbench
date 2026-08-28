@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.61
+1.0.62
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,14 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.62 update
+
+- Rebuilt the execution-log drawer as a single-header, single-scroll-region layout instead of nesting a full page panel inside a scrolling drawer.
+- Stabilized search, status and copy controls with a responsive grid and bounded long-text rendering.
+- Backdrop clicks now close the drawer while clicks inside the drawer remain isolated.
+- No database, aggregation, dependency or lock-file behavior changed. Live Windows/WebView2 visual verification remains pending.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.61 update
 
