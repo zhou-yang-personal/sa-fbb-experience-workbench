@@ -28,6 +28,10 @@ const fields: Array<{ key: NumberKey; zh: string; en: string; unit: string }> = 
   { key: 'speed_upgrade_max_effective_mbps', zh: '升套有效速率上限', en: 'Upgrade effective-rate ceiling', unit: 'Mbps' },
   { key: 'mesh_min_wifi_delay_ms', zh: 'AP 组网 Wi-Fi 时延门槛', en: 'Mesh Wi-Fi delay', unit: 'ms' },
   { key: 'app_bundle_min_observations', zh: 'App Bundle 最低使用次数', en: 'App bundle observations', unit: '条' },
+  { key: 'opportunity_min_active_days', zh: '潜客最低活跃天数', en: 'Opportunity active days', unit: '天' },
+  { key: 'opportunity_min_observations', zh: '潜客最低有效观测', en: 'Opportunity observations', unit: '条' },
+  { key: 'speed_upgrade_min_conditions', zh: '升套最少命中条件', en: 'Upgrade matched conditions', unit: '项' },
+  { key: 'app_bundle_min_active_days', zh: 'Bundle 最低活跃天数', en: 'Bundle active days', unit: '天' },
 ];
 
 export function DecisionRuleCenter({ c }: { c: WorkbenchController }) {

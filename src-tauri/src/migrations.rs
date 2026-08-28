@@ -35,11 +35,13 @@ pub fn init_database(settings: &MySqlSettings) -> Result<String, String> {
     let investigation_rows = sql_runner::execute_script(settings, INVESTIGATION_SCHEMA)?;
     let aggregation_checkpoint_rows =
         sql_runner::execute_script(settings, AGGREGATION_CHECKPOINT_SCHEMA)?;
-    let decision_workspace_rows = sql_runner::execute_script(settings, DECISION_WORKSPACE_SCHEMA)?;
+    ensure_decision_workspace_schema(settings)?;
+    let decision_workspace_rows = 0;
     let mut conn = crate::db::conn(settings)?;
     ensure_access_columns_for_table(&mut conn, "meta_import_batch")?;
     ensure_access_columns_for_table(&mut conn, "meta_access_rule_set")?;
     ensure_access_columns_for_table(&mut conn, "meta_analysis_run")?;
+    ensure_access_columns_for_table(&mut conn, "meta_decision_rule_profile")?;
     ensure_access_columns_for_table(&mut conn, "dwd_tcp_detail_clean")?;
     ensure_access_columns_for_table(&mut conn, "dwd_game_detail_clean")?;
     let seed_rows = sql_runner::execute_script(settings, APP_MAPPING_SEED)?;
@@ -62,13 +64,22 @@ pub fn ensure_experience_policy_schema(settings: &MySqlSettings) -> Result<(), S
     sql_runner::execute_script(settings, EXPERIENCE_POLICY_SCHEMA)?;
     sql_runner::execute_script(settings, INVESTIGATION_SCHEMA)?;
     sql_runner::execute_script(settings, AGGREGATION_CHECKPOINT_SCHEMA)?;
-    sql_runner::execute_script(settings, DECISION_WORKSPACE_SCHEMA)?;
+    ensure_decision_workspace_schema(settings)?;
     let mut conn = crate::db::conn(settings)?;
     ensure_access_columns_for_table(&mut conn, "meta_access_rule_set")?;
-    ensure_access_columns_for_table(&mut conn, "meta_analysis_run")
+    ensure_access_columns_for_table(&mut conn, "meta_analysis_run")?;
+    ensure_access_columns_for_table(&mut conn, "meta_decision_rule_profile")
 }
 
 pub fn ensure_decision_workspace_schema(settings: &MySqlSettings) -> Result<(), String> {
+    let create_only = DECISION_WORKSPACE_SCHEMA
+        .split_once("INSERT IGNORE INTO meta_decision_rule_profile")
+        .map(|(prefix, _)| prefix)
+        .ok_or_else(|| "decision workspace migration is missing its seed boundary".to_string())?;
+    sql_runner::execute_script(settings, create_only)?;
+    let mut conn = crate::db::conn(settings)?;
+    ensure_access_columns_for_table(&mut conn, "meta_decision_rule_profile")?;
+    drop(conn);
     sql_runner::execute_script(settings, DECISION_WORKSPACE_SCHEMA).map(|_| ())
 }
 
@@ -109,9 +120,21 @@ pub fn ensure_access_columns_for_table(
             ("experience_policy_id", "VARCHAR(64) NULL"),
             ("experience_policy_version", "BIGINT NULL"),
         ]
-    } else if table.starts_with("dwd_tcp_detail_clean")
-        || table.starts_with("dwd_game_detail_clean")
-    {
+    } else if table == "meta_decision_rule_profile" {
+        &[
+            ("opportunity_min_active_days", "BIGINT NOT NULL DEFAULT 2"),
+            ("opportunity_min_observations", "BIGINT NOT NULL DEFAULT 10"),
+            ("speed_upgrade_min_conditions", "BIGINT NOT NULL DEFAULT 2"),
+            ("app_bundle_min_active_days", "BIGINT NOT NULL DEFAULT 3"),
+            ("sufficient_app_users", "BIGINT NOT NULL DEFAULT 30"),
+            ("sufficient_app_observations", "BIGINT NOT NULL DEFAULT 100"),
+            ("attention_app_poor_rate_pct", "DECIMAL(9,4) NOT NULL DEFAULT 10"),
+            ("attention_app_persistent_user_rate_pct", "DECIMAL(9,4) NOT NULL DEFAULT 5"),
+            ("severe_app_poor_rate_pct", "DECIMAL(9,4) NOT NULL DEFAULT 40"),
+            ("severe_app_persistent_user_rate_pct", "DECIMAL(9,4) NOT NULL DEFAULT 20"),
+            ("severe_app_severe_user_rate_pct", "DECIMAL(9,4) NOT NULL DEFAULT 10"),
+        ]
+    } else if table.starts_with("dwd_tcp_detail_clean") {
         &[
             ("source_user_type", "VARCHAR(32) NULL"),
             ("local_ip_address", "VARCHAR(255) NULL"),
@@ -126,6 +149,53 @@ pub fn ensure_access_columns_for_table(
             ),
             ("access_rule_id", "VARCHAR(64) NULL"),
             ("access_rule_set_version", "BIGINT NULL"),
+            ("effective_duration_hours", "DECIMAL(24,6) NULL"),
+            ("video_duration_hours", "DECIMAL(24,6) NULL"),
+            ("avg_download_mbps", "DECIMAL(18,6) NULL"),
+            ("throughput_mbps", "DECIMAL(18,6) NULL"),
+            ("max_single_flow_mbps", "DECIMAL(18,6) NULL"),
+            ("connection_success_pct", "DECIMAL(18,6) NULL"),
+            ("connection_delay_ms", "DECIMAL(18,6) NULL"),
+            ("download_fluency", "DECIMAL(18,6) NULL"),
+            ("upstream_rtt_ms", "DECIMAL(18,6) NULL"),
+            ("downstream_rtt_ms", "DECIMAL(18,6) NULL"),
+            ("user_up_loss", "DECIMAL(18,6) NULL"),
+            ("network_up_loss", "DECIMAL(18,6) NULL"),
+        ]
+    } else if table.starts_with("dwd_game_detail_clean") {
+        &[
+            ("source_user_type", "VARCHAR(32) NULL"),
+            ("local_ip_address", "VARCHAR(255) NULL"),
+            ("server_ip", "TEXT NULL"),
+            ("access_type_source", "VARCHAR(32) NOT NULL DEFAULT 'UNMATCHED'"),
+            ("access_type_confidence", "VARCHAR(32) NOT NULL DEFAULT 'LOW'"),
+            ("access_rule_id", "VARCHAR(64) NULL"),
+            ("access_rule_set_version", "BIGINT NULL"),
+        ]
+    } else if table.starts_with("dws_user_app_period_experience_v2") {
+        &[
+            ("total_effective_duration_hours", "DECIMAL(24,6) NOT NULL DEFAULT 0"),
+            ("total_video_duration_hours", "DECIMAL(24,6) NOT NULL DEFAULT 0"),
+            ("active_days", "BIGINT NOT NULL DEFAULT 0"),
+            ("avg_download_mbps", "DECIMAL(18,6) NULL"),
+            ("avg_throughput_mbps", "DECIMAL(18,6) NULL"),
+            ("avg_max_single_flow_mbps", "DECIMAL(18,6) NULL"),
+            ("avg_connection_success_pct", "DECIMAL(18,6) NULL"),
+            ("avg_connection_delay_ms", "DECIMAL(18,6) NULL"),
+            ("avg_download_fluency", "DECIMAL(18,6) NULL"),
+            ("avg_upstream_rtt_ms", "DECIMAL(18,6) NULL"),
+            ("avg_downstream_rtt_ms", "DECIMAL(18,6) NULL"),
+            ("avg_user_up_loss_pct", "DECIMAL(18,6) NULL"),
+            ("avg_network_up_loss_pct", "DECIMAL(18,6) NULL"),
+        ]
+    } else if table.starts_with("dws_user_app_hourly_experience_v2") {
+        &[
+            ("observation_rows", "BIGINT NOT NULL DEFAULT 0"),
+            ("total_download_gb", "DECIMAL(24,6) NOT NULL DEFAULT 0"),
+            ("total_effective_duration_hours", "DECIMAL(24,6) NOT NULL DEFAULT 0"),
+            ("total_video_duration_hours", "DECIMAL(24,6) NOT NULL DEFAULT 0"),
+            ("avg_effective_download_mbps", "DECIMAL(18,6) NULL"),
+            ("avg_download_mbps", "DECIMAL(18,6) NULL"),
         ]
     } else {
         return Ok(());

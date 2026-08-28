@@ -542,6 +542,10 @@ export interface DecisionRuleProfileRow {
   speed_upgrade_max_effective_mbps: number;
   mesh_min_wifi_delay_ms: number;
   app_bundle_min_observations: number;
+  opportunity_min_active_days: number;
+  opportunity_min_observations: number;
+  speed_upgrade_min_conditions: number;
+  app_bundle_min_active_days: number;
   sufficient_app_users: number;
   sufficient_app_observations: number;
   attention_app_poor_rate_pct: number;

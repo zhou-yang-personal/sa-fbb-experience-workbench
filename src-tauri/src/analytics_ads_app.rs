@@ -428,7 +428,24 @@ pub fn analytics_materialize_app_rank(req: EtlRequest) -> Result<CommandAck, Str
 
 #[cfg(test)]
 mod tests {
-    use super::{bind_partition_params, HourPartition, EXPERIENCE_HOURLY_DWS_V2_SQL};
+    use super::{
+        bind_partition_params, HourPartition, EXPERIENCE_DWS_V2_SQL,
+        EXPERIENCE_HOURLY_DWS_V2_SQL,
+    };
+
+    #[test]
+    fn period_v2_keeps_reusable_duration_and_rate_evidence() {
+        for field in [
+            "total_effective_duration_hours",
+            "total_video_duration_hours",
+            "active_days",
+            "avg_download_mbps",
+            "avg_throughput_mbps",
+            "avg_connection_success_pct",
+        ] {
+            assert!(EXPERIENCE_DWS_V2_SQL.contains(field), "missing {field}");
+        }
+    }
 
     #[test]
     fn hourly_v2_template_is_bounded_by_date_and_hour() {
@@ -446,6 +463,8 @@ mod tests {
         );
         assert!(EXPERIENCE_HOURLY_DWS_V2_SQL.contains("stat_date=:partition_date"));
         assert!(EXPERIENCE_HOURLY_DWS_V2_SQL.contains("hour_of_day=:partition_hour"));
+        assert!(EXPERIENCE_HOURLY_DWS_V2_SQL.contains("total_effective_duration_hours"));
+        assert!(EXPERIENCE_HOURLY_DWS_V2_SQL.contains("observation_rows"));
     }
 
     #[test]

@@ -54,7 +54,7 @@
 ## 3. 必须明确的数据限制
 
 - 当前 TCP DWD 没有可靠的上行速率字段；不能用 RTT、峰值或下行速率代替。
-- 当前 TCP 使用时长尚未进入 V2 DWS，时长分档仅能明确标记为 Game-only / partial。
+- TCP 有效下载时长、视频下载时长、平均下载速率、吞吐、建连和流畅度已补入 DWD / V2 DWS；旧批次需从 CLEAN/DWD 重建后才可用。
 - AP/组网需要 Wi-Fi delay 进入用户级聚合；未进入前不生成候选。
 - Game 文件未导入时显示 Not imported / Unavailable，不显示 0。
 - 当前批次只有 1 个有效 BRAS、0 OLT、0 PON，网络设备定位不进入主链路。

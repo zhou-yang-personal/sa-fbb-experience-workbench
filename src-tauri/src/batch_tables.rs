@@ -300,7 +300,11 @@ fn ensure_one_table(
         "CREATE TABLE IF NOT EXISTS `{table}` LIKE `{base}`"
     ))
     .map_err(|err| format!("failed to create per-batch table {table} from {base}: {err}"))?;
-    if def.base == "dwd_tcp_detail_clean" || def.base == "dwd_game_detail_clean" {
+    if def.base == "dwd_tcp_detail_clean"
+        || def.base == "dwd_game_detail_clean"
+        || def.base == "dws_user_app_period_experience_v2"
+        || def.base == "dws_user_app_hourly_experience_v2"
+    {
         crate::migrations::ensure_access_columns_for_table(conn, &table)?;
     }
     Ok(())

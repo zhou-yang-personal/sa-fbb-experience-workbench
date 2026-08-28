@@ -224,6 +224,21 @@ mod tests {
     }
 
     #[test]
+    fn tcp_clean_keeps_duration_rate_and_connection_evidence() {
+        for field in [
+            "effective_duration_hours",
+            "video_duration_hours",
+            "avg_download_mbps",
+            "throughput_mbps",
+            "connection_success_pct",
+            "connection_delay_ms",
+            "download_fluency",
+        ] {
+            assert!(TCP_CLEAN_SQL.contains(field), "missing {field}");
+        }
+    }
+
+    #[test]
     fn stat_time_text_normalization_preserves_middle_separator() {
         assert_eq!(
             normalize_stat_time_text("2026-06-28 15:35:00\t"),

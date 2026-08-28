@@ -6,7 +6,9 @@
 
 - Added migration 011 for versioned decision rules, run bindings, four opportunity outputs and independently resumable aggregation subtask checkpoints.
 - Added DWS-backed metric, unique-App, user-distribution, issue-side and Cable/FTTH queries without RAW scans.
+- Added previously discarded TCP duration, average-rate, throughput, connection and fluency fields to CLEAN/DWD and the reusable user-by-App period DWS; existing RAW batches can regenerate them without re-importing CSV.
 - Added migration, speed upgrade, AP/mesh and App Bundle opportunity materialization with explicit availability and limitation states.
+- Opportunity candidates now enforce configurable active-day, observation and matched-condition gates and use daily traffic/duration/observation evidence instead of opaque demand scores.
 
 ### Changed
 
@@ -27,7 +29,7 @@
 - `npm run check`: passed on 2026-08-28.
 - `npm run build`: passed on 2026-08-28.
 - `cargo check`: passed on 2026-08-28 with existing warnings only.
-- `cargo test --no-fail-fast`: 55 passed, 0 failed on 2026-08-28.
+- `cargo test --no-fail-fast`: 57 passed, 0 failed on 2026-08-28.
 - Live Windows/WebView2 and real customer MySQL migration/SQL execution remain pending.
 
 ## 1.0.59 - 2026-08-28

@@ -26,11 +26,12 @@ CSV → MySQL RAW → Quality Gate → CLEAN/DWD → DWS/ADS → SA Lead / Final
 - Added a decision workspace backed by the existing V2 DWS: metric panorama, unique-App portfolio, user distributions, issue-side evidence and access comparison. These reads do not scan RAW.
 - Added migration 011 with versioned decision rules, run-level snapshots, four opportunity outputs and subtask checkpoints.
 - Added configurable thresholds for sample eligibility, persistent quality, problem Apps, heavy use, peak hours and opportunity qualification.
+- Existing RAW batches can regenerate TCP effective/video duration, average download rate, throughput, connection success/delay and fluency into CLEAN/DWD and the user-by-App DWS; no CSV re-import is required.
 - Added migration, speed-upgrade, mesh/AP and App Bundle opportunity materialization as an independently logged pipeline subtask. Mesh/AP reports unavailable until Wi-Fi evidence is aggregated.
 - DWS/ADS resume now skips completed subtasks and retries only incomplete work; hourly partitions retain their finer-grained checkpoints.
 - TCP/Game user keys now use IPv4 only (User Account first, Local IP fallback). MAC and non-IP accounts no longer define analytical users.
 - PDF export prepares all non-empty business chart sections for the selected batch/run and excludes the interactive App detail table by default.
-- `npm run check`, `npm run build`, Linux `cargo check` and 55 Rust tests passed. Live Windows/WebView2 and customer MySQL migration/SQL execution remain to be verified.
+- `npm run check`, `npm run build`, Linux `cargo check` and 57 Rust tests passed. Live Windows/WebView2 and customer MySQL migration/SQL execution remain to be verified.
 - `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.59 update
