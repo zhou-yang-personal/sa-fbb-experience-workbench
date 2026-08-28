@@ -20,6 +20,7 @@ mod command_guard;
 mod config_commands;
 mod dashboard_commands;
 mod dataset_profile_commands;
+mod decision_workspace_commands;
 mod db;
 mod etl_commands;
 mod experience_policy_commands;
@@ -112,6 +113,17 @@ fn main() {
             analysis_commands::analysis_get_module_metrics,
             analytics_commands::analytics_get_kpi_summary,
             analytics_commands::analytics_get_data_coverage,
+            decision_workspace_commands::decision_get_metric_panorama,
+            decision_workspace_commands::decision_get_app_panorama,
+            decision_workspace_commands::decision_get_user_distributions,
+            decision_workspace_commands::decision_get_quality_overview,
+            decision_workspace_commands::decision_get_access_compare,
+            decision_workspace_commands::decision_materialize_opportunities,
+            decision_workspace_commands::decision_get_opportunities,
+            decision_workspace_commands::decision_rule_list,
+            decision_workspace_commands::decision_rule_create_draft,
+            decision_workspace_commands::decision_rule_update,
+            decision_workspace_commands::decision_rule_publish,
             investigation_commands::analytics_get_experience_status_v2,
             investigation_commands::analytics_get_findings_v2,
             investigation_commands::analytics_get_data_coverage_v2,

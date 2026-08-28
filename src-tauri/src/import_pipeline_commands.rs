@@ -125,6 +125,7 @@ const AGGREGATE_SUBTASKS: &[&str] = &[
     "hourly_trend",
     "network_hotspot",
     "user_profile",
+    "decision_opportunities",
     "lead_evidence",
 ];
 
@@ -757,6 +758,8 @@ where
 fn run_logged_subtask<F>(
     settings: &MySqlSettings,
     pipeline_run_id: &str,
+    import_batch_id: &str,
+    analysis_run_id: &str,
     subtask: &str,
     label: &str,
     total_started: std::time::Instant,
@@ -765,6 +768,19 @@ fn run_logged_subtask<F>(
 where
     F: FnOnce() -> Result<crate::models::CommandAck, String>,
 {
+    let mut checkpoint_conn = db::conn(settings)?;
+    let checkpoint_status: Option<String> = checkpoint_conn.exec_first(
+        "SELECT status FROM meta_aggregation_subtask_checkpoint WHERE analysis_run_id=? AND stage_name='dws_ads_aggregate' AND subtask_name=?",
+        (analysis_run_id, subtask),
+    ).map_err(|err| format!("failed to inspect aggregation subtask checkpoint: {err}"))?;
+    if checkpoint_status.as_deref() == Some("success") {
+        append_log(settings, pipeline_run_id, "info", Some("dws_ads_aggregate"), &format!("聚合子阶段已完成，断点复用：{label} [{subtask}]"), now_elapsed_ms(total_started))?;
+        return Ok(());
+    }
+    checkpoint_conn.exec_drop(
+        "INSERT INTO meta_aggregation_subtask_checkpoint (pipeline_run_id,import_batch_id,analysis_run_id,stage_name,subtask_name,status,attempt_count,started_at,finished_at,duration_ms,message) VALUES (?,?,?,'dws_ads_aggregate',?,'running',1,UTC_TIMESTAMP(),NULL,0,NULL) ON DUPLICATE KEY UPDATE pipeline_run_id=VALUES(pipeline_run_id),import_batch_id=VALUES(import_batch_id),status='running',attempt_count=attempt_count+1,started_at=UTC_TIMESTAMP(),finished_at=NULL,duration_ms=0,message=NULL",
+        (pipeline_run_id, import_batch_id, analysis_run_id, subtask),
+    ).map_err(|err| format!("failed to start aggregation subtask checkpoint: {err}"))?;
     let started = std::time::Instant::now();
     append_log(
         settings,
@@ -776,6 +792,7 @@ where
     )?;
     match action() {
         Ok(result) => {
+            checkpoint_conn.exec_drop("UPDATE meta_aggregation_subtask_checkpoint SET status='success',finished_at=UTC_TIMESTAMP(),duration_ms=?,message=? WHERE analysis_run_id=? AND stage_name='dws_ads_aggregate' AND subtask_name=?", (now_elapsed_ms(started), &result.message, analysis_run_id, subtask)).map_err(|err| format!("failed to complete aggregation subtask checkpoint: {err}"))?;
             append_log(
                 settings,
                 pipeline_run_id,
@@ -791,6 +808,7 @@ where
             Ok(())
         }
         Err(err) => {
+            let _ = checkpoint_conn.exec_drop("UPDATE meta_aggregation_subtask_checkpoint SET status='failed',finished_at=UTC_TIMESTAMP(),duration_ms=?,message=? WHERE analysis_run_id=? AND stage_name='dws_ads_aggregate' AND subtask_name=?", (now_elapsed_ms(started), err.chars().take(2000).collect::<String>(), analysis_run_id, subtask));
             let _ = append_log(
                 settings,
                 pipeline_run_id,
@@ -812,6 +830,7 @@ fn run_dws_ads_stage(
     total_started: std::time::Instant,
 ) -> Result<String, String> {
     let _aggregation_lock = db::acquire_named_lock(settings, db::AGGREGATION_LOCK_NAME)?;
+    crate::migrations::ensure_decision_workspace_schema(settings)?;
     let request = || EtlRequest {
         settings: settings.clone(),
         import_batch_id: import_batch_id.to_string(),
@@ -821,6 +840,8 @@ fn run_dws_ads_stage(
         run_logged_subtask(
             settings,
             pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
             AGGREGATE_SUBTASKS[0],
             "用户日聚合",
             total_started,
@@ -829,6 +850,8 @@ fn run_dws_ads_stage(
         run_logged_subtask(
             settings,
             pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
             AGGREGATE_SUBTASKS[1],
             "完整 DWS 聚合",
             total_started,
@@ -837,6 +860,8 @@ fn run_dws_ads_stage(
         run_logged_subtask(
             settings,
             pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
             AGGREGATE_SUBTASKS[2],
             "基础看板 ADS",
             total_started,
@@ -845,6 +870,8 @@ fn run_dws_ads_stage(
         run_logged_subtask(
             settings,
             pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
             AGGREGATE_SUBTASKS[3],
             "App Rank",
             total_started,
@@ -858,6 +885,8 @@ fn run_dws_ads_stage(
         run_logged_subtask(
             settings,
             pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
             AGGREGATE_SUBTASKS[4],
             "小时趋势",
             total_started,
@@ -866,6 +895,8 @@ fn run_dws_ads_stage(
         run_logged_subtask(
             settings,
             pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
             AGGREGATE_SUBTASKS[5],
             "网络热点",
             total_started,
@@ -874,6 +905,8 @@ fn run_dws_ads_stage(
         run_logged_subtask(
             settings,
             pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
             AGGREGATE_SUBTASKS[6],
             "用户画像",
             total_started,
@@ -882,7 +915,19 @@ fn run_dws_ads_stage(
         run_logged_subtask(
             settings,
             pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
             AGGREGATE_SUBTASKS[7],
+            "四类潜客机会",
+            total_started,
+            || crate::decision_workspace_commands::materialize_opportunities(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
+            AGGREGATE_SUBTASKS[8],
             "Lead Evidence",
             total_started,
             || crate::ads_lead::ads_lead(request()),
@@ -2273,6 +2318,7 @@ mod tests {
                 "hourly_trend",
                 "network_hotspot",
                 "user_profile",
+                "decision_opportunities",
                 "lead_evidence",
             ]
         );

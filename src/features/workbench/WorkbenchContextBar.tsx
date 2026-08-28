@@ -56,37 +56,10 @@ export function WorkbenchContextBar({ settings, dataType, importMode, filePath, 
   const displayName = batchDisplayName || batch?.batch_display_name || batch?.source_file_name || '';
   return (
     <section className="context-bar-shell" aria-label="Current analysis context">
-    <div className="context-bar">
-      <div className="context-item context-primary">
-        <span>Batch</span>
-        <strong title={displayName}>{shortValue(displayName, 'no batch name')}</strong>
-        <small>{shortValue(importBatchId, batchStatus)}</small>
-      </div>
-      <div className="context-item">
-        <span>Run</span>
-        <strong>{shortValue(analysisRunId, 'no run')}</strong>
-        <small>analysis_run_id</small>
-      </div>
-      <div className="context-item">
-        <span>Data</span>
-        <strong>{dataType.toUpperCase()}</strong>
-        <small>{importMode === 'load_data' ? 'LOAD DATA' : 'Streaming INSERT'}</small>
-      </div>
-      <div className="context-item context-wide">
-        <span>Source</span>
-        <strong title={filePath}>{shortValue(filePath, 'no file selected')}</strong>
-        <small>{dbLabel(settings)}</small>
-      </div>
-      <div className="context-item context-wide">
-        <span>Export target</span>
-        <strong title={outputPath}>{shortValue(outputPath, 'no output path')}</strong>
-        <small>看板内按钮直接导出</small>
-      </div>
-    </div>
     <div className="analysis-context-strip">
       <div className="analysis-context-label">
-        <strong>{language === 'zh-CN' ? '分析路径' : 'Analysis path'}</strong>
-        <small>{language === 'zh-CN' ? '切换页面时保留以下条件' : 'These filters persist across pages'}</small>
+        <strong title={displayName}>{shortValue(displayName, language === 'zh-CN' ? '未选择批次' : 'No batch')}</strong>
+        <small>{language === 'zh-CN' ? '当前数据上下文' : 'Current data context'}</small>
       </div>
       <div className="analysis-context-chips">
         {(Object.entries(analysisContext) as [AnalysisContextKey, AnalysisContext[AnalysisContextKey]][]).map(([key, value]) => (
@@ -96,7 +69,7 @@ export function WorkbenchContextBar({ settings, dataType, importMode, filePath, 
             <b aria-hidden="true">×</b>
           </button>
         ))}
-        {!Object.keys(analysisContext).length && <span className="analysis-context-empty">{language === 'zh-CN' ? '当前为全局范围；点击 Finding 或图表可逐层追加条件。' : 'Global scope; click a finding or chart to add filters.'}</span>}
+        {!Object.keys(analysisContext).length && <span className="analysis-context-empty">{language === 'zh-CN' ? '全局范围；选择 App 或用户后会在这里显示分析路径。' : 'Global scope; App or user selections appear here.'}</span>}
       </div>
       <div className="analysis-context-actions">
         <button type="button" disabled={!canGoBack} onClick={onBack}>{language === 'zh-CN' ? '返回上层' : 'Back'}</button>
@@ -107,6 +80,7 @@ export function WorkbenchContextBar({ settings, dataType, importMode, filePath, 
         </select>
       </div>
     </div>
+    <details className="technical-context-details"><summary>{language === 'zh-CN' ? '技术上下文' : 'Technical context'}</summary><div className="technical-context-grid"><span>Batch <strong>{shortValue(importBatchId, batchStatus)}</strong></span><span>Run <strong>{shortValue(analysisRunId, 'no run')}</strong></span><span>Data <strong>{dataType.toUpperCase()} / {importMode === 'load_data' ? 'LOAD DATA' : 'Streaming'}</strong></span><span>Source <strong>{shortValue(filePath, 'no file')}</strong></span><span>Database <strong>{dbLabel(settings)}</strong></span><span>Export <strong>{shortValue(outputPath, 'no path')}</strong></span></div></details>
     </section>
   );
 }

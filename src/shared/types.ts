@@ -521,3 +521,34 @@ export interface AppExperienceProfileRow {
   severe_network_loss_pct_at_least?: number;
   severe_jitter_ms_at_least?: number;
 }
+
+export interface DecisionRuleProfileRow {
+  rule_profile_id: string;
+  version: number;
+  profile_name: string;
+  status: string;
+  minimum_user_observations: number;
+  minimum_app_users: number;
+  minimum_app_observations: number;
+  persistent_poor_rate_pct: number;
+  problem_app_poor_rate_pct: number;
+  problem_app_persistent_user_rate_pct: number;
+  heavy_traffic_gb: number;
+  heavy_usage_hours: number;
+  peak_hour_start: number;
+  peak_hour_end: number;
+  migration_min_traffic_gb: number;
+  speed_upgrade_min_traffic_gb: number;
+  speed_upgrade_max_effective_mbps: number;
+  mesh_min_wifi_delay_ms: number;
+  app_bundle_min_observations: number;
+  sufficient_app_users: number;
+  sufficient_app_observations: number;
+  attention_app_poor_rate_pct: number;
+  attention_app_persistent_user_rate_pct: number;
+  severe_app_poor_rate_pct: number;
+  severe_app_persistent_user_rate_pct: number;
+  severe_app_severe_user_rate_pct: number;
+  notes?: string;
+  updated_at: string;
+}

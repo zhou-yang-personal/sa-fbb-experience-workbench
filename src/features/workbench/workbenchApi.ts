@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AccessIpRangeRow, AccessRuleInput, AccessRulePreviewResult, AccessRuleSetRow, AccessRuleValidationResult, AnalysisRunOption, AppExperienceProfileRow, BatchListItem, BatchTableRegistryRow, CommandAck, CsvProbeResult, DashboardOverview, ExperiencePolicyRow, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, ImportPipelineLogRow, ImportPipelineStartResult, ImportPipelineStatus, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
+import type { AccessIpRangeRow, AccessRuleInput, AccessRulePreviewResult, AccessRuleSetRow, AccessRuleValidationResult, AnalysisRunOption, AppExperienceProfileRow, BatchListItem, BatchTableRegistryRow, CommandAck, CsvProbeResult, DashboardOverview, DecisionRuleProfileRow, ExperiencePolicyRow, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, ImportPipelineLogRow, ImportPipelineStartResult, ImportPipelineStatus, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
 
 function normalizeFilter(value?: string) {
   const normalized = value?.trim();
@@ -50,6 +50,10 @@ export const workbenchApi = {
   updateExperienceProfile: (settings: MySqlSettings, profile: AppExperienceProfileRow) => invoke<CommandAck>('experience_profile_update', { req: { settings, ...profile } }),
   cloneExperienceProfile: (settings: MySqlSettings, policyId: string, sourceProfileId: string) => invoke<CommandAck>('experience_profile_clone', { req: { settings, policy_id: policyId, source_profile_id: sourceProfileId } }),
   publishExperiencePolicy: (settings: MySqlSettings, policyId: string) => invoke<CommandAck>('experience_policy_publish', { req: { settings, policy_id: policyId } }),
+  decisionRules: (settings: MySqlSettings) => invoke<DecisionRuleProfileRow[]>('decision_rule_list', { settings }),
+  createDecisionRuleDraft: (settings: MySqlSettings) => invoke<CommandAck>('decision_rule_create_draft', { settings }),
+  updateDecisionRule: (settings: MySqlSettings, rule: DecisionRuleProfileRow) => invoke<CommandAck>('decision_rule_update', { settings, rule }),
+  publishDecisionRule: (settings: MySqlSettings, ruleProfileId: string) => invoke<CommandAck>('decision_rule_publish', { settings, ruleProfileId }),
   listBatches: (settings: MySqlSettings, dataType?: string) => invoke<BatchListItem[]>('import_list_batches', { settings, dataType }),
   listAnalysisRuns: (settings: MySqlSettings, importBatchId: string) => invoke<AnalysisRunOption[]>('analysis_list_runs', { settings, importBatchId }),
   deleteBatch: (settings: MySqlSettings, importBatchId: string) => invoke<CommandAck>('import_delete_batch', { req: { settings, import_batch_id: importBatchId } }),

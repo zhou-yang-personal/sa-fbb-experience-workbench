@@ -18,6 +18,8 @@ const INVESTIGATION_SCHEMA: &str =
     include_str!("../../database/migrations/009_investigation_workspace_schema.sql");
 const AGGREGATION_CHECKPOINT_SCHEMA: &str =
     include_str!("../../database/migrations/010_aggregation_checkpoint_schema.sql");
+const DECISION_WORKSPACE_SCHEMA: &str =
+    include_str!("../../database/migrations/011_decision_workspace_schema.sql");
 const APP_MAPPING_SEED: &str = include_str!("../../database/seeds/001_app_mapping_seed.sql");
 const MAP_SEED: &str = include_str!("../../database/seeds/002_default_mapping_seed.sql");
 
@@ -33,6 +35,7 @@ pub fn init_database(settings: &MySqlSettings) -> Result<String, String> {
     let investigation_rows = sql_runner::execute_script(settings, INVESTIGATION_SCHEMA)?;
     let aggregation_checkpoint_rows =
         sql_runner::execute_script(settings, AGGREGATION_CHECKPOINT_SCHEMA)?;
+    let decision_workspace_rows = sql_runner::execute_script(settings, DECISION_WORKSPACE_SCHEMA)?;
     let mut conn = crate::db::conn(settings)?;
     ensure_access_columns_for_table(&mut conn, "meta_import_batch")?;
     ensure_access_columns_for_table(&mut conn, "meta_access_rule_set")?;
@@ -42,7 +45,7 @@ pub fn init_database(settings: &MySqlSettings) -> Result<String, String> {
     let seed_rows = sql_runner::execute_script(settings, APP_MAPPING_SEED)?;
     let map_seed_rows = sql_runner::execute_script(settings, MAP_SEED)?;
     crate::mapping_catalog::ensure_import_mapping_catalog(settings)?;
-    Ok(format!("database initialized: core={core_rows}, ext={ext_rows}, map={map_rows}, obs={obs_rows}, pipeline={pipeline_rows}, analytics={analytics_rows}, access={access_rows}, experience_policy={experience_policy_rows}, investigation={investigation_rows}, aggregation_checkpoint={aggregation_checkpoint_rows}, seed={seed_rows}, map_seed={map_seed_rows}"))
+    Ok(format!("database initialized: core={core_rows}, ext={ext_rows}, map={map_rows}, obs={obs_rows}, pipeline={pipeline_rows}, analytics={analytics_rows}, access={access_rows}, experience_policy={experience_policy_rows}, investigation={investigation_rows}, aggregation_checkpoint={aggregation_checkpoint_rows}, decision_workspace={decision_workspace_rows}, seed={seed_rows}, map_seed={map_seed_rows}"))
 }
 
 pub fn ensure_access_schema(settings: &MySqlSettings) -> Result<(), String> {
@@ -59,9 +62,14 @@ pub fn ensure_experience_policy_schema(settings: &MySqlSettings) -> Result<(), S
     sql_runner::execute_script(settings, EXPERIENCE_POLICY_SCHEMA)?;
     sql_runner::execute_script(settings, INVESTIGATION_SCHEMA)?;
     sql_runner::execute_script(settings, AGGREGATION_CHECKPOINT_SCHEMA)?;
+    sql_runner::execute_script(settings, DECISION_WORKSPACE_SCHEMA)?;
     let mut conn = crate::db::conn(settings)?;
     ensure_access_columns_for_table(&mut conn, "meta_access_rule_set")?;
     ensure_access_columns_for_table(&mut conn, "meta_analysis_run")
+}
+
+pub fn ensure_decision_workspace_schema(settings: &MySqlSettings) -> Result<(), String> {
+    sql_runner::execute_script(settings, DECISION_WORKSPACE_SCHEMA).map(|_| ())
 }
 
 pub fn ensure_aggregation_checkpoint_schema(settings: &MySqlSettings) -> Result<(), String> {
@@ -156,7 +164,7 @@ pub fn ensure_access_columns_for_table(
 
 #[cfg(test)]
 mod tests {
-    use super::{AGGREGATION_CHECKPOINT_SCHEMA, ANALYTICS_SCHEMA};
+    use super::{AGGREGATION_CHECKPOINT_SCHEMA, ANALYTICS_SCHEMA, DECISION_WORKSPACE_SCHEMA};
 
     #[test]
     fn network_hotspot_schema_uses_bounded_indexes() {
@@ -175,5 +183,14 @@ mod tests {
         ));
         assert!(AGGREGATION_CHECKPOINT_SCHEMA.contains("attempt_count INT NOT NULL DEFAULT 0"));
         assert!(AGGREGATION_CHECKPOINT_SCHEMA.contains("connection_id BIGINT UNSIGNED NULL"));
+    }
+
+
+    #[test]
+    fn decision_workspace_rules_and_opportunities_are_versioned() {
+        assert!(DECISION_WORKSPACE_SCHEMA.contains("meta_decision_rule_profile"));
+        assert!(DECISION_WORKSPACE_SCHEMA.contains("meta_analysis_run_decision_binding"));
+        assert!(DECISION_WORKSPACE_SCHEMA.contains("ads_opportunity_user_v3"));
+        assert!(DECISION_WORKSPACE_SCHEMA.contains("minimum_app_users"));
     }
 }

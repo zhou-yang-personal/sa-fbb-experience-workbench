@@ -61,24 +61,14 @@ WITH params AS (
       WHEN UPPER(TRIM(COALESCE(r.user_type, ''))) LIKE '%CABLE%' OR UPPER(TRIM(COALESCE(r.wan_type, ''))) LIKE '%CABLE%' THEN 'CABLE'
       ELSE 'UNKNOWN'
     END AS source_user_type,
-    INET_ATON(r.ip_key) AS ip_num
+    CASE WHEN INET_ATON(r.account_key) IS NOT NULL THEN r.account_key WHEN INET_ATON(r.ip_key) IS NOT NULL THEN r.ip_key ELSE NULL END AS analysis_ip_key,
+    COALESCE(INET_ATON(r.account_key), INET_ATON(r.ip_key)) AS ip_num
   FROM raw_normalized r
 ), normalized AS (
   SELECT
     r.import_batch_id,
-    CASE
-      WHEN r.account_key IS NOT NULL AND r.account_key <> '--' AND r.account_key NOT REGEXP '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' THEN r.account_key
-      WHEN r.mac_key IS NOT NULL AND r.mac_key <> '--' THEN r.mac_key
-      WHEN r.account_key REGEXP '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' THEN r.account_key
-      WHEN r.ip_key IS NOT NULL AND r.ip_key <> '--' THEN r.ip_key
-      ELSE 'UNKNOWN'
-    END AS user_key,
-    CASE
-      WHEN r.account_key IS NOT NULL AND r.account_key <> '--' AND r.account_key NOT REGEXP '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' THEN 'HIGH_ACCOUNT_KEY'
-      WHEN r.mac_key IS NOT NULL AND r.mac_key <> '--' THEN 'MEDIUM_MAC_USER_KEY'
-      WHEN r.account_key REGEXP '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' OR r.ip_key IS NOT NULL THEN 'LOW_IP_ONLY_KEY'
-      ELSE 'UNKNOWN_KEY'
-    END AS key_confidence,
+    COALESCE(r.analysis_ip_key, 'UNKNOWN') AS user_key,
+    CASE WHEN INET_ATON(r.account_key) IS NOT NULL THEN 'IP_USER_ACCOUNT' WHEN INET_ATON(r.ip_key) IS NOT NULL THEN 'IP_LOCAL_ADDRESS' ELSE 'IP_UNAVAILABLE' END AS key_confidence,
     r.account_key AS user_account,
     r.mac_key AS user_mac,
     r.source_user_type,
@@ -88,7 +78,7 @@ WITH params AS (
       WHEN ars.default_access_type IN ('CABLE', 'FTTH', 'OTHER') THEN ars.default_access_type
       ELSE 'UNKNOWN'
     END AS user_type,
-    r.ip_key AS local_ip_address,
+    r.analysis_ip_key AS local_ip_address,
     NULLIF(TRIM(r.server_ip), '') AS server_ip,
     CASE
       WHEN r.ip_num IS NULL THEN 'UNAVAILABLE_IP'

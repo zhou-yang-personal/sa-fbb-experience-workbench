@@ -100,6 +100,16 @@
 .product-shell .analysis-context-actions { display: flex; gap: 6px; align-items: center; }
 .product-shell .analysis-context-actions button,
 .product-shell .analysis-context-actions select { width: auto; min-height: 32px; padding: 6px 9px; font-size: 11px; }
+.product-shell .technical-context-details { margin-top: 6px; color: var(--muted); font-size: 11px; }
+.product-shell .technical-context-details summary { cursor: pointer; text-align: right; }
+.product-shell .technical-context-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 8px; padding: 10px 4px 2px; }
+.product-shell .technical-context-grid span { display: grid; gap: 3px; }
+.product-shell .analysis-context-compact { display:flex;justify-content:space-between;gap:18px;align-items:center;padding:14px 18px;border:1px solid var(--line);border-radius:13px;background:#fff; }
+.product-shell .analysis-context-compact>div:first-child { display:grid;gap:3px; }
+.product-shell .analysis-context-compact span,.product-shell .analysis-context-compact small { color:var(--muted);font-size:11px; }
+.product-shell .analysis-context-compact strong { font-size:15px; }
+.product-shell .run-switcher { padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:#fff; }
+.product-shell .run-switcher select { margin-top:10px; }
 .product-shell .next-action-hint { color: var(--ink); background: #f5f8ff; border-color: #c7d7fe; }
 .product-shell .next-action-hint span { color: var(--brand); }
 .product-shell .next-action-hint strong { color: var(--ink); }

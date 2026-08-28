@@ -1,5 +1,33 @@
 # CHANGELOG-dev
 
+## 1.0.60 - 2026-08-28
+
+### Added
+
+- Added migration 011 for versioned decision rules, run bindings, four opportunity outputs and independently resumable aggregation subtask checkpoints.
+- Added DWS-backed metric, unique-App, user-distribution, issue-side and Cable/FTTH queries without RAW scans.
+- Added migration, speed upgrade, AP/mesh and App Bundle opportunity materialization with explicit availability and limitation states.
+
+### Changed
+
+- Reduced the primary navigation to Panorama, Poor Quality, Cable/FTTH, Opportunities and Data Center; configuration and diagnostics are secondary.
+- Reordered the product narrative so overall metrics, all Apps and all users appear before access segmentation or issue-side evidence.
+- Changed TCP/Game analytical identity to IPv4 only, using User Account first and Local IP as fallback.
+- Added all-non-empty-chart PDF printing, bilingual page copy, explicit GB/TB/Mbps/ms/% units, rule versions, numerators, denominators and sample limitations.
+
+### Performance and recovery
+
+- Added one checkpoint per DWS/ADS subtask. A resumed run skips successful subtasks and retries incomplete work, while the existing hourly date/hour checkpoints remain unchanged.
+- All new panorama queries read the approximately user-by-App V2 DWS rather than RAW or DWD.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-28.
+- `npm run build`: passed on 2026-08-28.
+- `cargo check`: passed on 2026-08-28 with existing warnings only.
+- `cargo test --no-fail-fast`: 55 passed, 0 failed on 2026-08-28.
+- Live Windows/WebView2 and real customer MySQL migration/SQL execution remain pending.
+
 ## 1.0.59 - 2026-08-28
 
 ### Fixed

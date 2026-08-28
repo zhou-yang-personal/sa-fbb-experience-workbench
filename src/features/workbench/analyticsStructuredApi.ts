@@ -41,4 +41,11 @@ export const analyticsStructuredApi = {
   materializeUser: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<CommandAck>('ads_user', etlReq(settings, importBatchId, analysisRunId)),
   materializeLead: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<CommandAck>('ads_lead', etlReq(settings, importBatchId, analysisRunId)),
   materializeNetwork: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<CommandAck>('ads_net', etlReq(settings, importBatchId, analysisRunId)),
+  decisionMetricPanorama: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<MetricCard[]>('decision_get_metric_panorama', req(settings, importBatchId, analysisRunId)),
+  decisionAppPanorama: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, query?: StructuredAnalyticsQuery) => invoke<MetricCard[]>('decision_get_app_panorama', req(settings, importBatchId, analysisRunId, query)),
+  decisionUserDistributions: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, query?: StructuredAnalyticsQuery) => invoke<MetricCard[]>('decision_get_user_distributions', req(settings, importBatchId, analysisRunId, query)),
+  decisionQualityOverview: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<MetricCard[]>('decision_get_quality_overview', req(settings, importBatchId, analysisRunId)),
+  decisionAccessCompare: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<MetricCard[]>('decision_get_access_compare', req(settings, importBatchId, analysisRunId)),
+  decisionMaterializeOpportunities: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<CommandAck>('decision_materialize_opportunities', etlReq(settings, importBatchId, analysisRunId)),
+  decisionOpportunities: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<MetricCard[]>('decision_get_opportunities', req(settings, importBatchId, analysisRunId)),
 };
