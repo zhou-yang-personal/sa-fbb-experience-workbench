@@ -1,5 +1,21 @@
 # CHANGELOG-dev
 
+## 1.0.68 - 2026-08-29
+
+### Fixed
+
+- Isolated the legacy Analytics PDF visibility reset behind an explicit print-source body class so it cannot blank the V3 Decision Workspace report.
+- Added a separate Decision Workspace print-source mode that reveals only the mounted full-chart report during printing.
+- Waited for document fonts and two rendered frames before opening the system print dialog, reducing the risk of printing before report layout is ready.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-29.
+- `npm run build`: passed on 2026-08-29.
+- Production CSS contains only mode-scoped `body.analytics-pdf-print-source` and `body.decision-pdf-print-source` visibility resets; no unconditional print-time body reset remains.
+- No database, aggregation, dependency or lock-file changes.
+- Live Windows/WebView2 print-to-PDF verification remains pending.
+
 ## 1.0.67 - 2026-08-28
 
 ### Performance and architecture

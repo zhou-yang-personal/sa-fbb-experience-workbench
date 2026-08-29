@@ -178,11 +178,11 @@
   @page { size: A4 landscape; margin: 10mm; }
   html,
   body { background: #fff !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-  body * { visibility: hidden !important; }
-  .analytics-pdf-preview-backdrop,
-  .analytics-pdf-preview-dialog,
-  .analytics-print-report,
-  .analytics-print-report * { visibility: visible !important; }
+  body.analytics-pdf-print-source * { visibility: hidden !important; }
+  body.analytics-pdf-print-source .analytics-pdf-preview-backdrop,
+  body.analytics-pdf-print-source .analytics-pdf-preview-dialog,
+  body.analytics-pdf-print-source .analytics-print-report,
+  body.analytics-pdf-print-source .analytics-print-report * { visibility: visible !important; }
   .analytics-pdf-preview-backdrop { position: absolute !important; inset: 0 !important; display: block !important; padding: 0 !important; background: #fff !important; }
   .analytics-pdf-preview-dialog { width: 100% !important; height: auto !important; overflow: visible !important; background: #fff !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
   .analytics-pdf-preview-toolbar { display: none !important; }

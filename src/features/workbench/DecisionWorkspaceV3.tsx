@@ -118,6 +118,12 @@ export function DecisionWorkspaceV3({ c, view }: { c: WorkbenchController; view:
     setStatus(c.importBatchId && c.analysisRunId ? '' : '请先选择可分析批次。');
   }, [view, c.importBatchId, c.analysisRunId]);
 
+  useEffect(() => {
+    if (!printReport) return undefined;
+    document.body.classList.add('decision-pdf-print-source');
+    return () => document.body.classList.remove('decision-pdf-print-source');
+  }, [printReport]);
+
   async function load(targetPerspective = perspective) {
     if (disabled) return;
     setLoading(true); setStatus('正在读取已聚合结果…');
@@ -183,8 +189,9 @@ export function DecisionWorkspaceV3({ c, view }: { c: WorkbenchController; view:
       setStatus('全部图表已准备，正在打开系统 PDF 打印对话框。');
       const clear = () => setPrintReport(null);
       window.addEventListener('afterprint', clear, { once: true });
+      await document.fonts?.ready;
       window.setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => window.print())), 0);
-      window.setTimeout(clear, 60_000);
+      window.setTimeout(clear, 300_000);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {

@@ -520,6 +520,11 @@ function EvidenceDrawer({ row, onClose }: { row: MetricCard; onClose: () => void
 
 function PdfPreview({ report, onClose }: { report: PdfReport; onClose: () => void }) {
   const chartCount = report.sections.reduce((sum, section) => sum + section.charts.length, 0);
+  useEffect(() => {
+    document.body.classList.add('analytics-pdf-print-source');
+    return () => document.body.classList.remove('analytics-pdf-print-source');
+  }, []);
+
   return <div className="analytics-pdf-preview-backdrop" role="presentation" onClick={onClose}>
     <div className="analytics-pdf-preview-dialog" role="dialog" aria-modal="true" aria-label="全部图表 PDF 预览" onClick={(event) => event.stopPropagation()}>
       <header className="analytics-pdf-preview-toolbar">

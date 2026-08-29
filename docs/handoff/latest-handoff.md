@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.67
+1.0.68
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,14 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → CLEAN/DWD → Post-clean Quality Gate → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.68 update
+
+- Scoped the legacy Analytics PDF visibility reset to its own print-source mode so it no longer hides the V3 full-chart report during printing.
+- Added a dedicated Decision Workspace print-source mode and waits for document fonts/layout before opening the Windows/WebView2 print dialog.
+- `npm run check` and `npm run build` passed; production CSS inspection confirms there is no unconditional print-time body visibility reset.
+- This is a frontend-only export fix; no database, aggregation, dependency or lock-file behavior changed. Live Windows/WebView2 PDF verification remains pending.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.67 update
 
