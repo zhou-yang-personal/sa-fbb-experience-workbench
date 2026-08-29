@@ -159,6 +159,38 @@ export interface MetricCard {
   hint: string;
 }
 
+export interface OpportunityCandidateRow {
+  user_key: string;
+  opportunity_type: string;
+  opportunity_level: string;
+  user_type: string;
+  active_days: number;
+  observation_rows: number;
+  total_download_gb: number;
+  total_effective_duration_hours: number;
+  avg_effective_download_mbps?: number;
+  avg_wifi_delay_ms?: number;
+  avg_subscriber_rtt_ms?: number;
+  avg_network_rtt_ms?: number;
+  avg_user_loss_pct?: number;
+  avg_network_loss_pct?: number;
+  primary_app?: string;
+  primary_app_active_days: number;
+  primary_app_observations: number;
+  evidence_value?: number;
+  evidence_unit?: string;
+  evidence_summary: string;
+  data_limitation_code?: string;
+  rule_profile_version: number;
+}
+
+export interface OpportunityCandidatePage {
+  rows: OpportunityCandidateRow[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 export interface DashboardOverview {
   metrics: MetricCard[];
 }
@@ -556,6 +588,15 @@ export interface DecisionRuleProfileRow {
   mesh_min_coverage_pct: number;
   mesh_min_rtt_delta_ms: number;
   mesh_min_loss_delta_pct: number;
+  distribution_thresholds: {
+    traffic_daily_gb: number[];
+    duration_daily_hours: number[];
+    peak_daily_hours: number[];
+    observations_daily: number[];
+    rate_mbps: number[];
+    rtt_ms: number[];
+    loss_pct: number[];
+  };
   notes?: string;
   updated_at: string;
 }

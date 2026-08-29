@@ -126,16 +126,50 @@ const AGGREGATE_SUBTASKS: &[&str] = &[
     "hourly_trend",
     "network_hotspot",
     "user_profile",
-    "decision_opportunities",
+    "access_user_core",
+    "access_overview",
+    "access_hourly",
+    "access_bands",
+    "opportunity_features",
+    "opportunity_migration",
+    "opportunity_speed_upgrade",
+    "opportunity_mesh",
+    "opportunity_app_bundle",
+    "opportunity_publish",
     "lead_evidence",
 ];
-const AGGREGATE_IMPLEMENTATION_VERSION: &str = "aggregate_pipeline_v3";
+fn aggregation_implementation_version(subtask: &str) -> &'static str {
+    match subtask {
+        // These tasks keep the V3 implementation contract so an existing successful
+        // checkpoint remains reusable after upgrading the application.
+        "base_user_daily" | "experience_core" | "complete_dws" | "base_dashboards"
+        | "app_rank" | "hourly_trend" | "network_hotspot" | "user_profile"
+        | "lead_evidence" => "aggregate_pipeline_v3",
+        // V4 introduces independent access-comparison and opportunity tasks. Only
+        // these new contracts need to run for an already aggregated V3 analysis run.
+        "access_user_core" | "access_overview" | "access_hourly" | "access_bands" => {
+            "access_specialty_v2"
+        }
+        "opportunity_features" | "opportunity_migration" | "opportunity_speed_upgrade"
+        | "opportunity_mesh" | "opportunity_app_bundle" | "opportunity_publish" => {
+            "opportunity_feature_v2"
+        }
+        _ => "aggregate_pipeline_v3",
+    }
+}
 
 fn aggregation_source_version(subtask: &str) -> &'static str {
     match subtask {
         "experience_core" => crate::analytics_ads_app::HOURLY_CORE_VERSION,
         "complete_dws" | "base_dashboards" | "app_rank" | "hourly_trend" => {
             crate::analytics_ads_app::PERIOD_ROLLUP_VERSION
+        }
+        "access_user_core" | "access_overview" | "access_hourly" | "access_bands" => {
+            "access_specialty_v2"
+        }
+        "opportunity_features" | "opportunity_migration" | "opportunity_speed_upgrade"
+        | "opportunity_mesh" | "opportunity_app_bundle" | "opportunity_publish" => {
+            "opportunity_feature_v2"
         }
         _ => "dwd_clean_v2",
     }
@@ -930,12 +964,16 @@ where
     F: FnOnce() -> Result<crate::models::CommandAck, String>,
 {
     let mut checkpoint_conn = db::conn(settings)?;
-    let checkpoint: Option<(String, String)> = checkpoint_conn.exec_first(
-        "SELECT status,implementation_version FROM meta_aggregation_subtask_checkpoint WHERE analysis_run_id=? AND stage_name='dws_ads_aggregate' AND subtask_name=?",
+    let expected_implementation_version = aggregation_implementation_version(subtask);
+    let expected_source_version = aggregation_source_version(subtask);
+    let checkpoint: Option<(String, String, String)> = checkpoint_conn.exec_first(
+        "SELECT status,implementation_version,source_version FROM meta_aggregation_subtask_checkpoint WHERE analysis_run_id=? AND stage_name='dws_ads_aggregate' AND subtask_name=?",
         (analysis_run_id, subtask),
     ).map_err(|err| format!("failed to inspect aggregation subtask checkpoint: {err}"))?;
-    if checkpoint.as_ref().is_some_and(|(status, version)| {
-        status == "success" && version == AGGREGATE_IMPLEMENTATION_VERSION
+    if checkpoint.as_ref().is_some_and(|(status, implementation_version, source_version)| {
+        status == "success"
+            && implementation_version == expected_implementation_version
+            && source_version == expected_source_version
     }) {
         append_log(
             settings,
@@ -949,7 +987,7 @@ where
     }
     checkpoint_conn.exec_drop(
         "INSERT INTO meta_aggregation_subtask_checkpoint (pipeline_run_id,import_batch_id,analysis_run_id,stage_name,subtask_name,implementation_version,source_version,status,attempt_count,started_at,finished_at,duration_ms,message) VALUES (?,?,?,'dws_ads_aggregate',?,?,?,'running',1,UTC_TIMESTAMP(),NULL,0,NULL) ON DUPLICATE KEY UPDATE pipeline_run_id=VALUES(pipeline_run_id),import_batch_id=VALUES(import_batch_id),implementation_version=VALUES(implementation_version),source_version=VALUES(source_version),status='running',attempt_count=attempt_count+1,started_at=UTC_TIMESTAMP(),finished_at=NULL,duration_ms=0,message=NULL",
-        (pipeline_run_id, import_batch_id, analysis_run_id, subtask, AGGREGATE_IMPLEMENTATION_VERSION, aggregation_source_version(subtask)),
+        (pipeline_run_id, import_batch_id, analysis_run_id, subtask, expected_implementation_version, expected_source_version),
     ).map_err(|err| format!("failed to start aggregation subtask checkpoint: {err}"))?;
     let started = std::time::Instant::now();
     append_log(
@@ -1103,9 +1141,9 @@ fn run_dws_ads_stage(
             import_batch_id,
             analysis_run_id,
             AGGREGATE_SUBTASKS[8],
-            "四类潜客机会",
+            "制式用户公共底座",
             total_started,
-            || crate::decision_workspace_commands::materialize_opportunities(request()),
+            || crate::decision_workspace_commands::materialize_access_user_core(request()),
         )?;
         run_logged_subtask(
             settings,
@@ -1113,6 +1151,96 @@ fn run_dws_ads_stage(
             import_batch_id,
             analysis_run_id,
             AGGREGATE_SUBTASKS[9],
+            "制式整体对比",
+            total_started,
+            || crate::decision_workspace_commands::materialize_access_overview(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
+            AGGREGATE_SUBTASKS[10],
+            "制式小时趋势",
+            total_started,
+            || crate::decision_workspace_commands::materialize_access_hourly(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
+            AGGREGATE_SUBTASKS[11],
+            "制式用户分布",
+            total_started,
+            || crate::decision_workspace_commands::materialize_access_bands(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
+            AGGREGATE_SUBTASKS[12],
+            "潜客用户特征",
+            total_started,
+            || crate::decision_workspace_commands::materialize_opportunity_features(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
+            AGGREGATE_SUBTASKS[13],
+            "迁转潜客",
+            total_started,
+            || crate::decision_workspace_commands::materialize_opportunity_migration(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
+            AGGREGATE_SUBTASKS[14],
+            "升套潜客",
+            total_started,
+            || crate::decision_workspace_commands::materialize_opportunity_speed_upgrade(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
+            AGGREGATE_SUBTASKS[15],
+            "AP / Mesh 潜客",
+            total_started,
+            || crate::decision_workspace_commands::materialize_opportunity_mesh(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
+            AGGREGATE_SUBTASKS[16],
+            "App Bundle 潜客",
+            total_started,
+            || crate::decision_workspace_commands::materialize_opportunity_app_bundle(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
+            AGGREGATE_SUBTASKS[17],
+            "潜客结果原子发布",
+            total_started,
+            || crate::decision_workspace_commands::publish_opportunities(request()),
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
+            AGGREGATE_SUBTASKS[18],
             "Lead Evidence",
             total_started,
             || crate::ads_lead::ads_lead(request()),
@@ -2422,7 +2550,8 @@ pub fn import_pipeline_get_logs(
 #[cfg(test)]
 mod tests {
     use super::{
-        dws_sql_activity_message, final_status_for_step_failure, pipeline_plan,
+        aggregation_implementation_version, dws_sql_activity_message,
+        final_status_for_step_failure, pipeline_plan,
         raw_import_heartbeat_message, raw_import_stall_hint, step_heartbeat_message,
         DwsSqlActivitySnapshot, PipelineOutcome, PipelineStepDef, AGGREGATE_SUBTASKS,
         REBUILD_PIPELINE_STEPS, RESUME_PIPELINE_STEPS,
@@ -2505,9 +2634,38 @@ mod tests {
                 "hourly_trend",
                 "network_hotspot",
                 "user_profile",
-                "decision_opportunities",
+                "access_user_core",
+                "access_overview",
+                "access_hourly",
+                "access_bands",
+                "opportunity_features",
+                "opportunity_migration",
+                "opportunity_speed_upgrade",
+                "opportunity_mesh",
+                "opportunity_app_bundle",
+                "opportunity_publish",
                 "lead_evidence",
             ]
+        );
+    }
+
+    #[test]
+    fn new_specialty_tasks_do_not_invalidate_existing_v3_checkpoints() {
+        assert_eq!(
+            aggregation_implementation_version("experience_core"),
+            "aggregate_pipeline_v3"
+        );
+        assert_eq!(
+            aggregation_implementation_version("base_dashboards"),
+            "aggregate_pipeline_v3"
+        );
+        assert_eq!(
+            aggregation_implementation_version("access_user_core"),
+            "access_specialty_v2"
+        );
+        assert_eq!(
+            aggregation_implementation_version("opportunity_features"),
+            "opportunity_feature_v2"
         );
     }
 

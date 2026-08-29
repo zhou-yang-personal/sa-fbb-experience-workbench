@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AnalysisContext, CommandAck, DataCoverageItemV2, ExperienceFinding, ExperienceStatusV2, InvestigationEvidenceRow, InvestigationHourlyRow, InvestigationServerIpRow, MetricCard, MySqlSettings, RunVerificationV2, SavedInvestigation } from '../../shared/types';
+import type { AnalysisContext, CommandAck, DataCoverageItemV2, ExperienceFinding, ExperienceStatusV2, InvestigationEvidenceRow, InvestigationHourlyRow, InvestigationServerIpRow, MetricCard, MySqlSettings, OpportunityCandidatePage, RunVerificationV2, SavedInvestigation } from '../../shared/types';
 
 export type StructuredAnalyticsQuery = {
   page?: number;
@@ -7,10 +7,11 @@ export type StructuredAnalyticsQuery = {
   keyword?: string;
   sortBy?: string;
   minValue?: number;
+  opportunityType?: string;
 };
 
 function req(settings: MySqlSettings, importBatchId: string, analysisRunId: string, query: StructuredAnalyticsQuery = {}) {
-  return { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId, page: query.page, page_size: query.pageSize, keyword: query.keyword, sort_by: query.sortBy, min_value: query.minValue } };
+  return { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId, page: query.page, page_size: query.pageSize, keyword: query.keyword, sort_by: query.sortBy, min_value: query.minValue, opportunity_type: query.opportunityType } };
 }
 
 function etlReq(settings: MySqlSettings, importBatchId: string, analysisRunId: string) {
@@ -46,6 +47,11 @@ export const analyticsStructuredApi = {
   decisionUserDistributions: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, query?: StructuredAnalyticsQuery) => invoke<MetricCard[]>('decision_get_user_distributions', req(settings, importBatchId, analysisRunId, query)),
   decisionQualityOverview: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<MetricCard[]>('decision_get_quality_overview', req(settings, importBatchId, analysisRunId)),
   decisionAccessCompare: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<MetricCard[]>('decision_get_access_compare', req(settings, importBatchId, analysisRunId)),
+  decisionAccessHourly: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<MetricCard[]>('decision_get_access_hourly', req(settings, importBatchId, analysisRunId)),
+  decisionPanoramaHourly: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<MetricCard[]>('decision_get_panorama_hourly', req(settings, importBatchId, analysisRunId)),
+  decisionAccessUserBands: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<MetricCard[]>('decision_get_access_user_bands', req(settings, importBatchId, analysisRunId)),
+  decisionAccessApps: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, query?: StructuredAnalyticsQuery) => invoke<MetricCard[]>('decision_get_access_apps', req(settings, importBatchId, analysisRunId, query)),
   decisionMaterializeOpportunities: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<CommandAck>('decision_materialize_opportunities', etlReq(settings, importBatchId, analysisRunId)),
   decisionOpportunities: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<MetricCard[]>('decision_get_opportunities', req(settings, importBatchId, analysisRunId)),
+  decisionOpportunityCandidates: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, query?: StructuredAnalyticsQuery) => invoke<OpportunityCandidatePage>('decision_get_opportunity_candidates', req(settings, importBatchId, analysisRunId, query)),
 };

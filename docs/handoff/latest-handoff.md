@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.69
+1.0.70
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,18 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → CLEAN/DWD → Post-clean Quality Gate → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.70 update
+
+- Added a metric-first panorama workflow covering overall values, versioned user bands, 24-hour trends, App rankings and issue highlighting; unsupported upstream rate remains explicitly unavailable.
+- Rebuilt Cable/FTTH as a four-level specialty view: overall deltas, dual hourly curves, cohort distributions and same-App sample-aware comparison.
+- Added paged opportunity candidates keyed by analysis IP, filters/search and an evidence-detail modal. Dashboard queries only read published results.
+- Replaced the former monolithic opportunity transaction with reusable user features, four independently checkpointed candidate stages and atomic publication. Opportunity generation no longer scans the hourly core twice.
+- Aggregation implementation/source versions are now checked per subtask: existing successful V3 core/dashboard checkpoints remain reusable, while only new or incompatible access/opportunity tasks run.
+- Added migration `012_opportunity_workbench_schema.sql` for access/user aggregates, hourly/band ADS, opportunity features and candidate staging.
+- Added versioned distribution boundaries to the decision-rule profile. `npm run check`, `cargo check` and 64 Rust tests passed; production build and live MySQL execution are recorded separately below.
+- Business pages now auto-read bounded DWS/ADS after the operator enters an analysis context; the repeated Load button was removed, while all import/rebuild/materialization actions remain explicit in Data Jobs.
+- Live Windows/WebView2 and 13.2M-row MySQL runtime/output reconciliation remain pending. `AGENTS.project.md` remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.69 update
 

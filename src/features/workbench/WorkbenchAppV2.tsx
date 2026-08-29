@@ -67,7 +67,7 @@ export function WorkbenchAppV2() {
   return (
     <main className="app-shell guided-shell product-shell">
       <aside className="sidebar guided-sidebar product-sidebar">
-        <div className="brand"><span>SA FBB Experience Workbench</span><small>v1.0.69</small></div>
+        <div className="brand"><span>SA FBB Experience Workbench</span><small>v1.0.70</small></div>
         <nav className="product-nav" aria-label="Product navigation">
           {(['primary', 'secondary'] as const).map((group) => <div className="nav-group" key={group}>
             <p>{group === 'primary' ? (languageIndex === 0 ? '分析工作台' : 'Workspace') : (languageIndex === 0 ? '设置与支持' : 'Settings & support')}</p>

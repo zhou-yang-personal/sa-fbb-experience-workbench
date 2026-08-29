@@ -252,6 +252,7 @@ pub struct DashboardRequest {
     pub keyword: Option<String>,
     pub sort_by: Option<String>,
     pub min_value: Option<f64>,
+    pub opportunity_type: Option<String>,
 }
 
 impl DashboardRequest {

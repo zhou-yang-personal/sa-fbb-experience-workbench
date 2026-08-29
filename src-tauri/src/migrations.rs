@@ -20,6 +20,8 @@ const AGGREGATION_CHECKPOINT_SCHEMA: &str =
     include_str!("../../database/migrations/010_aggregation_checkpoint_schema.sql");
 const DECISION_WORKSPACE_SCHEMA: &str =
     include_str!("../../database/migrations/011_decision_workspace_schema.sql");
+const OPPORTUNITY_WORKBENCH_SCHEMA: &str =
+    include_str!("../../database/migrations/012_opportunity_workbench_schema.sql");
 const APP_MAPPING_SEED: &str = include_str!("../../database/seeds/001_app_mapping_seed.sql");
 const MAP_SEED: &str = include_str!("../../database/seeds/002_default_mapping_seed.sql");
 
@@ -88,8 +90,10 @@ pub fn ensure_decision_workspace_schema(settings: &MySqlSettings) -> Result<(), 
     let mut conn = crate::db::conn(settings)?;
     ensure_access_columns_for_table(&mut conn, "meta_decision_rule_profile")?;
     ensure_access_columns_for_table(&mut conn, "meta_aggregation_subtask_checkpoint")?;
+    ensure_access_columns_for_table(&mut conn, "ads_opportunity_user_v3")?;
     drop(conn);
-    sql_runner::execute_script(settings, DECISION_WORKSPACE_SCHEMA).map(|_| ())
+    sql_runner::execute_script(settings, DECISION_WORKSPACE_SCHEMA)?;
+    sql_runner::execute_script(settings, OPPORTUNITY_WORKBENCH_SCHEMA).map(|_| ())
 }
 
 pub fn ensure_aggregation_checkpoint_schema(settings: &MySqlSettings) -> Result<(), String> {
@@ -133,6 +137,7 @@ pub fn ensure_access_columns_for_table(
         ]
     } else if table == "meta_decision_rule_profile" {
         &[
+            ("distribution_thresholds", "JSON NULL"),
             ("opportunity_min_active_days", "BIGINT NOT NULL DEFAULT 2"),
             ("opportunity_min_observations", "BIGINT NOT NULL DEFAULT 10"),
             ("speed_upgrade_min_conditions", "BIGINT NOT NULL DEFAULT 2"),
@@ -178,6 +183,23 @@ pub fn ensure_access_columns_for_table(
                 "source_version",
                 "VARCHAR(64) NULL AFTER implementation_version",
             ),
+        ]
+    } else if table == "ads_opportunity_user_v3" {
+        &[
+            ("user_type", "VARCHAR(32) NOT NULL DEFAULT 'UNKNOWN'"),
+            ("active_days", "BIGINT NOT NULL DEFAULT 0"),
+            ("observation_rows", "BIGINT NOT NULL DEFAULT 0"),
+            ("total_download_gb", "DECIMAL(24,6) NOT NULL DEFAULT 0"),
+            ("total_effective_duration_hours", "DECIMAL(24,6) NOT NULL DEFAULT 0"),
+            ("avg_effective_download_mbps", "DECIMAL(18,6) NULL"),
+            ("avg_wifi_delay_ms", "DECIMAL(18,6) NULL"),
+            ("avg_subscriber_rtt_ms", "DECIMAL(18,6) NULL"),
+            ("avg_network_rtt_ms", "DECIMAL(18,6) NULL"),
+            ("avg_user_loss_pct", "DECIMAL(18,6) NULL"),
+            ("avg_network_loss_pct", "DECIMAL(18,6) NULL"),
+            ("primary_app", "VARCHAR(255) NULL"),
+            ("primary_app_active_days", "BIGINT NOT NULL DEFAULT 0"),
+            ("primary_app_observations", "BIGINT NOT NULL DEFAULT 0"),
         ]
     } else if table.starts_with("dwd_tcp_detail_clean") {
         &[

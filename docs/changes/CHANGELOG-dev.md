@@ -1,5 +1,38 @@
 # CHANGELOG-dev
 
+## 1.0.70 - 2026-08-29
+
+### Added
+
+- Added metric-first panorama exploration with overall values, user distributions, hourly trends, App ranking and issue highlighting.
+- Added Cable/FTTH overview deltas, dual 24-hour curves, access cohort bands and same-App comparison with sample sufficiency.
+- Added paged opportunity candidates, type/IP/App filtering and an evidence-detail modal using IP as the analysis-user key.
+- Added reusable access/user and opportunity feature tables plus staging in migration `012_opportunity_workbench_schema.sql`.
+
+### Performance and recovery
+
+- Split access specialty and opportunity generation into independently logged/checkpointed subtasks.
+- Versioned aggregation checkpoints per subtask so the new access/opportunity stages do not invalidate already successful V3 core/dashboard work.
+- Reused the period and user-access cores for opportunity candidates instead of scanning the hourly core twice.
+- Published opportunity users and summaries atomically so interrupted work does not erase the last successful result.
+- Kept dashboard loads read-only and bounded to DWS/ADS; removed opportunity generation from the normal page.
+- Auto-load bounded analysis results after entering a batch/run context and removed the repeated dashboard Load button; no long-running task is started implicitly.
+
+### Rules and correctness
+
+- Versioned traffic, duration, observation, rate, RTT and loss band boundaries in the decision rule profile.
+- Replaced unweighted App/overall averages for reusable experience metrics with additive SUM/COUNT rollups.
+- Standardized traffic display to `1 TB = 1000 GB` and preserved unavailable/insufficient values instead of coercing them to zero.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-29.
+- `npm run build`: passed on 2026-08-29.
+- `cargo check --offline`: passed on 2026-08-29; existing warnings remain.
+- `cargo test --offline`: 64 passed, 0 failed on 2026-08-29.
+- Live migration and 13.2M-row Windows/MySQL runtime/output reconciliation remain pending.
+- No dependency or committed lock-file change.
+
 ## 1.0.69 - 2026-08-29
 
 ### Changed

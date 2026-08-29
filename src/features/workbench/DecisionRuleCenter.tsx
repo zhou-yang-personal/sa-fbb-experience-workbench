@@ -4,8 +4,9 @@ import type { WorkbenchController } from './useWorkbenchController';
 import { workbenchApi } from './workbenchApi';
 
 type NumberKey = Exclude<keyof DecisionRuleProfileRow, 'rule_profile_id' | 'profile_name' | 'status' | 'notes' | 'updated_at'>;
+type ThresholdKey = keyof DecisionRuleProfileRow['distribution_thresholds'];
 
-const fields: Array<{ key: NumberKey; zh: string; en: string; unit: string }> = [
+const fields: Array<{ key: Exclude<NumberKey, 'distribution_thresholds'>; zh: string; en: string; unit: string }> = [
   { key: 'minimum_user_observations', zh: '用户最低观测数', en: 'Minimum user observations', unit: '条' },
   { key: 'minimum_app_users', zh: 'App 最低用户数', en: 'Minimum App users', unit: '人' },
   { key: 'minimum_app_observations', zh: 'App 最低有效观测数', en: 'Minimum App observations', unit: '条' },
@@ -35,6 +36,16 @@ const fields: Array<{ key: NumberKey; zh: string; en: string; unit: string }> = 
   { key: 'opportunity_min_observations', zh: '潜客最低有效观测', en: 'Opportunity observations', unit: '条' },
   { key: 'speed_upgrade_min_conditions', zh: '升套最少命中条件', en: 'Upgrade matched conditions', unit: '项' },
   { key: 'app_bundle_min_active_days', zh: 'Bundle 最低活跃天数', en: 'Bundle active days', unit: '天' },
+];
+
+const thresholdFields: Array<{ key: ThresholdKey; zh: string; en: string; unit: string }> = [
+  { key: 'traffic_daily_gb', zh: '日均流量分档边界', en: 'Daily traffic bands', unit: 'GB/day' },
+  { key: 'duration_daily_hours', zh: '日均有效时长分档边界', en: 'Daily duration bands', unit: 'h/day' },
+  { key: 'peak_daily_hours', zh: '高峰期时长分档边界', en: 'Peak duration bands', unit: 'h/day' },
+  { key: 'observations_daily', zh: '日均观测记录分档边界', en: 'Daily observation bands', unit: 'rows/day' },
+  { key: 'rate_mbps', zh: '速率分档边界', en: 'Rate bands', unit: 'Mbps' },
+  { key: 'rtt_ms', zh: '时延分档边界', en: 'RTT bands', unit: 'ms' },
+  { key: 'loss_pct', zh: '丢包分档边界', en: 'Loss bands', unit: '%' },
 ];
 
 export function DecisionRuleCenter({ c }: { c: WorkbenchController }) {
@@ -77,6 +88,7 @@ export function DecisionRuleCenter({ c }: { c: WorkbenchController }) {
       <div className="form-grid decision-rule-grid">
         <label>{zh ? '规则名称' : 'Profile name'}<input value={draft.profile_name} onChange={(event) => setDraft({ ...draft, profile_name: event.target.value })} /></label>
         {fields.map((field) => <label key={field.key}>{zh ? field.zh : field.en}<span className="field-with-unit"><input type="number" step="any" value={draft[field.key]} onChange={(event) => setDraft({ ...draft, [field.key]: Number(event.target.value) })} /><small>{field.unit}</small></span></label>)}
+        <details className="distribution-threshold-editor"><summary>{zh ? '用户分档边界（高级）' : 'User band thresholds (advanced)'}</summary><p>{zh ? '按从小到大填写，逗号分隔。新版本只影响后续分析运行。' : 'Enter increasing values separated by commas. New versions affect future runs only.'}</p><div className="form-grid">{thresholdFields.map((field) => <label key={field.key}>{zh ? field.zh : field.en}<span className="field-with-unit"><input value={draft.distribution_thresholds[field.key].join(', ')} onChange={(event) => { const values=event.target.value.split(',').map((value)=>Number(value.trim())).filter((value)=>Number.isFinite(value)); setDraft({ ...draft, distribution_thresholds: { ...draft.distribution_thresholds, [field.key]: values } }); }} /><small>{field.unit}</small></span></label>)}</div></details>
         <label>{zh ? '备注' : 'Notes'}<textarea value={draft.notes ?? ''} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} /></label>
       </div>
       <div className="hub-actions"><button type="button" onClick={save}>{zh ? '保存草稿' : 'Save draft'}</button><button type="button" className="primary" onClick={publish}>{zh ? '校验并发布新版本' : 'Validate & publish'}</button></div>
