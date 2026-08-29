@@ -22,7 +22,7 @@ type ProductNavItem = {
 };
 
 const productNav: ProductNavItem[] = [
-  { id: 'panorama', label: ['全景洞察', 'Panorama'], hint: ['指标 · App · 用户', 'Metrics · Apps · Users'], group: 'primary' },
+  { id: 'panorama', label: ['全景洞察', 'Panorama'], hint: ['指标 · App', 'Metrics · Apps'], group: 'primary' },
   { id: 'quality', label: ['质差分析', 'Poor quality'], hint: ['规模 → 证据侧 → 下钻', 'Scale → evidence → drilldown'], group: 'primary' },
   { id: 'access', label: ['Cable / FTTH', 'Cable / FTTH'], hint: ['独立接入制式专项', 'Access comparison'], group: 'primary' },
   { id: 'opportunities', label: ['潜客机会', 'Opportunities'], hint: ['迁转 · 升套 · 组网 · Bundle', 'Migration · upgrade · mesh · bundle'], group: 'primary' },
@@ -67,7 +67,7 @@ export function WorkbenchAppV2() {
   return (
     <main className="app-shell guided-shell product-shell">
       <aside className="sidebar guided-sidebar product-sidebar">
-        <div className="brand"><span>SA FBB Experience Workbench</span><small>v1.0.68</small></div>
+        <div className="brand"><span>SA FBB Experience Workbench</span><small>v1.0.69</small></div>
         <nav className="product-nav" aria-label="Product navigation">
           {(['primary', 'secondary'] as const).map((group) => <div className="nav-group" key={group}>
             <p>{group === 'primary' ? (languageIndex === 0 ? '分析工作台' : 'Workspace') : (languageIndex === 0 ? '设置与支持' : 'Settings & support')}</p>

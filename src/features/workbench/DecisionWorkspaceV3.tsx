@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MetricCard } from '../../shared/types';
 import { analyticsStructuredApi } from './analyticsStructuredApi';
 import { parseMetricHint } from './analyticsStructuredCharts';
 import type { WorkbenchController } from './useWorkbenchController';
 
 export type DecisionView = 'panorama' | 'quality' | 'access' | 'opportunities';
-type PanoramaPerspective = 'metric' | 'app' | 'user';
+type PanoramaPerspective = 'metric' | 'app';
 type FullPrintReport = {
   metrics: MetricCard[];
   apps: MetricCard[];
@@ -55,12 +55,54 @@ function AppTable({ rows, c }: { rows: MetricCard[]; c: WorkbenchController }) {
   const [selected, setSelected] = useState<MetricCard | null>(null);
   const [detailRows, setDetailRows] = useState<MetricCard[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const detailRequest = useRef(0);
   const zh = c.language === 'zh-CN';
+
+  useEffect(() => {
+    if (!selected) return undefined;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeDetail();
+    };
+    document.body.classList.add('app-detail-modal-open');
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.classList.remove('app-detail-modal-open');
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [selected]);
+
+  function closeDetail() {
+    detailRequest.current += 1;
+    setSelected(null);
+    setDetailRows([]);
+    setDetailError('');
+    setDetailLoading(false);
+  }
+
+  async function openDetail(row: MetricCard) {
+    const request = detailRequest.current + 1;
+    detailRequest.current = request;
+    setSelected(row);
+    setDetailRows([]);
+    setDetailError('');
+    setDetailLoading(true);
+    c.applyAnalysisContext({ app_name: row.label });
+    try {
+      const result = await analyticsStructuredApi.decisionUserDistributions(c.effectiveSettings, c.importBatchId, c.analysisRunId, { keyword: row.label });
+      if (detailRequest.current === request) setDetailRows(result);
+    } catch (error) {
+      if (detailRequest.current === request) setDetailError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (detailRequest.current === request) setDetailLoading(false);
+    }
+  }
+
   return <>
     <div className="decision-table-wrap"><table className="decision-table"><thead><tr><th>App</th><th>{zh ? '用户' : 'Users'}</th><th>{zh ? '流量' : 'Traffic'}</th><th>{zh ? '有效时长' : 'Effective duration'}</th><th>{zh ? '有效观测' : 'Valid obs'}</th><th>{zh ? '差观测' : 'Poor obs'}</th><th>{zh ? '持续质差用户' : 'Persistent users'}</th><th>{zh ? '状态' : 'Status'}</th></tr></thead>
-      <tbody>{rows.map((row) => { const d = parseMetricHint(row.hint); const status = d.insight_status ?? 'UNCLASSIFIED'; const statusLabel = status === 'SEVERE' ? '严重' : status === 'PROBLEM' ? '问题' : status === 'WATCH' ? '关注' : status === 'NORMAL' ? '正常' : status === 'LIMITED' ? '有限样本' : '样本不足'; return <tr key={row.label} className={`insight-${status.toLowerCase()}`} onClick={async () => { setSelected(row); setDetailRows([]); c.applyAnalysisContext({ app_name: row.label }); setDetailLoading(true); try { setDetailRows(await analyticsStructuredApi.decisionUserDistributions(c.effectiveSettings, c.importBatchId, c.analysisRunId, { keyword: row.label })); } catch { setDetailRows([]); } finally { setDetailLoading(false); } }}><td><strong>{row.label}</strong><small>{d.app_category}</small></td><td>{Number(d.observed_users ?? row.value).toLocaleString()}</td><td>{friendlyNumber(d.traffic_gb ?? '0', 'GB')}</td><td>{friendlyNumber(d.duration_hours ?? 'NA', 'h')}</td><td>{Number(d.valid_obs_rows ?? 0).toLocaleString()}</td><td>{d.poor_observation_rate_pct === 'NA' ? '—' : `${Number(d.poor_observation_rate_pct).toFixed(2)}%`}</td><td>{d.persistent_poor_user_rate_pct === 'NA' ? '—' : `${Number(d.persistent_poor_user_rate_pct).toFixed(2)}%`}</td><td><span className={`insight-badge is-${status.toLowerCase()}`}>{statusLabel}</span></td></tr>; })}</tbody>
+      <tbody>{rows.map((row) => { const d = parseMetricHint(row.hint); const status = d.insight_status ?? 'UNCLASSIFIED'; const statusLabel = status === 'SEVERE' ? '严重' : status === 'PROBLEM' ? '问题' : status === 'WATCH' ? '关注' : status === 'NORMAL' ? '正常' : status === 'LIMITED' ? '有限样本' : '样本不足'; return <tr key={row.label} className={`insight-${status.toLowerCase()}`} role="button" tabIndex={0} onClick={() => void openDetail(row)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openDetail(row); } }}><td><strong>{row.label}</strong><small>{d.app_category}</small></td><td>{Number(d.observed_users ?? row.value).toLocaleString()}</td><td>{friendlyNumber(d.traffic_gb ?? '0', 'GB')}</td><td>{friendlyNumber(d.duration_hours ?? 'NA', 'h')}</td><td>{Number(d.valid_obs_rows ?? 0).toLocaleString()}</td><td>{d.poor_observation_rate_pct === 'NA' ? '—' : `${Number(d.poor_observation_rate_pct).toFixed(2)}%`}</td><td>{d.persistent_poor_user_rate_pct === 'NA' ? '—' : `${Number(d.persistent_poor_user_rate_pct).toFixed(2)}%`}</td><td><span className={`insight-badge is-${status.toLowerCase()}`}>{statusLabel}</span></td></tr>; })}</tbody>
     </table></div>
-    {selected && (() => { const d = parseMetricHint(selected.hint); return <><article className="selected-app-detail"><div><h3>{selected.label}</h3><p>{zh ? '先看该 App 的总体规模和体验，再看该 App 内部用户的流量、速率、时延、丢包和质差分布。' : 'Start with overall scale and experience, then inspect this App’s user distributions.'}</p></div><div className="detail-stat-grid"><span>用户<strong>{d.observed_users}</strong></span><span>流量<strong>{friendlyNumber(d.traffic_gb ?? '0', 'GB')}</strong></span><span>有效速率<strong>{friendlyNumber(d.effective_download_mbps ?? 'NA', 'Mbps')}</strong></span><span>用户侧 RTT<strong>{friendlyNumber(d.subscriber_rtt_ms ?? 'NA', 'ms')}</strong></span><span>网络侧 RTT<strong>{friendlyNumber(d.network_rtt_ms ?? 'NA', 'ms')}</strong></span><span>规则版本<strong>v{d.rule_version}</strong></span></div></article>{detailLoading ? <p className="decision-status">正在加载该 App 用户分布…</p> : detailRows.length > 0 ? <Distribution rows={detailRows} /> : null}</>; })()}
+    {selected && (() => { const d = parseMetricHint(selected.hint); return <div className="app-detail-modal-backdrop" role="presentation" onMouseDown={closeDetail}><section className="app-detail-modal" role="dialog" aria-modal="true" aria-labelledby="app-detail-title" aria-busy={detailLoading} onMouseDown={(event) => event.stopPropagation()}><header className="app-detail-modal-head"><div><span>{zh ? 'App 详情' : 'App detail'}</span><h2 id="app-detail-title">{selected.label}</h2><p>{zh ? '总体规模与体验 → 该 App 内用户分布' : 'Overall scale and experience → user distributions within this App'}</p></div><button type="button" autoFocus onClick={closeDetail}>{zh ? '关闭' : 'Close'}</button></header><div className="app-detail-modal-body"><article className="selected-app-detail"><div><p>{zh ? '先看该 App 的总体规模和体验，再看该 App 内部用户的流量、速率、时延、丢包和质差分布。' : 'Start with overall scale and experience, then inspect this App’s user distributions.'}</p></div><div className="detail-stat-grid"><span>{zh ? '用户' : 'Users'}<strong>{d.observed_users}</strong></span><span>{zh ? '流量' : 'Traffic'}<strong>{friendlyNumber(d.traffic_gb ?? '0', 'GB')}</strong></span><span>{zh ? '有效速率' : 'Effective rate'}<strong>{friendlyNumber(d.effective_download_mbps ?? 'NA', 'Mbps')}</strong></span><span>{zh ? '用户侧 RTT' : 'Subscriber RTT'}<strong>{friendlyNumber(d.subscriber_rtt_ms ?? 'NA', 'ms')}</strong></span><span>{zh ? '网络侧 RTT' : 'Network RTT'}<strong>{friendlyNumber(d.network_rtt_ms ?? 'NA', 'ms')}</strong></span><span>{zh ? '规则版本' : 'Rule version'}<strong>v{d.rule_version}</strong></span></div></article>{detailLoading ? <div className="app-detail-state is-loading"><strong>{zh ? '正在加载该 App 的用户分布…' : 'Loading user distributions…'}</strong><span>{zh ? '弹框会在结果返回后自动更新。' : 'This dialog will update when the result is ready.'}</span></div> : detailError ? <div className="app-detail-state is-error"><strong>{zh ? '详情加载失败' : 'Failed to load detail'}</strong><span>{detailError}</span><button type="button" onClick={() => void openDetail(selected)}>{zh ? '重试' : 'Retry'}</button></div> : detailRows.length > 0 ? <Distribution rows={detailRows} /> : <div className="app-detail-state"><strong>{zh ? '当前 App 没有可用的用户分布' : 'No user distribution is available'}</strong><span>{zh ? '可能是样本不足或对应聚合尚未生成。' : 'The sample may be insufficient or the aggregate may not be ready.'}</span></div>}</div></section></div>; })()}
   </>;
 }
 
@@ -138,18 +180,12 @@ export function DecisionWorkspaceV3({ c, view }: { c: WorkbenchController; view:
             analyticsStructuredApi.decisionAppPanorama(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 500 }),
           ]);
           result = metrics; setDistributionRows(distributions); setAppRows(apps);
-        } else if (targetPerspective === 'app') {
+        } else {
           const [apps, metrics] = await Promise.all([
             analyticsStructuredApi.decisionAppPanorama(c.effectiveSettings, c.importBatchId, c.analysisRunId, { pageSize: 500 }),
             analyticsStructuredApi.decisionMetricPanorama(c.effectiveSettings, c.importBatchId, c.analysisRunId),
           ]);
           result = apps; setBaselineRows(metrics);
-        } else {
-          const [distributions, metrics] = await Promise.all([
-            analyticsStructuredApi.decisionUserDistributions(c.effectiveSettings, c.importBatchId, c.analysisRunId),
-            analyticsStructuredApi.decisionMetricPanorama(c.effectiveSettings, c.importBatchId, c.analysisRunId),
-          ]);
-          result = distributions; setBaselineRows(metrics);
         }
       } else if (view === 'quality') {
         const [quality, apps] = await Promise.all([
@@ -205,11 +241,10 @@ export function DecisionWorkspaceV3({ c, view }: { c: WorkbenchController; view:
     <header className="decision-page-head"><h1>{copy[view][zh ? 0 : 1]}</h1>
       <div className="decision-load-actions"><button type="button" className="primary" disabled={disabled} onClick={() => load()}>{loading ? '加载中…' : (zh ? '加载' : 'Load')}</button>{view === 'opportunities' && <button type="button" disabled={disabled} onClick={generateOpportunities}>{zh ? '生成潜客' : 'Generate'}</button>}<button type="button" disabled={disabled} onClick={exportAllCharts}>{zh ? '导出 PDF' : 'Export PDF'}</button></div></header>
     {status && <div className="decision-status">{status}</div>}
-    {view === 'panorama' && <div className="perspective-tabs"><button className={perspective === 'metric' ? 'active' : ''} onClick={() => switchPerspective('metric')}>指标视角</button><button className={perspective === 'app' ? 'active' : ''} onClick={() => switchPerspective('app')}>App 视角</button><button className={perspective === 'user' ? 'active' : ''} onClick={() => switchPerspective('user')}>用户视角</button></div>}
+    {view === 'panorama' && <div className="perspective-tabs"><button className={perspective === 'metric' ? 'active' : ''} onClick={() => switchPerspective('metric')}>{zh ? '指标视角' : 'Metrics'}</button><button className={perspective === 'app' ? 'active' : ''} onClick={() => switchPerspective('app')}>{zh ? 'App 视角' : 'Apps'}</button></div>}
     {!rows.length && <article className="decision-empty"><strong>{c.importBatchId ? (zh ? '点击“加载”查看分析结果' : 'Select Load to view results') : (zh ? '先选择数据批次' : 'Select a batch')}</strong></article>}
     {rows.length > 0 && view === 'panorama' && perspective === 'metric' && <><section className="decision-chapter"><h2>整体指标</h2><CardGrid rows={rows} /><Explanation>指标视角回答“整体发生了什么”。百分比保留分子、分母和样本量；不可用与 0 分开。vMOS 作为 App 体验证据，不作为单独一级指标。</Explanation></section>{distributionRows.length > 0 && <section className="decision-chapter"><h2>各指标的用户分布</h2><Distribution rows={distributionRows} /></section>}{appRows.length > 0 && <section className="decision-chapter"><h2>App 覆盖全景</h2><PrintAppBars rows={appRows} /><Explanation>唯一 App 粒度，展示完整 App 覆盖并保留问题高亮；Cable/FTTH 不在这一层出现。</Explanation></section>}</>}
     {rows.length > 0 && view === 'panorama' && perspective === 'app' && <>{baselineRows.length > 0 && <section className="decision-chapter"><h2>整体基线</h2><CardGrid rows={baselineRows.slice(0, 7)} /></section>}<section className="decision-chapter"><h2>全部 App 状态构成</h2><AppStatusSummary rows={rows} zh={zh} /><Explanation>状态互斥且全部按唯一 App 统计；右侧六类之和必须等于“全部唯一 App”。</Explanation></section><section className="decision-chapter"><h2>全部 App 业务规模与体验状态</h2><AppTable rows={rows} c={c} /><Explanation>每个 App 只出现一次，先展示跨制式总体规模；严重、问题、关注、正常、有限样本和样本不足互斥，因此分类数量之和等于全部 App 数。</Explanation></section></>}
-    {rows.length > 0 && view === 'panorama' && perspective === 'user' && <>{baselineRows.length > 0 && <section className="decision-chapter"><h2>整体用户基线</h2><CardGrid rows={baselineRows.slice(0, 7)} /></section>}<section className="decision-chapter"><h2>可解释的用户分档</h2><Distribution rows={rows} /></section></>}
     {rows.length > 0 && view === 'quality' && <><section className="decision-chapter"><h2>质差规模与证据方向</h2><CardGrid rows={rows} /><Explanation>同一用户可能同时存在多类证据，因此各类用户数不能相加当作总质差用户。网络侧证据不等于网络设备根因；BRAS/OLT/PON 定位被移到后续按需调查。</Explanation></section>{appRows.length > 0 ? <section className="decision-chapter"><h2>高亮的唯一 App</h2><AppStatusSummary rows={appRows} zh={zh} /><AppTable rows={appRows} c={c} /><Explanation>这里仍按唯一 App 展示；点击后再看该 App 的用户、速率、时延和丢包分布，不提前按接入制式拆分。</Explanation></section> : <p className="decision-empty">当前充分样本中没有达到关注门槛的 App。</p>}</>}
     {rows.length > 0 && view === 'access' && <div className="access-compare-grid">{rows.map((row) => { const d = parseMetricHint(row.hint); return <article key={row.label} className="access-column"><h2>{row.label}</h2><strong>{Number(row.value).toLocaleString()} 用户</strong><dl><div><dt>流量</dt><dd>{friendlyNumber(d.traffic_gb ?? '0', 'GB')}</dd></div><div><dt>视频有效下载速率</dt><dd>{friendlyNumber(d.effective_download_mbps ?? 'NA', 'Mbps')}</dd></div><div><dt>差观测占比</dt><dd>{friendlyNumber(d.poor_observation_rate_pct ?? 'NA', 'percent')}</dd></div><div><dt>持续质差用户占比</dt><dd>{friendlyNumber(d.persistent_poor_user_rate_pct ?? 'NA', 'percent')}</dd></div><div><dt>用户侧 RTT</dt><dd>{friendlyNumber(d.subscriber_rtt_ms ?? 'NA', 'ms')}</dd></div><div><dt>网络侧 RTT</dt><dd>{friendlyNumber(d.network_rtt_ms ?? 'NA', 'ms')}</dd></div></dl></article>; })}</div>}
     {rows.length > 0 && view === 'opportunities' && <div className="opportunity-grid">{rows.map((row) => { const d = parseMetricHint(row.hint); const names: Record<string, string> = { MIGRATION: 'Cable → FTTH 迁转', SPEED_UPGRADE: '宽带升套', MESH_AP: 'AP / Mesh 组网', APP_BUNDLE: '特定 App Bundle' }; return <article key={row.label} className={`opportunity-card ${d.availability_status === 'UNAVAILABLE' ? 'is-unavailable' : ''}`}><span>{names[row.label] ?? row.label}</span><strong>{d.availability_status === 'UNAVAILABLE' ? '不可用' : `${Number(row.value).toLocaleString()} 人`}</strong><p>{d.availability_status === 'UNAVAILABLE' ? `数据限制：${d.data_limitation_code}` : `高优先级 ${Number(d.high_priority_users ?? 0).toLocaleString()} 人`}</p><small>规则版本 v{d.rule_version}</small></article>; })}</div>}

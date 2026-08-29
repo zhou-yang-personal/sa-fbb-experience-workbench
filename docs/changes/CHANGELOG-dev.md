@@ -1,5 +1,20 @@
 # CHANGELOG-dev
 
+## 1.0.69 - 2026-08-29
+
+### Changed
+
+- Opened unique-App drill-down in an in-viewport modal instead of appending it below the full App table.
+- Added visible loading, failure and empty-result states, keyboard/backdrop dismissal and stale-request protection to App detail.
+- Removed the duplicate User perspective tab while retaining all user distributions inside the Metric perspective.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-29.
+- `npm run build`: passed on 2026-08-29.
+- No database, aggregation, dependency or lock-file changes.
+- Live Windows/WebView2 modal verification remains pending.
+
 ## 1.0.68 - 2026-08-29
 
 ### Fixed

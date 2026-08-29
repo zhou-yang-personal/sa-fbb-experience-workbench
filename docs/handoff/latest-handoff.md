@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.68
+1.0.69
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,15 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → CLEAN/DWD → Post-clean Quality Gate → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.69 update
+
+- Replaced bottom-appended App drill-down content with an in-viewport modal containing the App baseline, user distributions and explicit loading/error/empty states.
+- Added Escape, backdrop and button dismissal plus request-generation protection so a late response cannot overwrite the latest selected App.
+- Removed the duplicated User perspective tab; the same user distributions remain in the Metric perspective, so no analytical content or backend query capability was removed.
+- `npm run check` and `npm run build` passed.
+- This is a frontend interaction change; no database, aggregation, dependency or lock-file behavior changed. Live Windows/WebView2 visual verification remains pending.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.68 update
 
