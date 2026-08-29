@@ -157,12 +157,34 @@ pub fn etl_run_complete_aggregates(req: EtlRequest) -> Result<CommandAck, String
         .analysis_run_id
         .clone()
         .unwrap_or_else(|| "RUN_DEFAULT".to_string());
-    let bound = sql_runner::bind_batch_params(COMPLETE_DWS_SQL, &req.import_batch_id, None);
+    let bound = sql_runner::bind_batch_params(
+        COMPLETE_DWS_SQL,
+        &req.import_batch_id,
+        Some(&analysis_run_id),
+    );
     let sql = batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &bound)?;
-    let dwd_tcp =
-        batch_tables::resolve_table(&req.settings, &req.import_batch_id, "dwd_tcp_detail_clean")?;
-    let dwd_game =
-        batch_tables::resolve_table(&req.settings, &req.import_batch_id, "dwd_game_detail_clean")?;
+    let hourly_core = batch_tables::resolve_table(
+        &req.settings,
+        &req.import_batch_id,
+        "dws_user_app_hourly_experience_v2",
+    )?;
+    let period_core = batch_tables::resolve_table(
+        &req.settings,
+        &req.import_batch_id,
+        "dws_user_app_period_experience_v2",
+    )?;
+    let mut readiness_conn = db::conn(&req.settings)?;
+    let core_ready: Option<i8> = readiness_conn
+        .exec_first(
+            format!("SELECT EXISTS(SELECT 1 FROM `{period_core}` WHERE analysis_run_id=? LIMIT 1)"),
+            (&analysis_run_id,),
+        )
+        .map_err(|err| format!("failed to inspect shared experience core: {err}"))?;
+    if core_ready.unwrap_or(0) == 0 {
+        return Err(format!(
+            "shared experience core is not ready for analysis_run_id={analysis_run_id}; run experience_core first"
+        ));
+    }
     let dws_user = batch_tables::resolve_table(
         &req.settings,
         &req.import_batch_id,
@@ -193,7 +215,9 @@ pub fn etl_run_complete_aggregates(req: EtlRequest) -> Result<CommandAck, String
         "complete_dws_aggregate",
         vec![JobStep {
             step_name: "complete_dws_aggregates",
-            source_table: Box::leak(format!("{dwd_tcp},{dwd_game},{dws_user}").into_boxed_str()),
+            source_table: Box::leak(
+                format!("{hourly_core},{period_core},{dws_user}").into_boxed_str(),
+            ),
             target_table: Box::leak(
                 format!("{dws_app},{dws_app_daily},{dws_app_user},{dws_access},{dws_bottleneck}")
                     .into_boxed_str(),
@@ -290,9 +314,17 @@ pub fn leads_run_final_fusion(req: EtlRequest) -> Result<CommandAck, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        format_failed_quality_details, quality_templates_for_data_type, GAME_QUALITY_SQL,
-        TCP_QUALITY_SQL,
+        format_failed_quality_details, quality_templates_for_data_type, COMPLETE_DWS_SQL,
+        GAME_QUALITY_SQL, TCP_QUALITY_SQL,
     };
+
+    #[test]
+    fn compatibility_dws_reads_shared_core_not_dwd() {
+        assert!(COMPLETE_DWS_SQL.contains(":dws_user_app_hourly_experience_v2"));
+        assert!(COMPLETE_DWS_SQL.contains(":dws_user_app_period_experience_v2"));
+        assert!(!COMPLETE_DWS_SQL.contains(":dwd_tcp_detail_clean"));
+        assert!(!COMPLETE_DWS_SQL.contains(":dwd_game_detail_clean"));
+    }
 
     #[test]
     fn quality_gate_routes_by_data_type() {

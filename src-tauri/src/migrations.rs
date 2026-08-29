@@ -44,6 +44,10 @@ pub fn init_database(settings: &MySqlSettings) -> Result<String, String> {
     ensure_access_columns_for_table(&mut conn, "meta_decision_rule_profile")?;
     ensure_access_columns_for_table(&mut conn, "dwd_tcp_detail_clean")?;
     ensure_access_columns_for_table(&mut conn, "dwd_game_detail_clean")?;
+    ensure_access_columns_for_table(&mut conn, "dws_user_app_period_experience_v2")?;
+    ensure_access_columns_for_table(&mut conn, "dws_user_app_hourly_experience_v2")?;
+    ensure_access_columns_for_table(&mut conn, "meta_aggregation_partition_checkpoint")?;
+    ensure_access_columns_for_table(&mut conn, "meta_aggregation_subtask_checkpoint")?;
     let seed_rows = sql_runner::execute_script(settings, APP_MAPPING_SEED)?;
     let map_seed_rows = sql_runner::execute_script(settings, MAP_SEED)?;
     crate::mapping_catalog::ensure_import_mapping_catalog(settings)?;
@@ -68,7 +72,11 @@ pub fn ensure_experience_policy_schema(settings: &MySqlSettings) -> Result<(), S
     let mut conn = crate::db::conn(settings)?;
     ensure_access_columns_for_table(&mut conn, "meta_access_rule_set")?;
     ensure_access_columns_for_table(&mut conn, "meta_analysis_run")?;
-    ensure_access_columns_for_table(&mut conn, "meta_decision_rule_profile")
+    ensure_access_columns_for_table(&mut conn, "meta_decision_rule_profile")?;
+    ensure_access_columns_for_table(&mut conn, "dws_user_app_period_experience_v2")?;
+    ensure_access_columns_for_table(&mut conn, "dws_user_app_hourly_experience_v2")?;
+    ensure_access_columns_for_table(&mut conn, "meta_aggregation_partition_checkpoint")?;
+    ensure_access_columns_for_table(&mut conn, "meta_aggregation_subtask_checkpoint")
 }
 
 pub fn ensure_decision_workspace_schema(settings: &MySqlSettings) -> Result<(), String> {
@@ -79,12 +87,15 @@ pub fn ensure_decision_workspace_schema(settings: &MySqlSettings) -> Result<(), 
     sql_runner::execute_script(settings, create_only)?;
     let mut conn = crate::db::conn(settings)?;
     ensure_access_columns_for_table(&mut conn, "meta_decision_rule_profile")?;
+    ensure_access_columns_for_table(&mut conn, "meta_aggregation_subtask_checkpoint")?;
     drop(conn);
     sql_runner::execute_script(settings, DECISION_WORKSPACE_SCHEMA).map(|_| ())
 }
 
 pub fn ensure_aggregation_checkpoint_schema(settings: &MySqlSettings) -> Result<(), String> {
-    sql_runner::execute_script(settings, AGGREGATION_CHECKPOINT_SCHEMA).map(|_| ())
+    sql_runner::execute_script(settings, AGGREGATION_CHECKPOINT_SCHEMA)?;
+    let mut conn = crate::db::conn(settings)?;
+    ensure_access_columns_for_table(&mut conn, "meta_aggregation_partition_checkpoint")
 }
 
 fn column_exists(conn: &mut mysql::PooledConn, table: &str, column: &str) -> Result<bool, String> {
@@ -128,14 +139,45 @@ pub fn ensure_access_columns_for_table(
             ("app_bundle_min_active_days", "BIGINT NOT NULL DEFAULT 3"),
             ("sufficient_app_users", "BIGINT NOT NULL DEFAULT 30"),
             ("sufficient_app_observations", "BIGINT NOT NULL DEFAULT 100"),
-            ("attention_app_poor_rate_pct", "DECIMAL(9,4) NOT NULL DEFAULT 10"),
-            ("attention_app_persistent_user_rate_pct", "DECIMAL(9,4) NOT NULL DEFAULT 5"),
-            ("severe_app_poor_rate_pct", "DECIMAL(9,4) NOT NULL DEFAULT 40"),
-            ("severe_app_persistent_user_rate_pct", "DECIMAL(9,4) NOT NULL DEFAULT 20"),
-            ("severe_app_severe_user_rate_pct", "DECIMAL(9,4) NOT NULL DEFAULT 10"),
+            (
+                "attention_app_poor_rate_pct",
+                "DECIMAL(9,4) NOT NULL DEFAULT 10",
+            ),
+            (
+                "attention_app_persistent_user_rate_pct",
+                "DECIMAL(9,4) NOT NULL DEFAULT 5",
+            ),
+            (
+                "severe_app_poor_rate_pct",
+                "DECIMAL(9,4) NOT NULL DEFAULT 40",
+            ),
+            (
+                "severe_app_persistent_user_rate_pct",
+                "DECIMAL(9,4) NOT NULL DEFAULT 20",
+            ),
+            (
+                "severe_app_severe_user_rate_pct",
+                "DECIMAL(9,4) NOT NULL DEFAULT 10",
+            ),
             ("mesh_min_coverage_pct", "DECIMAL(9,4) NOT NULL DEFAULT 30"),
             ("mesh_min_rtt_delta_ms", "DECIMAL(18,6) NOT NULL DEFAULT 30"),
-            ("mesh_min_loss_delta_pct", "DECIMAL(18,6) NOT NULL DEFAULT 1"),
+            (
+                "mesh_min_loss_delta_pct",
+                "DECIMAL(18,6) NOT NULL DEFAULT 1",
+            ),
+        ]
+    } else if table == "meta_aggregation_partition_checkpoint"
+        || table == "meta_aggregation_subtask_checkpoint"
+    {
+        &[
+            (
+                "implementation_version",
+                "VARCHAR(64) NOT NULL DEFAULT 'legacy' AFTER subtask_name",
+            ),
+            (
+                "source_version",
+                "VARCHAR(64) NULL AFTER implementation_version",
+            ),
         ]
     } else if table.starts_with("dwd_tcp_detail_clean") {
         &[
@@ -170,15 +212,27 @@ pub fn ensure_access_columns_for_table(
             ("source_user_type", "VARCHAR(32) NULL"),
             ("local_ip_address", "VARCHAR(255) NULL"),
             ("server_ip", "TEXT NULL"),
-            ("access_type_source", "VARCHAR(32) NOT NULL DEFAULT 'UNMATCHED'"),
-            ("access_type_confidence", "VARCHAR(32) NOT NULL DEFAULT 'LOW'"),
+            (
+                "access_type_source",
+                "VARCHAR(32) NOT NULL DEFAULT 'UNMATCHED'",
+            ),
+            (
+                "access_type_confidence",
+                "VARCHAR(32) NOT NULL DEFAULT 'LOW'",
+            ),
             ("access_rule_id", "VARCHAR(64) NULL"),
             ("access_rule_set_version", "BIGINT NULL"),
         ]
     } else if table.starts_with("dws_user_app_period_experience_v2") {
         &[
-            ("total_effective_duration_hours", "DECIMAL(24,6) NOT NULL DEFAULT 0"),
-            ("total_video_duration_hours", "DECIMAL(24,6) NOT NULL DEFAULT 0"),
+            (
+                "total_effective_duration_hours",
+                "DECIMAL(24,6) NOT NULL DEFAULT 0",
+            ),
+            (
+                "total_video_duration_hours",
+                "DECIMAL(24,6) NOT NULL DEFAULT 0",
+            ),
             ("active_days", "BIGINT NOT NULL DEFAULT 0"),
             ("avg_download_mbps", "DECIMAL(18,6) NULL"),
             ("avg_throughput_mbps", "DECIMAL(18,6) NULL"),
@@ -191,15 +245,102 @@ pub fn ensure_access_columns_for_table(
             ("avg_user_up_loss_pct", "DECIMAL(18,6) NULL"),
             ("avg_network_up_loss_pct", "DECIMAL(18,6) NULL"),
             ("avg_wifi_delay_ms", "DECIMAL(18,6) NULL"),
+            (
+                "effective_download_mbps_sum",
+                "DECIMAL(32,6) NOT NULL DEFAULT 0",
+            ),
+            ("effective_download_mbps_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("vmos_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("vmos_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("mos_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("mos_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("subscriber_rtt_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("subscriber_rtt_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("network_rtt_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("network_rtt_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("user_loss_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("user_loss_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("network_loss_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("network_loss_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("jitter_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("jitter_count", "BIGINT NOT NULL DEFAULT 0"),
         ]
     } else if table.starts_with("dws_user_app_hourly_experience_v2") {
         &[
             ("observation_rows", "BIGINT NOT NULL DEFAULT 0"),
             ("total_download_gb", "DECIMAL(24,6) NOT NULL DEFAULT 0"),
-            ("total_effective_duration_hours", "DECIMAL(24,6) NOT NULL DEFAULT 0"),
-            ("total_video_duration_hours", "DECIMAL(24,6) NOT NULL DEFAULT 0"),
+            (
+                "total_effective_duration_hours",
+                "DECIMAL(24,6) NOT NULL DEFAULT 0",
+            ),
+            (
+                "total_video_duration_hours",
+                "DECIMAL(24,6) NOT NULL DEFAULT 0",
+            ),
             ("avg_effective_download_mbps", "DECIMAL(18,6) NULL"),
             ("avg_download_mbps", "DECIMAL(18,6) NULL"),
+            ("avg_throughput_mbps", "DECIMAL(18,6) NULL"),
+            ("avg_max_single_flow_mbps", "DECIMAL(18,6) NULL"),
+            ("avg_connection_success_pct", "DECIMAL(18,6) NULL"),
+            ("avg_connection_delay_ms", "DECIMAL(18,6) NULL"),
+            ("avg_download_fluency", "DECIMAL(18,6) NULL"),
+            ("avg_upstream_rtt_ms", "DECIMAL(18,6) NULL"),
+            ("avg_downstream_rtt_ms", "DECIMAL(18,6) NULL"),
+            ("avg_user_up_loss_pct", "DECIMAL(18,6) NULL"),
+            ("avg_network_up_loss_pct", "DECIMAL(18,6) NULL"),
+            ("avg_wifi_delay_ms", "DECIMAL(18,6) NULL"),
+            ("total_game_hours", "DECIMAL(24,6) NOT NULL DEFAULT 0"),
+            ("poor_vmos_obs", "BIGINT NOT NULL DEFAULT 0"),
+            ("poor_mos_obs", "BIGINT NOT NULL DEFAULT 0"),
+            ("poor_subscriber_rtt_obs", "BIGINT NOT NULL DEFAULT 0"),
+            ("poor_network_rtt_obs", "BIGINT NOT NULL DEFAULT 0"),
+            ("poor_user_loss_obs", "BIGINT NOT NULL DEFAULT 0"),
+            ("poor_network_loss_obs", "BIGINT NOT NULL DEFAULT 0"),
+            ("poor_jitter_obs", "BIGINT NOT NULL DEFAULT 0"),
+            (
+                "effective_download_mbps_sum",
+                "DECIMAL(32,6) NOT NULL DEFAULT 0",
+            ),
+            ("effective_download_mbps_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("avg_download_mbps_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("avg_download_mbps_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("throughput_mbps_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("throughput_mbps_count", "BIGINT NOT NULL DEFAULT 0"),
+            (
+                "max_single_flow_mbps_sum",
+                "DECIMAL(32,6) NOT NULL DEFAULT 0",
+            ),
+            ("max_single_flow_mbps_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("connection_success_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("connection_success_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("connection_delay_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("connection_delay_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("download_fluency_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("download_fluency_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("upstream_rtt_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("upstream_rtt_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("downstream_rtt_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("downstream_rtt_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("user_up_loss_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("user_up_loss_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("network_up_loss_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("network_up_loss_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("wifi_delay_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("wifi_delay_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("vmos_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("vmos_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("mos_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("mos_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("subscriber_rtt_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("subscriber_rtt_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("network_rtt_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("network_rtt_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("user_loss_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("user_loss_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("network_loss_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("network_loss_count", "BIGINT NOT NULL DEFAULT 0"),
+            ("jitter_sum", "DECIMAL(32,6) NOT NULL DEFAULT 0"),
+            ("jitter_count", "BIGINT NOT NULL DEFAULT 0"),
         ]
     } else {
         return Ok(());
@@ -257,8 +398,10 @@ mod tests {
         ));
         assert!(AGGREGATION_CHECKPOINT_SCHEMA.contains("attempt_count INT NOT NULL DEFAULT 0"));
         assert!(AGGREGATION_CHECKPOINT_SCHEMA.contains("connection_id BIGINT UNSIGNED NULL"));
+        assert!(AGGREGATION_CHECKPOINT_SCHEMA
+            .contains("implementation_version VARCHAR(64) NOT NULL DEFAULT 'legacy'"));
+        assert!(DECISION_WORKSPACE_SCHEMA.contains("source_version VARCHAR(64) NULL"));
     }
-
 
     #[test]
     fn decision_workspace_rules_and_opportunities_are_versioned() {

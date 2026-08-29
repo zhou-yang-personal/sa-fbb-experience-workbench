@@ -1,5 +1,24 @@
 # CHANGELOG-dev
 
+## 1.0.67 - 2026-08-28
+
+### Performance and architecture
+
+- Promoted `dws_user_app_hourly_experience_v2` to the shared user × App × hour aggregation core with additive metric SUM/COUNT state and issue-driver counters.
+- Rebuilt period V2 and the legacy App daily, App user, category daily and access-hour compatibility DWS from the shared core instead of rescanning DWD for each output.
+- Added a dedicated `experience_core` task before compatibility dashboards while retaining bounded hour transactions and restart checkpoints.
+- Bound aggregation checkpoints to implementation and source versions so incompatible successful checkpoints are automatically recalculated after code changes.
+
+### Verification
+
+- `npm run check`: passed on 2026-08-28.
+- `npm run build`: passed on 2026-08-28.
+- `cargo check`: passed on 2026-08-28; existing warnings remain.
+- `cargo test --offline`: 63 passed, 0 failed on 2026-08-28; existing warnings remain.
+- SQL templates received static source-grain, insert/select shape and weighted-average checks.
+- Live MySQL schema execution, 13.2M-row runtime and result reconciliation remain pending.
+- No dependency or committed lock-file change.
+
 ## 1.0.66 - 2026-08-28
 
 ### Changed

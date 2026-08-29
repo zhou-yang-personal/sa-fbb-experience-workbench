@@ -16,6 +16,8 @@ const EXPERIENCE_HOURLY_ADS_V2_SQL: &str =
     include_str!("../../database/sql/dws_to_ads/005_experience_hourly_v2.sql");
 const HOURLY_STAGE: &str = "dws_ads_aggregate";
 const HOURLY_SUBTASK: &str = "hourly_v2";
+pub(crate) const HOURLY_CORE_VERSION: &str = "user_app_hourly_core_v3";
+pub(crate) const PERIOD_ROLLUP_VERSION: &str = "user_app_period_from_hourly_v3";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct HourPartition {
@@ -139,13 +141,15 @@ fn prepare_checkpoints(
     .map_err(|err| format!("failed to recover interrupted hourly checkpoints: {err}"))?;
     for partition in partitions {
         conn.exec_drop(
-            "INSERT INTO meta_aggregation_partition_checkpoint (pipeline_run_id,import_batch_id,analysis_run_id,stage_name,subtask_name,partition_date,partition_hour,status) VALUES (?,?,?,?,?,?,?,'pending') ON DUPLICATE KEY UPDATE pipeline_run_id=VALUES(pipeline_run_id),import_batch_id=VALUES(import_batch_id),updated_at=UTC_TIMESTAMP()",
+            "INSERT INTO meta_aggregation_partition_checkpoint (pipeline_run_id,import_batch_id,analysis_run_id,stage_name,subtask_name,implementation_version,source_version,partition_date,partition_hour,status) VALUES (?,?,?,?,?,?,?,?,?,'pending') ON DUPLICATE KEY UPDATE status=IF(implementation_version=VALUES(implementation_version),status,'pending'),pipeline_run_id=VALUES(pipeline_run_id),import_batch_id=VALUES(import_batch_id),implementation_version=VALUES(implementation_version),source_version=VALUES(source_version),updated_at=UTC_TIMESTAMP()",
             (
                 pipeline_run_id,
                 &req.import_batch_id,
                 run_id,
                 HOURLY_STAGE,
                 HOURLY_SUBTASK,
+                HOURLY_CORE_VERSION,
+                "dwd_clean_v2",
                 &partition.stat_date,
                 partition.hour_of_day,
             ),
@@ -362,21 +366,11 @@ pub(crate) fn analytics_materialize_app_rank_for_pipeline(
         let sql = batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &bound)?;
         sql_runner::execute_script(&req.settings, &sql)?
     };
-    let period_ready = run_has_rows(&req, "dws_user_app_period_experience_v2", &run_id)?
-        && run_has_rows(&req, "dws_app_access_period_experience_v2", &run_id)?;
-    let dws_v2_rows = if period_ready {
-        record_reused_result(&req, pipeline_run_id, &run_id, "Period V2 DWS");
-        0
-    } else {
-        let dws_v2_bound = sql_runner::bind_batch_params(
-            EXPERIENCE_DWS_V2_SQL,
-            &req.import_batch_id,
-            Some(&run_id),
+    if !run_has_rows(&req, "dws_user_app_period_experience_v2", &run_id)? {
+        return Err(
+            "shared experience core is not ready; run experience_core before App Rank".to_string(),
         );
-        let dws_v2_sql =
-            batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &dws_v2_bound)?;
-        sql_runner::execute_script(&req.settings, &dws_v2_sql)?
-    };
+    }
     let ads_v2_rows = if run_has_rows(&req, "ads_app_experience_v2", &run_id)? {
         record_reused_result(&req, pipeline_run_id, &run_id, "App ADS V2");
         0
@@ -390,11 +384,7 @@ pub(crate) fn analytics_materialize_app_rank_for_pipeline(
             batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &ads_v2_bound)?;
         sql_runner::execute_script(&req.settings, &ads_v2_sql)?
     };
-    let hourly = materialize_hourly_partitions(&req, pipeline_run_id, &run_id)?;
-    let hourly_ads_rows = if hourly.completed == 0
-        && hourly.skipped == hourly.total
-        && run_has_rows(&req, "ads_app_hourly_experience_v2", &run_id)?
-    {
+    let hourly_ads_rows = if run_has_rows(&req, "ads_app_hourly_experience_v2", &run_id)? {
         record_reused_result(&req, pipeline_run_id, &run_id, "Hourly ADS V2");
         0
     } else {
@@ -411,11 +401,29 @@ pub(crate) fn analytics_materialize_app_rank_for_pipeline(
         sql_runner::execute_script(&req.settings, &hourly_ads_sql)?
     };
     Ok(ack(format!(
-        "analytics app rank materialized: analysis_run_id={run_id}; legacy_rows={rows}; experience_v2_dws_rows={dws_v2_rows}; experience_v2_ads_rows={ads_v2_rows}; hourly_partitions={}; hourly_completed={}; hourly_skipped={}; hourly_dws_rows={}; hourly_ads_rows={hourly_ads_rows}",
-        hourly.total,
-        hourly.completed,
-        hourly.skipped,
-        hourly.affected_rows
+        "analytics app rank materialized: analysis_run_id={run_id}; legacy_rows={rows}; experience_v2_ads_rows={ads_v2_rows}; hourly_ads_rows={hourly_ads_rows}"
+    )))
+}
+
+pub(crate) fn analytics_materialize_experience_core_for_pipeline(
+    req: EtlRequest,
+    pipeline_run_id: &str,
+) -> Result<CommandAck, String> {
+    crate::migrations::ensure_experience_policy_schema(&req.settings)?;
+    batch_tables::ensure_batch_tables(&req.settings, &req.import_batch_id)?;
+    let run_id = req
+        .analysis_run_id
+        .clone()
+        .unwrap_or_else(|| "RUN_DEFAULT".to_string());
+    let hourly = materialize_hourly_partitions(&req, pipeline_run_id, &run_id)?;
+    let period_bound =
+        sql_runner::bind_batch_params(EXPERIENCE_DWS_V2_SQL, &req.import_batch_id, Some(&run_id));
+    let period_sql =
+        batch_tables::bind_batch_tables(&req.settings, &req.import_batch_id, &period_bound)?;
+    let period_rows = sql_runner::execute_script(&req.settings, &period_sql)?;
+    Ok(ack(format!(
+        "shared experience core ready: analysis_run_id={run_id}; core_version={HOURLY_CORE_VERSION}; period_version={PERIOD_ROLLUP_VERSION}; hourly_partitions={}; hourly_completed={}; hourly_skipped={}; hourly_rows={}; period_rows={period_rows}",
+        hourly.total, hourly.completed, hourly.skipped, hourly.affected_rows
     )))
 }
 
@@ -423,14 +431,14 @@ pub(crate) fn analytics_materialize_app_rank_for_pipeline(
 pub fn analytics_materialize_app_rank(req: EtlRequest) -> Result<CommandAck, String> {
     let _lock = crate::db::acquire_named_lock(&req.settings, crate::db::AGGREGATION_LOCK_NAME)?;
     let pipeline_run_id = format!("PIPE_MANUAL_{}", Uuid::new_v4().simple());
+    analytics_materialize_experience_core_for_pipeline(req.clone(), &pipeline_run_id)?;
     analytics_materialize_app_rank_for_pipeline(req, &pipeline_run_id)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        bind_partition_params, HourPartition, EXPERIENCE_DWS_V2_SQL,
-        EXPERIENCE_HOURLY_DWS_V2_SQL,
+        bind_partition_params, HourPartition, EXPERIENCE_DWS_V2_SQL, EXPERIENCE_HOURLY_DWS_V2_SQL,
     };
 
     #[test]
@@ -448,13 +456,12 @@ mod tests {
     }
 
     #[test]
-    fn period_v2_guards_ipv4_conversion() {
-        assert!(EXPERIENCE_DWS_V2_SQL
-            .contains("COALESCE(IS_IPV4(d.local_ip_address), 0) <> 1"));
-        assert!(EXPERIENCE_DWS_V2_SQL
-            .contains("INET_ATON(CASE WHEN IS_IPV4(d.local_ip_address) = 1"));
-        assert!(!EXPERIENCE_DWS_V2_SQL.contains("WHEN INET_ATON(d.local_ip_address) IS NULL"));
-        assert!(!EXPERIENCE_DWS_V2_SQL.contains("INET_ATON(d.local_ip_address) BETWEEN"));
+    fn period_v2_rolls_up_the_shared_core_without_dwd_scan() {
+        assert!(EXPERIENCE_DWS_V2_SQL.contains(":dws_user_app_hourly_experience_v2"));
+        assert!(!EXPERIENCE_DWS_V2_SQL.contains(":dwd_tcp_detail_clean"));
+        assert!(!EXPERIENCE_DWS_V2_SQL.contains(":dwd_game_detail_clean"));
+        assert!(EXPERIENCE_DWS_V2_SQL.contains("SUM(h.effective_download_mbps_sum)"));
+        assert!(EXPERIENCE_DWS_V2_SQL.contains("NULLIF(u.effective_download_mbps_count,0)"));
     }
 
     #[test]
@@ -475,6 +482,8 @@ mod tests {
         assert!(EXPERIENCE_HOURLY_DWS_V2_SQL.contains("hour_of_day=:partition_hour"));
         assert!(EXPERIENCE_HOURLY_DWS_V2_SQL.contains("total_effective_duration_hours"));
         assert!(EXPERIENCE_HOURLY_DWS_V2_SQL.contains("observation_rows"));
+        assert!(EXPERIENCE_HOURLY_DWS_V2_SQL.contains("effective_download_mbps_sum"));
+        assert!(EXPERIENCE_HOURLY_DWS_V2_SQL.contains("effective_download_mbps_count"));
     }
 
     #[test]

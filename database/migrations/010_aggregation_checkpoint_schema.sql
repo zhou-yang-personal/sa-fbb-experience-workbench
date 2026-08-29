@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS meta_aggregation_partition_checkpoint (
   analysis_run_id VARCHAR(64) NOT NULL,
   stage_name VARCHAR(64) NOT NULL,
   subtask_name VARCHAR(64) NOT NULL,
+  implementation_version VARCHAR(64) NOT NULL DEFAULT 'legacy',
+  source_version VARCHAR(64) NULL,
   partition_date DATE NOT NULL,
   partition_hour TINYINT NOT NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'pending',

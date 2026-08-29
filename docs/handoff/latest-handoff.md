@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.66
+1.0.67
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,15 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → CLEAN/DWD → Post-clean Quality Gate → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.67 update
+
+- Promoted the partitioned user × App × hour V2 table to the shared analytical core. It now stores additive SUM/COUNT state for every reusable metric, quality-driver counts, traffic and duration.
+- Period V2 and the four legacy compatibility DWS tables now derive from the shared core; they no longer rescan TCP/Game DWD independently.
+- Added a dedicated `experience_core` stage before compatibility DWS/ADS. Hour partitions remain independently committed and resumable.
+- Aggregation subtask and partition checkpoints now bind implementation/source versions. Old successful checkpoints are invalidated when their executable contract changes instead of being silently reused.
+- Network/path and other incompatible-grain aggregations remain separate by design. Live 13.2M-row Windows/MySQL runtime and output reconciliation remain pending.
+- `AGENTS.project.md` still records 1.0.48 and remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.66 update
 

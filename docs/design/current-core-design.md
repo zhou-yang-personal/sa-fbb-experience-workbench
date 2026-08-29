@@ -1,5 +1,11 @@
 # SA FBB Experience Workbench｜当前核心架构设计
 
+## 1.0.67 公共聚合核心
+
+体验分析的公共事实粒度固定为 `analysis run × 日期 × 小时 × 分析用户 IP × App × 接入类型`。`dws_user_app_hourly_experience_v2` 按实际日期/小时读取 DWD，每片独立提交，并为流量、时长、速率、连接、RTT、丢包、Wi-Fi、vMOS/MOS 和 jitter 保存可累加的 `SUM + 非空 COUNT`。均值字段只用于兼容读取，不作为后续再聚合的计算输入。
+
+`dws_user_app_period_experience_v2`、App/接入周期表以及旧版 App 日、App 用户、分类日、接入小时兼容表只能从公共核心派生，不再分别扫描 DWD。网络位置、Server IP 和其他无法由公共粒度无损表达的专项证据继续独立计算。公共核心先于兼容 DWS/ADS 执行；分片与子任务 checkpoint 同时绑定实现版本和来源版本，代码口径变化会使旧成功断点失效，进程或 MySQL 中断则只重跑未成功分片。
+
 ## 1.0.59 全量洞察与问题高亮
 
 体验总览是完整洞察入口，不以 Finding 替代全量分布。总览显式加载 ADS/DWS 后同时展示 App 组合状态、用户覆盖、业务规模、持续问题、用户需求、接入趋势、网络/路径证据和机会分层；Findings 保留为独立的异常清单和 Investigation 入口。
@@ -233,7 +239,7 @@ src/
 
 对于 RAW、Quality Gate 和 CLEAN 已有成功证据、但 DWS/ADS 不完整的批次，Import Center 提供“复用当前批次”显式任务。该任务不重读 CSV、不重建 RAW/CLEAN，从基础用户日聚合开始依次完成完整 DWS、基础 ADS、App Rank、小时趋势、网络热点、用户画像和 Lead Evidence，然后尝试 Final Lead 并刷新 Module Ready。后端在创建续跑任务前检查同批次流水线状态和 MySQL `PROCESSLIST`；只有用户明确确认原进程已退出且该批次无活动 SQL 时，才能接管遗留的 running 元数据。
 
-DWS/ADS 的可观测性细化为 8 个命名子阶段，每个子阶段写入开始、完成或失败日志，外层长步骤仍保持 15 秒存活心跳。`meta_analysis_run` 在基础用户日聚合完成后保持 `running`，只有完整 DWS 与五类结构化 ADS 均成功后才转为 `success`。
+DWS/ADS 的可观测性细化为 10 个命名子阶段，其中公共体验核心独立于兼容 DWS/ADS；每个子阶段写入开始、完成或失败日志，外层长步骤仍保持 15 秒数据库事实探测。`meta_analysis_run` 在基础用户日聚合完成后保持 `running`，只有公共核心、完整 DWS 与结构化 ADS 均成功后才转为 `success`。
 
 ### 4.2 Data Quality
 

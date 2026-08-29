@@ -119,6 +119,7 @@ const REBUILD_PIPELINE_STEPS: &[PipelineStepDef] = &[
 
 const AGGREGATE_SUBTASKS: &[&str] = &[
     "base_user_daily",
+    "experience_core",
     "complete_dws",
     "base_dashboards",
     "app_rank",
@@ -128,6 +129,17 @@ const AGGREGATE_SUBTASKS: &[&str] = &[
     "decision_opportunities",
     "lead_evidence",
 ];
+const AGGREGATE_IMPLEMENTATION_VERSION: &str = "aggregate_pipeline_v3";
+
+fn aggregation_source_version(subtask: &str) -> &'static str {
+    match subtask {
+        "experience_core" => crate::analytics_ads_app::HOURLY_CORE_VERSION,
+        "complete_dws" | "base_dashboards" | "app_rank" | "hourly_trend" => {
+            crate::analytics_ads_app::PERIOD_ROLLUP_VERSION
+        }
+        _ => "dwd_clean_v2",
+    }
+}
 
 fn now_elapsed_ms(started: std::time::Instant) -> i64 {
     started.elapsed().as_millis().min(i64::MAX as u128) as i64
@@ -918,17 +930,26 @@ where
     F: FnOnce() -> Result<crate::models::CommandAck, String>,
 {
     let mut checkpoint_conn = db::conn(settings)?;
-    let checkpoint_status: Option<String> = checkpoint_conn.exec_first(
-        "SELECT status FROM meta_aggregation_subtask_checkpoint WHERE analysis_run_id=? AND stage_name='dws_ads_aggregate' AND subtask_name=?",
+    let checkpoint: Option<(String, String)> = checkpoint_conn.exec_first(
+        "SELECT status,implementation_version FROM meta_aggregation_subtask_checkpoint WHERE analysis_run_id=? AND stage_name='dws_ads_aggregate' AND subtask_name=?",
         (analysis_run_id, subtask),
     ).map_err(|err| format!("failed to inspect aggregation subtask checkpoint: {err}"))?;
-    if checkpoint_status.as_deref() == Some("success") {
-        append_log(settings, pipeline_run_id, "info", Some("dws_ads_aggregate"), &format!("聚合子阶段已完成，断点复用：{label} [{subtask}]"), now_elapsed_ms(total_started))?;
+    if checkpoint.as_ref().is_some_and(|(status, version)| {
+        status == "success" && version == AGGREGATE_IMPLEMENTATION_VERSION
+    }) {
+        append_log(
+            settings,
+            pipeline_run_id,
+            "info",
+            Some("dws_ads_aggregate"),
+            &format!("聚合子阶段已完成，断点复用：{label} [{subtask}]"),
+            now_elapsed_ms(total_started),
+        )?;
         return Ok(());
     }
     checkpoint_conn.exec_drop(
-        "INSERT INTO meta_aggregation_subtask_checkpoint (pipeline_run_id,import_batch_id,analysis_run_id,stage_name,subtask_name,status,attempt_count,started_at,finished_at,duration_ms,message) VALUES (?,?,?,'dws_ads_aggregate',?,'running',1,UTC_TIMESTAMP(),NULL,0,NULL) ON DUPLICATE KEY UPDATE pipeline_run_id=VALUES(pipeline_run_id),import_batch_id=VALUES(import_batch_id),status='running',attempt_count=attempt_count+1,started_at=UTC_TIMESTAMP(),finished_at=NULL,duration_ms=0,message=NULL",
-        (pipeline_run_id, import_batch_id, analysis_run_id, subtask),
+        "INSERT INTO meta_aggregation_subtask_checkpoint (pipeline_run_id,import_batch_id,analysis_run_id,stage_name,subtask_name,implementation_version,source_version,status,attempt_count,started_at,finished_at,duration_ms,message) VALUES (?,?,?,'dws_ads_aggregate',?,?,?,'running',1,UTC_TIMESTAMP(),NULL,0,NULL) ON DUPLICATE KEY UPDATE pipeline_run_id=VALUES(pipeline_run_id),import_batch_id=VALUES(import_batch_id),implementation_version=VALUES(implementation_version),source_version=VALUES(source_version),status='running',attempt_count=attempt_count+1,started_at=UTC_TIMESTAMP(),finished_at=NULL,duration_ms=0,message=NULL",
+        (pipeline_run_id, import_batch_id, analysis_run_id, subtask, AGGREGATE_IMPLEMENTATION_VERSION, aggregation_source_version(subtask)),
     ).map_err(|err| format!("failed to start aggregation subtask checkpoint: {err}"))?;
     let started = std::time::Instant::now();
     append_log(
@@ -1002,6 +1023,21 @@ fn run_dws_ads_stage(
             import_batch_id,
             analysis_run_id,
             AGGREGATE_SUBTASKS[1],
+            "公共用户×App×小时核心",
+            total_started,
+            || {
+                crate::analytics_ads_app::analytics_materialize_experience_core_for_pipeline(
+                    request(),
+                    pipeline_run_id,
+                )
+            },
+        )?;
+        run_logged_subtask(
+            settings,
+            pipeline_run_id,
+            import_batch_id,
+            analysis_run_id,
+            AGGREGATE_SUBTASKS[2],
             "完整 DWS 聚合",
             total_started,
             || crate::phase_commands::etl_run_complete_aggregates(request()),
@@ -1011,7 +1047,7 @@ fn run_dws_ads_stage(
             pipeline_run_id,
             import_batch_id,
             analysis_run_id,
-            AGGREGATE_SUBTASKS[2],
+            AGGREGATE_SUBTASKS[3],
             "基础看板 ADS",
             total_started,
             || crate::phase_commands::ads_run_complete_dashboards(request()),
@@ -1021,7 +1057,7 @@ fn run_dws_ads_stage(
             pipeline_run_id,
             import_batch_id,
             analysis_run_id,
-            AGGREGATE_SUBTASKS[3],
+            AGGREGATE_SUBTASKS[4],
             "App Rank",
             total_started,
             || {
@@ -1036,7 +1072,7 @@ fn run_dws_ads_stage(
             pipeline_run_id,
             import_batch_id,
             analysis_run_id,
-            AGGREGATE_SUBTASKS[4],
+            AGGREGATE_SUBTASKS[5],
             "小时趋势",
             total_started,
             || crate::ads_hour::ads_hour(request()),
@@ -1046,7 +1082,7 @@ fn run_dws_ads_stage(
             pipeline_run_id,
             import_batch_id,
             analysis_run_id,
-            AGGREGATE_SUBTASKS[5],
+            AGGREGATE_SUBTASKS[6],
             "网络热点",
             total_started,
             || crate::ads_net::ads_net(request()),
@@ -1056,7 +1092,7 @@ fn run_dws_ads_stage(
             pipeline_run_id,
             import_batch_id,
             analysis_run_id,
-            AGGREGATE_SUBTASKS[6],
+            AGGREGATE_SUBTASKS[7],
             "用户画像",
             total_started,
             || crate::ads_user::ads_user(request()),
@@ -1066,7 +1102,7 @@ fn run_dws_ads_stage(
             pipeline_run_id,
             import_batch_id,
             analysis_run_id,
-            AGGREGATE_SUBTASKS[7],
+            AGGREGATE_SUBTASKS[8],
             "四类潜客机会",
             total_started,
             || crate::decision_workspace_commands::materialize_opportunities(request()),
@@ -1076,7 +1112,7 @@ fn run_dws_ads_stage(
             pipeline_run_id,
             import_batch_id,
             analysis_run_id,
-            AGGREGATE_SUBTASKS[8],
+            AGGREGATE_SUBTASKS[9],
             "Lead Evidence",
             total_started,
             || crate::ads_lead::ads_lead(request()),
@@ -2462,6 +2498,7 @@ mod tests {
             AGGREGATE_SUBTASKS,
             [
                 "base_user_daily",
+                "experience_core",
                 "complete_dws",
                 "base_dashboards",
                 "app_rank",
