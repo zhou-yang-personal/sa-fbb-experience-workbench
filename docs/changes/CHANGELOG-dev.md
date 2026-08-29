@@ -1,5 +1,26 @@
 # CHANGELOG-dev
 
+## 1.0.71 - 2026-08-29
+
+### Added
+
+- Added a separate opportunity-candidate CSV export from the candidate list.
+- Exported all rows matching the active opportunity-type and IP/App search filters, independent of UI pagination.
+- Included the complete candidate evidence fields and a UTF-8 BOM for direct Windows Excel use.
+
+### Performance and safety
+
+- Streamed published ADS rows from MySQL directly to the selected file instead of loading the full candidate set into React memory.
+- Kept candidate-table export separate from chart-only PDF reporting.
+
+### Verification
+
+- `npm run check` and `npm run build`: passed on 2026-08-29.
+- `cargo check --offline`: passed on 2026-08-29; existing warnings remain.
+- `cargo test --offline`: 64 passed, 0 failed on 2026-08-29.
+- Live Windows save-dialog, Excel and real-MySQL export verification remain pending.
+- No dependency or committed lock-file change.
+
 ## 1.0.70 - 2026-08-29
 
 ### Added

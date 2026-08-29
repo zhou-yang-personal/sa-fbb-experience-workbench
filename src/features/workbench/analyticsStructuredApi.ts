@@ -54,4 +54,5 @@ export const analyticsStructuredApi = {
   decisionMaterializeOpportunities: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<CommandAck>('decision_materialize_opportunities', etlReq(settings, importBatchId, analysisRunId)),
   decisionOpportunities: (settings: MySqlSettings, importBatchId: string, analysisRunId: string) => invoke<MetricCard[]>('decision_get_opportunities', req(settings, importBatchId, analysisRunId)),
   decisionOpportunityCandidates: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, query?: StructuredAnalyticsQuery) => invoke<OpportunityCandidatePage>('decision_get_opportunity_candidates', req(settings, importBatchId, analysisRunId, query)),
+  decisionExportOpportunityCandidates: (settings: MySqlSettings, importBatchId: string, analysisRunId: string, outputPath: string, query?: StructuredAnalyticsQuery) => invoke<CommandAck>('decision_export_opportunity_candidates_csv', { req: { settings, import_batch_id: importBatchId, analysis_run_id: analysisRunId, opportunity_type: query?.opportunityType, keyword: query?.keyword, output_path: outputPath } }),
 };

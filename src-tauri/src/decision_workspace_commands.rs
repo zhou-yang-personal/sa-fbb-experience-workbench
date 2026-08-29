@@ -1,11 +1,15 @@
+use std::io::Write;
+
 use mysql::prelude::*;
-use mysql::params;
+use mysql::{params, Params, Value};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::batch_tables;
 use crate::db;
-use crate::models::{ack, CommandAck, DashboardRequest, EtlRequest, MetricCard};
+use crate::models::{
+    ack, CommandAck, DashboardRequest, EtlRequest, MetricCard, OpportunityExportRequest,
+};
 
 #[derive(Clone, Debug, Serialize)]
 pub struct OpportunityCandidateRow {
@@ -840,6 +844,94 @@ pub fn decision_get_opportunity_candidates(req: DashboardRequest) -> Result<Oppo
             })
         }).collect::<Result<Vec<_>, String>>()?;
         Ok(OpportunityCandidatePage { rows, total: total.unwrap_or(0), page, page_size })
+    })
+}
+
+fn export_string(value: Option<String>) -> String {
+    value.unwrap_or_default()
+}
+
+fn export_number(value: Option<f64>) -> String {
+    value.map(|number| number.to_string()).unwrap_or_default()
+}
+
+#[tauri::command]
+pub fn decision_export_opportunity_candidates_csv(
+    req: OpportunityExportRequest,
+) -> Result<CommandAck, String> {
+    crate::command_guard::run("decision_export_opportunity_candidates_csv", || {
+        if req.output_path.trim().is_empty() {
+            return Err("opportunity export output path is required".to_string());
+        }
+        let opportunity_type = req.opportunity_type.as_deref().and_then(|value| match value {
+            "MIGRATION" | "SPEED_UPGRADE" | "MESH_AP" | "APP_BUNDLE" => {
+                Some(value.to_string())
+            }
+            _ => None,
+        });
+        let keyword = req.keyword.as_deref().map(str::trim).filter(|value| !value.is_empty())
+            .map(|value| format!("%{}%", value.replace('%', "\\%").replace('_', "\\_")));
+        let mut file = std::fs::File::create(&req.output_path)
+            .map_err(|err| format!("failed to create opportunity export file: {err}"))?;
+        file.write_all(&[0xEF, 0xBB, 0xBF])
+            .map_err(|err| format!("failed to write opportunity export BOM: {err}"))?;
+        let mut writer = csv::Writer::from_writer(file);
+        writer.write_record([
+            "user_ip", "opportunity_type", "opportunity_level", "access_type",
+            "active_days", "observation_rows", "total_download_gb",
+            "total_effective_duration_hours", "avg_effective_download_mbps",
+            "avg_wifi_delay_ms", "avg_subscriber_rtt_ms", "avg_network_rtt_ms",
+            "avg_user_loss_pct", "avg_network_loss_pct", "primary_app",
+            "primary_app_active_days", "primary_app_observations", "evidence_value",
+            "evidence_unit", "evidence_summary", "data_limitation_code",
+            "rule_profile_version",
+        ]).map_err(|err| format!("failed to write opportunity export header: {err}"))?;
+
+        let mut conn = db::conn(&req.settings)?;
+        let query = "SELECT user_key,opportunity_type,opportunity_level,user_type,CAST(active_days AS SIGNED),CAST(observation_rows AS SIGNED),CAST(total_download_gb AS DOUBLE),CAST(total_effective_duration_hours AS DOUBLE),CAST(avg_effective_download_mbps AS DOUBLE),CAST(avg_wifi_delay_ms AS DOUBLE),CAST(avg_subscriber_rtt_ms AS DOUBLE),CAST(avg_network_rtt_ms AS DOUBLE),CAST(avg_user_loss_pct AS DOUBLE),CAST(avg_network_loss_pct AS DOUBLE),primary_app,CAST(primary_app_active_days AS SIGNED),CAST(primary_app_observations AS SIGNED),CAST(evidence_value AS DOUBLE),evidence_unit,evidence_summary,data_limitation_code,CAST(rule_profile_version AS SIGNED) FROM ads_opportunity_user_v3 WHERE analysis_run_id=? AND import_batch_id=? AND (? IS NULL OR opportunity_type=?) AND (? IS NULL OR user_key LIKE ? OR primary_app LIKE ?) ORDER BY (opportunity_level='HIGH') DESC,evidence_value DESC,user_key";
+        let values = vec![
+            Value::Bytes(req.analysis_run_id.as_bytes().to_vec()),
+            Value::Bytes(req.import_batch_id.as_bytes().to_vec()),
+            opportunity_type.clone().map(|value| Value::Bytes(value.into_bytes())).unwrap_or(Value::NULL),
+            opportunity_type.map(|value| Value::Bytes(value.into_bytes())).unwrap_or(Value::NULL),
+            keyword.clone().map(|value| Value::Bytes(value.into_bytes())).unwrap_or(Value::NULL),
+            keyword.clone().map(|value| Value::Bytes(value.into_bytes())).unwrap_or(Value::NULL),
+            keyword.map(|value| Value::Bytes(value.into_bytes())).unwrap_or(Value::NULL),
+        ];
+        let rows = conn.exec_iter(query, Params::Positional(values))
+            .map_err(|err| format!("failed to query opportunity candidates for export: {err}"))?;
+        let mut exported_rows = 0_u64;
+        for row in rows {
+            let row = row.map_err(|err| format!("failed to decode opportunity export row: {err}"))?;
+            let active_days: i64 = row.get(4).unwrap_or_default();
+            let observation_rows: i64 = row.get(5).unwrap_or_default();
+            let total_download_gb: f64 = row.get(6).unwrap_or_default();
+            let total_effective_duration_hours: f64 = row.get(7).unwrap_or_default();
+            let primary_app_active_days: i64 = row.get(15).unwrap_or_default();
+            let primary_app_observations: i64 = row.get(16).unwrap_or_default();
+            let rule_profile_version: i64 = row.get(21).unwrap_or_default();
+            writer.write_record([
+                row.get::<String, _>(0).unwrap_or_default(),
+                row.get::<String, _>(1).unwrap_or_default(),
+                row.get::<String, _>(2).unwrap_or_default(),
+                row.get::<String, _>(3).unwrap_or_default(),
+                active_days.to_string(), observation_rows.to_string(),
+                total_download_gb.to_string(), total_effective_duration_hours.to_string(),
+                export_number(row.get(8)), export_number(row.get(9)),
+                export_number(row.get(10)), export_number(row.get(11)),
+                export_number(row.get(12)), export_number(row.get(13)),
+                export_string(row.get(14)), primary_app_active_days.to_string(),
+                primary_app_observations.to_string(), export_number(row.get(17)),
+                export_string(row.get(18)), row.get::<String, _>(19).unwrap_or_default(),
+                export_string(row.get(20)), rule_profile_version.to_string(),
+            ]).map_err(|err| format!("failed to write opportunity export row: {err}"))?;
+            exported_rows += 1;
+        }
+        writer.flush().map_err(|err| format!("failed to flush opportunity export: {err}"))?;
+        Ok(ack(format!(
+            "opportunity candidates exported: rows={exported_rows}; path={}",
+            req.output_path
+        )))
     })
 }
 

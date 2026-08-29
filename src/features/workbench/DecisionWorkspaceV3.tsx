@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MetricCard, OpportunityCandidatePage, OpportunityCandidateRow } from '../../shared/types';
 import { analyticsStructuredApi } from './analyticsStructuredApi';
 import { parseMetricHint } from './analyticsStructuredCharts';
+import { selectCsvSavePath } from './fileDialogs';
 import type { WorkbenchController } from './useWorkbenchController';
 
 export type DecisionView = 'panorama' | 'quality' | 'access' | 'opportunities';
@@ -147,6 +148,8 @@ function OpportunityPanel({ summaries, c }: { summaries: MetricCard[]; c: Workbe
   const [selected, setSelected] = useState<OpportunityCandidateRow | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -167,9 +170,23 @@ function OpportunityPanel({ summaries, c }: { summaries: MetricCard[]; c: Workbe
   }, [selected]);
 
   const pageCount = Math.max(1, Math.ceil(result.total / result.page_size));
+  async function exportCandidates() {
+    const filterName = kind ? kind.toLowerCase() : 'all';
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const outputPath = await selectCsvSavePath(`opportunity_candidates_${filterName}_${date}.csv`);
+    if (!outputPath) return;
+    setExporting(true); setExportStatus(zh ? '正在导出当前筛选下的全部潜客…' : 'Exporting all filtered candidates…');
+    try {
+      const result = await analyticsStructuredApi.decisionExportOpportunityCandidates(c.effectiveSettings, c.importBatchId, c.analysisRunId, outputPath, { keyword: queryKeyword, opportunityType: kind || undefined });
+      setExportStatus(`${zh ? '导出完成' : 'Export complete'}：${result.message}`);
+    } catch (reason) {
+      setExportStatus(`${zh ? '导出失败' : 'Export failed'}：${reason instanceof Error ? reason.message : String(reason)}`);
+    } finally { setExporting(false); }
+  }
   return <>
     <section className="decision-chapter"><h2>{zh ? '机会概览' : 'Opportunity overview'}</h2><div className="opportunity-grid">{summaries.map((row) => { const d = parseMetricHint(row.hint); const unavailable = d.availability_status === 'UNAVAILABLE'; return <button type="button" key={row.label} className={`opportunity-card ${kind === row.label ? 'is-selected' : ''} ${unavailable ? 'is-unavailable' : ''}`} onClick={() => { setKind(kind === row.label ? '' : row.label); setPage(1); }}><span>{opportunityNames[row.label]?.[zh ? 0 : 1] ?? row.label}</span><strong>{unavailable ? (zh ? '不可用' : 'Unavailable') : `${Number(row.value).toLocaleString()} ${zh ? '人' : 'users'}`}</strong><p>{unavailable ? `${zh ? '数据限制' : 'Limitation'}：${d.data_limitation_code}` : `${zh ? '高优先级' : 'High priority'} ${Number(d.high_priority_users ?? 0).toLocaleString()} ${zh ? '人' : 'users'}`}</p><small>{zh ? '规则版本' : 'Rule version'} v{d.rule_version}</small></button>; })}</div><Explanation>{zh ? '四类机会只表示应用体验数据支持的候选方向，不等于可直接营销名单。点击卡片可筛选下方潜客。' : 'These are experience-driven candidates, not a CRM-qualified marketing list. Select a card to filter candidates.'}</Explanation></section>
-    <section className="decision-chapter"><div className="opportunity-list-head"><div><h2>{zh ? '潜客列表' : 'Candidate list'}</h2><p>{zh ? `共 ${result.total.toLocaleString()} 条；以 IP 作为分析用户标识。` : `${result.total.toLocaleString()} candidates; IP is the analysis user identifier.`}</p></div><form onSubmit={(event) => { event.preventDefault(); setPage(1); setQueryKeyword(keyword.trim()); }}><input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder={zh ? '搜索用户 IP 或主 App' : 'Search IP or primary App'} /><button type="submit">{zh ? '查询' : 'Search'}</button></form></div>
+    <section className="decision-chapter"><div className="opportunity-list-head"><div><h2>{zh ? '潜客列表' : 'Candidate list'}</h2><p>{zh ? `共 ${result.total.toLocaleString()} 条；以 IP 作为分析用户标识。` : `${result.total.toLocaleString()} candidates; IP is the analysis user identifier.`}</p></div><div className="opportunity-actions"><form onSubmit={(event) => { event.preventDefault(); setPage(1); setQueryKeyword(keyword.trim()); }}><input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder={zh ? '搜索用户 IP 或主 App' : 'Search IP or primary App'} /><button type="submit">{zh ? '查询' : 'Search'}</button></form><button type="button" disabled={exporting || loading || result.total === 0} onClick={exportCandidates}>{exporting ? (zh ? '正在导出…' : 'Exporting…') : (zh ? '导出潜客明细 CSV' : 'Export candidate details CSV')}</button></div></div>
+      {exportStatus && <p className="opportunity-export-status">{exportStatus}</p>}
       {error ? <div className="app-detail-state is-error"><strong>{zh ? '潜客列表加载失败' : 'Failed to load candidates'}</strong><span>{error}</span></div> : loading ? <div className="app-detail-state is-loading">{zh ? '正在读取已物化潜客…' : 'Loading materialized candidates…'}</div> : result.rows.length ? <div className="decision-table-wrap"><table className="decision-table opportunity-table"><thead><tr><th>{zh ? '用户 IP' : 'User IP'}</th><th>{zh ? '机会类型' : 'Type'}</th><th>{zh ? '优先级' : 'Priority'}</th><th>{zh ? '接入制式' : 'Access'}</th><th>{zh ? '活跃天数' : 'Active days'}</th><th>{zh ? '总流量' : 'Traffic'}</th><th>{zh ? '主 App' : 'Primary App'}</th><th>{zh ? '核心证据' : 'Evidence'}</th></tr></thead><tbody>{result.rows.map((row) => <tr key={`${row.user_key}-${row.opportunity_type}`} role="button" tabIndex={0} onClick={() => setSelected(row)} onKeyDown={(event) => { if (event.key === 'Enter') setSelected(row); }}><td><strong>{row.user_key}</strong></td><td>{opportunityNames[row.opportunity_type]?.[zh ? 0 : 1] ?? row.opportunity_type}</td><td><span className={`opportunity-level is-${row.opportunity_level.toLowerCase()}`}>{row.opportunity_level === 'HIGH' ? (zh ? '高' : 'High') : (zh ? '标准' : 'Standard')}</span></td><td>{row.user_type}</td><td>{row.active_days}</td><td>{friendlyNumber(String(row.total_download_gb), 'GB')}</td><td>{row.primary_app || '—'}</td><td>{row.evidence_value == null ? '—' : `${Number(row.evidence_value).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${row.evidence_unit ?? ''}`}</td></tr>)}</tbody></table></div> : <div className="decision-empty">{zh ? '当前筛选下没有潜客。若全部为 0，请在数据作业中心从聚合阶段继续，页面本身不会启动重计算。' : 'No candidates match. Resume aggregation in Data Jobs if results have not been built.'}</div>}
       <div className="opportunity-pagination"><button type="button" disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}>{zh ? '上一页' : 'Previous'}</button><span>{page} / {pageCount}</span><button type="button" disabled={page >= pageCount || loading} onClick={() => setPage((value) => value + 1)}>{zh ? '下一页' : 'Next'}</button></div>
     </section>

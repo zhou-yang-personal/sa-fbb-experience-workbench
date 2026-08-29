@@ -255,6 +255,16 @@ pub struct DashboardRequest {
     pub opportunity_type: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct OpportunityExportRequest {
+    pub settings: MySqlSettings,
+    pub import_batch_id: String,
+    pub analysis_run_id: String,
+    pub opportunity_type: Option<String>,
+    pub keyword: Option<String>,
+    pub output_path: String,
+}
+
 impl DashboardRequest {
     pub fn run_id(&self) -> String {
         self.analysis_run_id

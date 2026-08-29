@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.70
+1.0.71
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,14 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → CLEAN/DWD → Post-clean Quality Gate → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.71 update
+
+- Added a separate candidate-detail CSV export beside the opportunity list. It exports all rows matching the active opportunity type and applied IP/App search, not only the visible page.
+- The backend streams the published `ads_opportunity_user_v3` result directly to the selected path and includes complete evidence, limitations and rule-version columns.
+- CSV is UTF-8 with BOM for Windows Excel. Chart PDF remains chart-only.
+- `npm run check`, `npm run build`, `cargo check --offline` and all 64 Rust tests passed.
+- Live Windows save-dialog, Excel and real-MySQL export verification remain pending. `AGENTS.project.md` remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.70 update
 

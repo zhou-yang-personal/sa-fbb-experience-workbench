@@ -125,6 +125,7 @@ fn main() {
             decision_workspace_commands::decision_materialize_opportunities,
             decision_workspace_commands::decision_get_opportunities,
             decision_workspace_commands::decision_get_opportunity_candidates,
+            decision_workspace_commands::decision_export_opportunity_candidates_csv,
             decision_workspace_commands::decision_rule_list,
             decision_workspace_commands::decision_rule_create_draft,
             decision_workspace_commands::decision_rule_update,
