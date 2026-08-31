@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.72
+1.0.73
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,19 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → CLEAN/DWD → Post-clean Quality Gate → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.73 update
+
+- Fixed leading blank PDF pages by collapsing the interactive workspace during Decision report printing instead of hiding it with `visibility:hidden` while retaining layout space.
+- Reworded upstream-rate availability to reflect the actual evidence boundary: no confirmed mapped upstream-throughput field; source CSV headers/vendor dictionaries still require verification.
+- Added App decision evidence with actual values, rule thresholds, numerators/denominators and the explicit distinction between affected App users and an App-server root cause.
+- Added a five-dimension Cable/FTTH radar using fixed anchors, raw-value companions and missing-dimension suppression; it remains descriptive and non-causal.
+- Reworked user/access bands into share-and-count bars. Cable and FTTH widths use within-cohort denominators rather than raw cross-cohort maxima.
+- Added candidate-specific reasons, exact rule checks and priority derivation. The current Opportunity model is disclosed as High/Standard rules with no composite score.
+- Bound hourly peak shading to the analysis rule profile and broke lines across missing hours.
+- `npm run check`, `npm run build`, `cargo check --offline` and all 69 Rust tests passed. Whole-crate `cargo fmt --check` still reports the existing unformatted baseline across many untouched Rust files, so no repository-wide formatting rewrite was applied.
+- No schema migration, dependency, lock-file, production database, ETL, aggregation or recovery change. Existing published results are read-only inputs; Windows/WebView2 PDF visual verification remains pending.
+- `AGENTS.project.md` remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.72 update
 

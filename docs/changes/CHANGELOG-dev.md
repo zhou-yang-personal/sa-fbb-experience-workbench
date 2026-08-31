@@ -1,5 +1,31 @@
 # CHANGELOG-dev
 
+## 1.0.73 - 2026-08-31
+
+### Fixed
+
+- Removed the Decision report's global `visibility:hidden` print technique that retained interactive-page layout and produced leading blank PDF pages.
+- Read the bound peak-hour window for panorama/access charts and stopped line segments at missing hours instead of bridging absent observations.
+- Replaced the absolute upstream-throughput absence claim with a mapped-field limitation and source-header/vendor-dictionary verification prompt.
+
+### Analysis and presentation
+
+- Added App-level decision evidence with actual rates, thresholds, numerators, denominators, sample state and rule version; the UI now separates affected-user evidence from App-server root-cause proof.
+- Added a fixed-anchor, five-dimension Cable/FTTH radar with companion raw values and no missing-as-zero polygon.
+- Converted user and access bands to percentage bars with visible counts; Cable/FTTH uses within-access denominators.
+- Added per-candidate selection reasons, exact rule checks and priority derivation. The UI explicitly states that the current High/Standard model has no composite score.
+- Clarified opportunity grain as analysis user × opportunity type and retained CRM/coverage/eligibility caveats.
+
+### Verification
+
+- `npm run check` and `npm run build`: passed on 2026-08-31.
+- `cargo check --offline`: passed on 2026-08-31 with 23 existing warnings.
+- `cargo test --offline`: 69 passed, 0 failed on 2026-08-31.
+- Whole-crate `cargo fmt --check` remains a pre-existing baseline failure across many untouched Rust files; no broad formatting rewrite was applied.
+- No production MySQL query, migration, ETL, aggregation, recovery or connection termination was executed.
+- No dependency or committed lock-file change.
+- Live Windows/WebView2 PDF and visual verification remains pending.
+
 ## 1.0.72 - 2026-08-30
 
 ### Fixed
