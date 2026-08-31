@@ -1,5 +1,30 @@
 # CHANGELOG-dev
 
+## 1.0.72 - 2026-08-30
+
+### Fixed
+
+- Decoded nullable aggregation `source_version` values safely; legacy `NULL` checkpoints are incompatible and recomputed instead of panicking.
+- Added a guarded background-task boundary that closes pipeline, step, analysis-run, subtask and partition states after an unexpected panic.
+- Invalidated all downstream subtask checkpoints when an upstream result must be recomputed.
+- Compared both implementation and source versions for hourly partition reuse, and advanced the hourly/period core contracts to V4 so historical zero-count experience columns cannot be silently reused.
+- Replaced infallible Opportunity numeric/text decoding in candidate queries and CSV export with nullable helpers.
+
+### Publication integrity and metrics
+
+- Added exact-version readiness gates to panorama, App, distribution, quality, Cable/FTTH, Opportunity and export reads. Active, missing, legacy or mixed publications return `DECISION_DATA_NOT_READY`.
+- Added additive average-download SUM/COUNT fields to Access hourly ADS and exposed average download as a 24-hour panorama and Cable/FTTH metric.
+- Added backend limitations and a frontend fallback so unavailable metrics never render `undefined`.
+
+### Verification
+
+- `cargo test --offline`: 69 passed, 0 failed on 2026-08-30; existing warnings remain.
+- `npm run check` and `npm run build`: passed on 2026-08-30.
+- `npm test`: not available because the project has no test script.
+- No production MySQL query, migration, ETL, aggregation, recovery or connection termination was executed.
+- Live migration, one explicit DWS/ADS resume, metric sample-rate reconciliation, PDF/CSV output and Windows/WebView2 verification remain pending.
+- No dependency or committed lock-file change.
+
 ## 1.0.71 - 2026-08-29
 
 ### Added

@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-1.0.71
+1.0.72
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,18 @@ Raw First MySQL pipeline is preserved:
 ```text
 CSV → MySQL RAW → CLEAN/DWD → Post-clean Quality Gate → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
 ```
+
+## 1.0.72 update
+
+- Fixed the stale-running root cause: nullable legacy `source_version` checkpoints no longer panic during Rust decoding, and all three background pipeline entry points now close failure state after unexpected panics.
+- Checkpoint reuse now requires exact implementation and source versions at both subtask and hourly-partition levels. Upstream recomputation invalidates every downstream checkpoint.
+- Advanced the shared hourly and period core contracts to V4, Access to `access_specialty_v3` and Opportunity to `opportunity_feature_v3`. This deliberately forces one compatible recomputation instead of retaining the current mixed publication.
+- Added dashboard/export readiness gates. The existing Access=0 and old Opportunity=23,669 mixed state will be rejected until a complete same-version publication succeeds.
+- Added null-safe Opportunity candidate/export decoding and additive average-download hourly rollups; UI unavailable copy has a non-`undefined` fallback.
+- Existing RAW/CLEAN for `BATCH_7ee2e638909346fabf8396cd3660b9c0` remain reusable. Do not reimport CSV or rebuild CLEAN solely for this repair.
+- `cargo test --offline` passed with 69 tests; `npm run check` and `npm run build` passed. The project has no `npm test` script.
+- No production database command or long-running job was executed. Live migration, one explicit DWS/ADS resume, sample-count reconciliation and Windows export verification remain pending.
+- `AGENTS.project.md` remains unchanged because editing it requires explicit user authorization.
 
 ## 1.0.71 update
 

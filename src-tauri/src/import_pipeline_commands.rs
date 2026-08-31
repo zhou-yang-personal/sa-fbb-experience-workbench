@@ -138,41 +138,65 @@ const AGGREGATE_SUBTASKS: &[&str] = &[
     "opportunity_publish",
     "lead_evidence",
 ];
-fn aggregation_implementation_version(subtask: &str) -> &'static str {
+pub(crate) fn aggregation_implementation_version(subtask: &str) -> &'static str {
     match subtask {
         // These tasks keep the V3 implementation contract so an existing successful
         // checkpoint remains reusable after upgrading the application.
-        "base_user_daily" | "experience_core" | "complete_dws" | "base_dashboards"
-        | "app_rank" | "hourly_trend" | "network_hotspot" | "user_profile"
-        | "lead_evidence" => "aggregate_pipeline_v3",
-        // V4 introduces independent access-comparison and opportunity tasks. Only
-        // these new contracts need to run for an already aggregated V3 analysis run.
+        "base_user_daily" | "experience_core" | "complete_dws" | "base_dashboards" | "app_rank"
+        | "hourly_trend" | "network_hotspot" | "user_profile" | "lead_evidence" => {
+            "aggregate_pipeline_v3"
+        }
+        // V3 adds average-download hourly output and publication readiness guards.
         "access_user_core" | "access_overview" | "access_hourly" | "access_bands" => {
-            "access_specialty_v2"
+            "access_specialty_v3"
         }
-        "opportunity_features" | "opportunity_migration" | "opportunity_speed_upgrade"
-        | "opportunity_mesh" | "opportunity_app_bundle" | "opportunity_publish" => {
-            "opportunity_feature_v2"
-        }
+        "opportunity_features"
+        | "opportunity_migration"
+        | "opportunity_speed_upgrade"
+        | "opportunity_mesh"
+        | "opportunity_app_bundle"
+        | "opportunity_publish" => "opportunity_feature_v3",
         _ => "aggregate_pipeline_v3",
     }
 }
 
-fn aggregation_source_version(subtask: &str) -> &'static str {
+pub(crate) fn aggregation_source_version(subtask: &str) -> &'static str {
     match subtask {
         "experience_core" => crate::analytics_ads_app::HOURLY_CORE_VERSION,
         "complete_dws" | "base_dashboards" | "app_rank" | "hourly_trend" => {
             crate::analytics_ads_app::PERIOD_ROLLUP_VERSION
         }
         "access_user_core" | "access_overview" | "access_hourly" | "access_bands" => {
-            "access_specialty_v2"
+            "access_specialty_v3"
         }
-        "opportunity_features" | "opportunity_migration" | "opportunity_speed_upgrade"
-        | "opportunity_mesh" | "opportunity_app_bundle" | "opportunity_publish" => {
-            "opportunity_feature_v2"
-        }
+        "opportunity_features"
+        | "opportunity_migration"
+        | "opportunity_speed_upgrade"
+        | "opportunity_mesh"
+        | "opportunity_app_bundle"
+        | "opportunity_publish" => "opportunity_feature_v3",
         _ => "dwd_clean_v2",
     }
+}
+
+pub(crate) fn aggregation_checkpoint_is_reusable(
+    status: &str,
+    implementation_version: &str,
+    source_version: Option<&str>,
+    expected_implementation_version: &str,
+    expected_source_version: &str,
+) -> bool {
+    status == "success"
+        && implementation_version == expected_implementation_version
+        && source_version == Some(expected_source_version)
+}
+
+fn downstream_aggregate_subtasks(subtask: &str) -> &'static [&'static str] {
+    AGGREGATE_SUBTASKS
+        .iter()
+        .position(|candidate| *candidate == subtask)
+        .map(|index| &AGGREGATE_SUBTASKS[index + 1..])
+        .unwrap_or_default()
 }
 
 fn now_elapsed_ms(started: std::time::Instant) -> i64 {
@@ -865,6 +889,94 @@ fn fail_remaining_steps(
     .map_err(|err| format!("failed to skip remaining pipeline steps: {err}"))
 }
 
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| {
+            payload
+                .downcast_ref::<&str>()
+                .map(|value| (*value).to_string())
+        })
+        .unwrap_or_else(|| "unknown background panic".to_string())
+}
+
+fn finalize_pipeline_panic(
+    settings: &MySqlSettings,
+    pipeline_run_id: &str,
+    analysis_run_id: &str,
+    error: &str,
+    elapsed_ms: i64,
+) {
+    let bounded_error = error.chars().take(2000).collect::<String>();
+    crate::append_runtime_log(&format!(
+        "pipeline_panic pipeline_run_id={pipeline_run_id} analysis_run_id={analysis_run_id} error={bounded_error}"
+    ));
+    if let Ok(mut conn) = db::conn(settings) {
+        let _ = conn.exec_drop(
+            "UPDATE meta_pipeline_step SET status='failed',finished_at=UTC_TIMESTAMP(),message='后台任务发生未捕获异常',error_message=? WHERE pipeline_run_id=? AND status='running'",
+            (&bounded_error, pipeline_run_id),
+        );
+        let _ = conn.exec_drop(
+            "UPDATE meta_pipeline_step SET status='skipped',finished_at=UTC_TIMESTAMP(),message='前序后台任务异常，步骤未执行' WHERE pipeline_run_id=? AND status='pending'",
+            (pipeline_run_id,),
+        );
+        let _ = conn.exec_drop(
+            "UPDATE meta_aggregation_subtask_checkpoint SET status='failed',finished_at=UTC_TIMESTAMP(),message=? WHERE pipeline_run_id=? AND status='running'",
+            (&bounded_error, pipeline_run_id),
+        );
+        let _ = conn.exec_drop(
+            "UPDATE meta_aggregation_partition_checkpoint SET status='interrupted',finished_at=UTC_TIMESTAMP(),error_summary=COALESCE(error_summary,?) WHERE pipeline_run_id=? AND status='running'",
+            (&bounded_error, pipeline_run_id),
+        );
+        let _ = conn.exec_drop(
+            "UPDATE meta_analysis_run SET status='failed',finished_at=UTC_TIMESTAMP(),message=? WHERE analysis_run_id=? AND status IN ('pending','running','success')",
+            (format!("background pipeline panicked: {bounded_error}"), analysis_run_id),
+        );
+    }
+    let _ = update_run(
+        settings,
+        pipeline_run_id,
+        "failed",
+        Some("background_panic"),
+        Some("后台任务异常退出，流水线已收口为失败"),
+        Some(&bounded_error),
+        None,
+        elapsed_ms,
+    );
+    let _ = append_log(
+        settings,
+        pipeline_run_id,
+        "error",
+        Some("background_panic"),
+        &format!("后台任务异常退出，状态已收口：{bounded_error}"),
+        elapsed_ms,
+    );
+}
+
+fn spawn_guarded_pipeline_job<F>(
+    settings: MySqlSettings,
+    pipeline_run_id: String,
+    analysis_run_id: String,
+    job: F,
+) where
+    F: FnOnce() + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(move || {
+        let started = std::time::Instant::now();
+        if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)) {
+            let message = panic_payload_message(payload.as_ref());
+            finalize_pipeline_panic(
+                &settings,
+                &pipeline_run_id,
+                &analysis_run_id,
+                &message,
+                now_elapsed_ms(started),
+            );
+        }
+    });
+}
+
 fn run_observed_step<F>(
     settings: &MySqlSettings,
     pipeline_run_id: &str,
@@ -966,15 +1078,22 @@ where
     let mut checkpoint_conn = db::conn(settings)?;
     let expected_implementation_version = aggregation_implementation_version(subtask);
     let expected_source_version = aggregation_source_version(subtask);
-    let checkpoint: Option<(String, String, String)> = checkpoint_conn.exec_first(
+    let checkpoint: Option<(String, String, Option<String>)> = checkpoint_conn.exec_first(
         "SELECT status,implementation_version,source_version FROM meta_aggregation_subtask_checkpoint WHERE analysis_run_id=? AND stage_name='dws_ads_aggregate' AND subtask_name=?",
         (analysis_run_id, subtask),
     ).map_err(|err| format!("failed to inspect aggregation subtask checkpoint: {err}"))?;
-    if checkpoint.as_ref().is_some_and(|(status, implementation_version, source_version)| {
-        status == "success"
-            && implementation_version == expected_implementation_version
-            && source_version == expected_source_version
-    }) {
+    if checkpoint
+        .as_ref()
+        .is_some_and(|(status, implementation_version, source_version)| {
+            aggregation_checkpoint_is_reusable(
+                status,
+                implementation_version,
+                source_version.as_deref(),
+                expected_implementation_version,
+                expected_source_version,
+            )
+        })
+    {
         append_log(
             settings,
             pipeline_run_id,
@@ -984,6 +1103,16 @@ where
             now_elapsed_ms(total_started),
         )?;
         return Ok(());
+    }
+    for downstream_subtask in downstream_aggregate_subtasks(subtask) {
+        checkpoint_conn.exec_drop(
+            "UPDATE meta_aggregation_subtask_checkpoint SET status='pending',finished_at=NULL,duration_ms=0,message=? WHERE analysis_run_id=? AND stage_name='dws_ads_aggregate' AND subtask_name=? AND status<>'running'",
+            (
+                format!("invalidated because upstream subtask {subtask} must be recomputed"),
+                analysis_run_id,
+                downstream_subtask,
+            ),
+        ).map_err(|err| format!("failed to invalidate downstream aggregation checkpoint {downstream_subtask}: {err}"))?;
     }
     checkpoint_conn.exec_drop(
         "INSERT INTO meta_aggregation_subtask_checkpoint (pipeline_run_id,import_batch_id,analysis_run_id,stage_name,subtask_name,implementation_version,source_version,status,attempt_count,started_at,finished_at,duration_ms,message) VALUES (?,?,?,'dws_ads_aggregate',?,?,?,'running',1,UTC_TIMESTAMP(),NULL,0,NULL) ON DUPLICATE KEY UPDATE pipeline_run_id=VALUES(pipeline_run_id),import_batch_id=VALUES(import_batch_id),implementation_version=VALUES(implementation_version),source_version=VALUES(source_version),status='running',attempt_count=attempt_count+1,started_at=UTC_TIMESTAMP(),finished_at=NULL,duration_ms=0,message=NULL",
@@ -2283,9 +2412,12 @@ pub fn import_pipeline_rebuild_batch_from_raw(
     let task_req = req.clone();
     let task_pipeline_run_id = pipeline_run_id.clone();
     let task_analysis_run_id = analysis_run_id.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        run_rebuild_pipeline_job(task_req, task_pipeline_run_id, task_analysis_run_id);
-    });
+    spawn_guarded_pipeline_job(
+        req.settings.clone(),
+        task_pipeline_run_id.clone(),
+        task_analysis_run_id.clone(),
+        move || run_rebuild_pipeline_job(task_req, task_pipeline_run_id, task_analysis_run_id),
+    );
     Ok(ImportPipelineStartResult {
         pipeline_run_id,
         import_batch_id: Some(req.import_batch_id),
@@ -2333,9 +2465,12 @@ pub fn import_pipeline_resume_batch(
     let task_req = req.clone();
     let task_pipeline_run_id = pipeline_run_id.clone();
     let task_analysis_run_id = analysis_run_id.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        run_resume_pipeline_job(task_req, task_pipeline_run_id, task_analysis_run_id);
-    });
+    spawn_guarded_pipeline_job(
+        req.settings.clone(),
+        task_pipeline_run_id.clone(),
+        task_analysis_run_id.clone(),
+        move || run_resume_pipeline_job(task_req, task_pipeline_run_id, task_analysis_run_id),
+    );
     Ok(ImportPipelineStartResult {
         pipeline_run_id,
         import_batch_id: Some(req.import_batch_id),
@@ -2364,9 +2499,12 @@ pub fn import_pipeline_start(
     let task_req = req.clone();
     let task_pipeline_run_id = pipeline_run_id.clone();
     let task_analysis_run_id = analysis_run_id.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        run_pipeline_job(task_req, task_pipeline_run_id, task_analysis_run_id);
-    });
+    spawn_guarded_pipeline_job(
+        req.settings.clone(),
+        task_pipeline_run_id.clone(),
+        task_analysis_run_id.clone(),
+        move || run_pipeline_job(task_req, task_pipeline_run_id, task_analysis_run_id),
+    );
     Ok(ImportPipelineStartResult {
         pipeline_run_id,
         import_batch_id: None,
@@ -2550,11 +2688,11 @@ pub fn import_pipeline_get_logs(
 #[cfg(test)]
 mod tests {
     use super::{
-        aggregation_implementation_version, dws_sql_activity_message,
-        final_status_for_step_failure, pipeline_plan,
-        raw_import_heartbeat_message, raw_import_stall_hint, step_heartbeat_message,
-        DwsSqlActivitySnapshot, PipelineOutcome, PipelineStepDef, AGGREGATE_SUBTASKS,
-        REBUILD_PIPELINE_STEPS, RESUME_PIPELINE_STEPS,
+        aggregation_checkpoint_is_reusable, aggregation_implementation_version,
+        downstream_aggregate_subtasks, dws_sql_activity_message, final_status_for_step_failure,
+        panic_payload_message, pipeline_plan, raw_import_heartbeat_message, raw_import_stall_hint,
+        step_heartbeat_message, DwsSqlActivitySnapshot, PipelineOutcome, PipelineStepDef,
+        AGGREGATE_SUBTASKS, REBUILD_PIPELINE_STEPS, RESUME_PIPELINE_STEPS,
     };
 
     #[test]
@@ -2650,7 +2788,7 @@ mod tests {
     }
 
     #[test]
-    fn new_specialty_tasks_do_not_invalidate_existing_v3_checkpoints() {
+    fn aggregate_versions_force_repair_of_experience_and_specialty_results() {
         assert_eq!(
             aggregation_implementation_version("experience_core"),
             "aggregate_pipeline_v3"
@@ -2661,12 +2799,67 @@ mod tests {
         );
         assert_eq!(
             aggregation_implementation_version("access_user_core"),
-            "access_specialty_v2"
+            "access_specialty_v3"
         );
         assert_eq!(
             aggregation_implementation_version("opportunity_features"),
-            "opportunity_feature_v2"
+            "opportunity_feature_v3"
         );
+        assert_eq!(
+            crate::analytics_ads_app::HOURLY_CORE_VERSION,
+            "user_app_hourly_core_v4"
+        );
+        assert_eq!(
+            crate::analytics_ads_app::PERIOD_ROLLUP_VERSION,
+            "user_app_period_from_hourly_v4"
+        );
+    }
+
+    #[test]
+    fn nullable_or_mismatched_checkpoint_is_not_reused() {
+        assert!(!aggregation_checkpoint_is_reusable(
+            "success",
+            "aggregate_pipeline_v3",
+            None,
+            "aggregate_pipeline_v3",
+            "dwd_clean_v2"
+        ));
+        assert!(!aggregation_checkpoint_is_reusable(
+            "success",
+            "legacy",
+            Some("dwd_clean_v2"),
+            "aggregate_pipeline_v3",
+            "dwd_clean_v2"
+        ));
+        assert!(aggregation_checkpoint_is_reusable(
+            "success",
+            "aggregate_pipeline_v3",
+            Some("dwd_clean_v2"),
+            "aggregate_pipeline_v3",
+            "dwd_clean_v2"
+        ));
+    }
+
+    #[test]
+    fn upstream_recompute_invalidates_every_downstream_checkpoint() {
+        assert_eq!(
+            downstream_aggregate_subtasks("experience_core").first(),
+            Some(&"complete_dws")
+        );
+        assert_eq!(
+            downstream_aggregate_subtasks("experience_core").last(),
+            Some(&"lead_evidence")
+        );
+        assert!(downstream_aggregate_subtasks("lead_evidence").is_empty());
+    }
+
+    #[test]
+    fn panic_payload_is_safe_for_string_and_unknown_payloads() {
+        assert_eq!(
+            panic_payload_message(&"checkpoint decode failed"),
+            "checkpoint decode failed"
+        );
+        assert_eq!(panic_payload_message(&42_u64), "unknown background panic");
     }
 
     #[test]

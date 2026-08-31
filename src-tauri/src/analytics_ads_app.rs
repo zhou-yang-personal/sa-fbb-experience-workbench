@@ -16,8 +16,9 @@ const EXPERIENCE_HOURLY_ADS_V2_SQL: &str =
     include_str!("../../database/sql/dws_to_ads/005_experience_hourly_v2.sql");
 const HOURLY_STAGE: &str = "dws_ads_aggregate";
 const HOURLY_SUBTASK: &str = "hourly_v2";
-pub(crate) const HOURLY_CORE_VERSION: &str = "user_app_hourly_core_v3";
-pub(crate) const PERIOD_ROLLUP_VERSION: &str = "user_app_period_from_hourly_v3";
+pub(crate) const HOURLY_CORE_VERSION: &str = "user_app_hourly_core_v4";
+pub(crate) const PERIOD_ROLLUP_VERSION: &str = "user_app_period_from_hourly_v4";
+const PARTITION_CHECKPOINT_UPSERT: &str = "INSERT INTO meta_aggregation_partition_checkpoint (pipeline_run_id,import_batch_id,analysis_run_id,stage_name,subtask_name,implementation_version,source_version,partition_date,partition_hour,status) VALUES (?,?,?,?,?,?,?,?,?,'pending') ON DUPLICATE KEY UPDATE status=IF(implementation_version=VALUES(implementation_version) AND source_version <=> VALUES(source_version),status,'pending'),pipeline_run_id=VALUES(pipeline_run_id),import_batch_id=VALUES(import_batch_id),implementation_version=VALUES(implementation_version),source_version=VALUES(source_version),updated_at=UTC_TIMESTAMP()";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct HourPartition {
@@ -141,7 +142,7 @@ fn prepare_checkpoints(
     .map_err(|err| format!("failed to recover interrupted hourly checkpoints: {err}"))?;
     for partition in partitions {
         conn.exec_drop(
-            "INSERT INTO meta_aggregation_partition_checkpoint (pipeline_run_id,import_batch_id,analysis_run_id,stage_name,subtask_name,implementation_version,source_version,partition_date,partition_hour,status) VALUES (?,?,?,?,?,?,?,?,?,'pending') ON DUPLICATE KEY UPDATE status=IF(implementation_version=VALUES(implementation_version),status,'pending'),pipeline_run_id=VALUES(pipeline_run_id),import_batch_id=VALUES(import_batch_id),implementation_version=VALUES(implementation_version),source_version=VALUES(source_version),updated_at=UTC_TIMESTAMP()",
+            PARTITION_CHECKPOINT_UPSERT,
             (
                 pipeline_run_id,
                 &req.import_batch_id,
@@ -439,6 +440,7 @@ pub fn analytics_materialize_app_rank(req: EtlRequest) -> Result<CommandAck, Str
 mod tests {
     use super::{
         bind_partition_params, HourPartition, EXPERIENCE_DWS_V2_SQL, EXPERIENCE_HOURLY_DWS_V2_SQL,
+        PARTITION_CHECKPOINT_UPSERT,
     };
 
     #[test]
@@ -497,5 +499,13 @@ mod tests {
         assert!(!bound.contains(":partition_hour"));
         assert!(bound.contains("'2026-08-20'"));
         assert!(bound.contains("hour_of_day=13"));
+    }
+
+    #[test]
+    fn partition_checkpoint_reuse_compares_implementation_and_source_versions() {
+        assert!(PARTITION_CHECKPOINT_UPSERT
+            .contains("implementation_version=VALUES(implementation_version)"));
+        assert!(PARTITION_CHECKPOINT_UPSERT
+            .contains("source_version <=> VALUES(source_version)"));
     }
 }

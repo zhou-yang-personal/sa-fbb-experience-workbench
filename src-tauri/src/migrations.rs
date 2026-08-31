@@ -93,7 +93,9 @@ pub fn ensure_decision_workspace_schema(settings: &MySqlSettings) -> Result<(), 
     ensure_access_columns_for_table(&mut conn, "ads_opportunity_user_v3")?;
     drop(conn);
     sql_runner::execute_script(settings, DECISION_WORKSPACE_SCHEMA)?;
-    sql_runner::execute_script(settings, OPPORTUNITY_WORKBENCH_SCHEMA).map(|_| ())
+    sql_runner::execute_script(settings, OPPORTUNITY_WORKBENCH_SCHEMA)?;
+    let mut conn = crate::db::conn(settings)?;
+    ensure_access_columns_for_table(&mut conn, "ads_access_hourly_v2")
 }
 
 pub fn ensure_aggregation_checkpoint_schema(settings: &MySqlSettings) -> Result<(), String> {
@@ -190,7 +192,10 @@ pub fn ensure_access_columns_for_table(
             ("active_days", "BIGINT NOT NULL DEFAULT 0"),
             ("observation_rows", "BIGINT NOT NULL DEFAULT 0"),
             ("total_download_gb", "DECIMAL(24,6) NOT NULL DEFAULT 0"),
-            ("total_effective_duration_hours", "DECIMAL(24,6) NOT NULL DEFAULT 0"),
+            (
+                "total_effective_duration_hours",
+                "DECIMAL(24,6) NOT NULL DEFAULT 0",
+            ),
             ("avg_effective_download_mbps", "DECIMAL(18,6) NULL"),
             ("avg_wifi_delay_ms", "DECIMAL(18,6) NULL"),
             ("avg_subscriber_rtt_ms", "DECIMAL(18,6) NULL"),
@@ -200,6 +205,12 @@ pub fn ensure_access_columns_for_table(
             ("primary_app", "VARCHAR(255) NULL"),
             ("primary_app_active_days", "BIGINT NOT NULL DEFAULT 0"),
             ("primary_app_observations", "BIGINT NOT NULL DEFAULT 0"),
+        ]
+    } else if table == "ads_access_hourly_v2" {
+        &[
+            ("avg_download_mbps", "DECIMAL(18,6) NULL"),
+            ("avg_download_mbps_sum", "DECIMAL(30,6) NOT NULL DEFAULT 0"),
+            ("avg_download_mbps_count", "BIGINT NOT NULL DEFAULT 0"),
         ]
     } else if table.starts_with("dwd_tcp_detail_clean") {
         &[
@@ -401,7 +412,10 @@ pub fn ensure_access_columns_for_table(
 
 #[cfg(test)]
 mod tests {
-    use super::{AGGREGATION_CHECKPOINT_SCHEMA, ANALYTICS_SCHEMA, DECISION_WORKSPACE_SCHEMA};
+    use super::{
+        AGGREGATION_CHECKPOINT_SCHEMA, ANALYTICS_SCHEMA, DECISION_WORKSPACE_SCHEMA,
+        OPPORTUNITY_WORKBENCH_SCHEMA,
+    };
 
     #[test]
     fn network_hotspot_schema_uses_bounded_indexes() {
@@ -431,5 +445,14 @@ mod tests {
         assert!(DECISION_WORKSPACE_SCHEMA.contains("meta_analysis_run_decision_binding"));
         assert!(DECISION_WORKSPACE_SCHEMA.contains("ads_opportunity_user_v3"));
         assert!(DECISION_WORKSPACE_SCHEMA.contains("minimum_app_users"));
+    }
+
+    #[test]
+    fn access_hourly_schema_supports_average_download_rollup() {
+        assert!(OPPORTUNITY_WORKBENCH_SCHEMA.contains("avg_download_mbps DECIMAL(18,6) NULL"));
+        assert!(OPPORTUNITY_WORKBENCH_SCHEMA
+            .contains("avg_download_mbps_sum DECIMAL(30,6) NOT NULL DEFAULT 0"));
+        assert!(OPPORTUNITY_WORKBENCH_SCHEMA
+            .contains("avg_download_mbps_count BIGINT NOT NULL DEFAULT 0"));
     }
 }
