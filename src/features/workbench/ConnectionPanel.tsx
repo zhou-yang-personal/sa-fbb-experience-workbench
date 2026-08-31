@@ -35,7 +35,7 @@ export function ConnectionPanel({ settings, setSettings, runAction, clearPersist
           <input value={settings.port} onChange={(e) => setSettings({ ...settings, port: Number(e.target.value) })} placeholder="port" />
           <input value={settings.database} onChange={(e) => setSettings({ ...settings, database: e.target.value })} placeholder="database" />
           <input value={settings.user} onChange={(e) => setSettings({ ...settings, user: e.target.value })} placeholder="user" />
-          <input type="password" value={settings.secret} onChange={(e) => setSettings({ ...settings, secret: e.target.value })} placeholder="password" />
+          <input type="password" value={settings.secret} onChange={(e) => setSettings({ ...settings, secret: e.target.value })} placeholder="默认密码 123456" />
         </div>
         <div className="primary-action-row">
           <ActionButton actionKey="start_prepare_database" actionStates={actionStates} primary label="测试并初始化数据库" onClick={prepareDatabase} />
@@ -53,12 +53,12 @@ export function ConnectionPanel({ settings, setSettings, runAction, clearPersist
       <section className="panel persistence-panel">
         <div>
           <h2>本地上下文</h2>
-          <p className="muted-row">刷新页面后会自动恢复常用工作上下文；MySQL 密码不会写入 localStorage，需要重新输入。</p>
+          <p className="muted-row">MySQL 密码使用内置默认值 123456，可手动覆盖；密码不会写入 localStorage，刷新后恢复默认值。</p>
         </div>
         <div className="persistence-grid">
           <span>保存：host / port / database / user / data type / import mode</span>
           <span>保存：file path / import batch / analysis run / output path</span>
-          <span>不保存：password / command result / runtime logs / customer data</span>
+          <span>不保存：用户覆盖的 password / command result / runtime logs / customer data</span>
         </div>
         <div className="action-row">
           <button type="button" onClick={clearPersistedContext}>清除本地上下文并恢复默认</button>

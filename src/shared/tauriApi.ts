@@ -5,8 +5,8 @@ export const api = {
   dbTestConnection: (settings: MySqlSettings) => invoke<CommandAck>('db_test_connection', { settings }),
   dbInitialize: (settings: MySqlSettings) => invoke<CommandAck>('db_initialize', { settings }),
   importProbeCsv: (path: string) => invoke<CsvProbeResult>('import_probe_csv', { path }),
-  importCreateBatch: (settings: MySqlSettings, dataType: string, filePath: string) =>
-    invoke<ImportBatchResult>('import_create_batch', { req: { settings, data_type: dataType, file_path: filePath } }),
+  importCreateBatch: (settings: MySqlSettings, dataType: string, filePath: string, accessRuleSetId?: string) =>
+    invoke<ImportBatchResult>('import_create_batch', { req: { settings, data_type: dataType, file_path: filePath, access_rule_set_id: accessRuleSetId?.trim() || undefined } }),
   importStartRawLoad: (settings: MySqlSettings, importBatchId: string, dataType: string, filePath: string, mode?: string) =>
     invoke<CommandAck>('import_start_raw_load', { req: { settings, import_batch_id: importBatchId, data_type: dataType, file_path: filePath, mode } }),
   importGetBatchStatus: (settings: MySqlSettings, importBatchId: string) =>

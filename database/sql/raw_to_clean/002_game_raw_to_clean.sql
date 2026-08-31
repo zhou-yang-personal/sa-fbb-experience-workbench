@@ -1,14 +1,21 @@
--- RAW Game → DWD Game clean baseline
+-- RAW Game → DWD Game clean partition.
+-- The runner truncates the dedicated per-batch DWD table once, loads bounded RAW id
+-- ranges as independent transactions, then rebuilds secondary indexes in one pass.
 
-DELETE FROM dwd_game_detail_clean WHERE import_batch_id = :import_batch_id;
-
-INSERT INTO dwd_game_detail_clean (
+INSERT INTO :dwd_game_detail_clean (
   import_batch_id,
   user_key,
   key_confidence,
   user_account,
   user_mac,
+  source_user_type,
   user_type,
+  local_ip_address,
+  server_ip,
+  access_type_source,
+  access_type_confidence,
+  access_rule_id,
+  access_rule_set_version,
   app_name,
   app_category,
   stat_time,
@@ -33,9 +40,10 @@ WITH params AS (
     NULLIF(TRIM(r.user_account), '') AS account_key,
     NULLIF(TRIM(r.user_mac), '') AS mac_key,
     NULLIF(TRIM(r.local_ip_address), '') AS ip_key,
-    NULLIF(TRIM(REGEXP_REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(r.statistical_time, ''), CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' '), CONVERT(0xC2A0 USING utf8mb4), ' '), '[[:space:]]+', ' ')), '') AS stat_time_text
-  FROM raw_game_detail_import r
+    NULLIF(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(r.statistical_time, ''), CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' '), CONVERT(0xC2A0 USING utf8mb4), ' '), '  ', ' '), '  ', ' ')), '') AS stat_time_text
+  FROM :raw_game_detail_import r FORCE INDEX (PRIMARY)
   JOIN params p ON p.import_batch_id = r.import_batch_id
+  WHERE r.id BETWEEN :source_id_start AND :source_id_end
 ), parsed AS (
   SELECT
     r.*,
@@ -45,31 +53,48 @@ WITH params AS (
       WHEN r.stat_time_text REGEXP '^[0-9]{1,2}/[0-9]{1,2}/[0-9]{4} [0-9]{2}:[0-9]{2}$' THEN STR_TO_DATE(r.stat_time_text, '%d/%m/%Y %H:%i')
       WHEN r.stat_time_text REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}$' THEN STR_TO_DATE(r.stat_time_text, '%Y-%m-%d %H:%i')
       ELSE NULL
-    END AS parsed_stat_time
-  FROM raw_normalized r
-), normalized AS (
-  SELECT
-    r.import_batch_id,
-    CASE
-      WHEN r.account_key IS NOT NULL AND r.account_key <> '--' AND r.account_key NOT REGEXP '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' THEN r.account_key
-      WHEN r.mac_key IS NOT NULL AND r.mac_key <> '--' THEN r.mac_key
-      WHEN r.account_key REGEXP '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' THEN r.account_key
-      WHEN r.ip_key IS NOT NULL AND r.ip_key <> '--' THEN r.ip_key
-      ELSE 'UNKNOWN'
-    END AS user_key,
-    CASE
-      WHEN r.account_key IS NOT NULL AND r.account_key <> '--' AND r.account_key NOT REGEXP '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' THEN 'HIGH_ACCOUNT_KEY'
-      WHEN r.mac_key IS NOT NULL AND r.mac_key <> '--' THEN 'MEDIUM_MAC_USER_KEY'
-      WHEN r.account_key REGEXP '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' OR r.ip_key IS NOT NULL THEN 'LOW_IP_ONLY_KEY'
-      ELSE 'UNKNOWN_KEY'
-    END AS key_confidence,
-    r.account_key AS user_account,
-    r.mac_key AS user_mac,
+    END AS parsed_stat_time,
     CASE
       WHEN UPPER(TRIM(COALESCE(r.user_type, ''))) LIKE '%FTTH%' OR UPPER(TRIM(COALESCE(r.user_type, ''))) LIKE '%FIBER%' THEN 'FTTH'
       WHEN UPPER(TRIM(COALESCE(r.user_type, ''))) LIKE '%CABLE%' OR UPPER(TRIM(COALESCE(r.wan_type, ''))) LIKE '%CABLE%' THEN 'CABLE'
       ELSE 'UNKNOWN'
+    END AS source_user_type,
+    CASE WHEN IS_IPV4(r.account_key) = 1 THEN r.account_key WHEN IS_IPV4(r.ip_key) = 1 THEN r.ip_key ELSE NULL END AS analysis_ip_key,
+    COALESCE(
+      INET_ATON(CASE WHEN IS_IPV4(r.account_key) = 1 THEN r.account_key ELSE NULL END),
+      INET_ATON(CASE WHEN IS_IPV4(r.ip_key) = 1 THEN r.ip_key ELSE NULL END)
+    ) AS ip_num
+  FROM raw_normalized r
+), normalized AS (
+  SELECT
+    r.import_batch_id,
+    COALESCE(r.analysis_ip_key, 'UNKNOWN') AS user_key,
+    CASE WHEN IS_IPV4(r.account_key) = 1 THEN 'IP_USER_ACCOUNT' WHEN IS_IPV4(r.ip_key) = 1 THEN 'IP_LOCAL_ADDRESS' ELSE 'IP_UNAVAILABLE' END AS key_confidence,
+    r.account_key AS user_account,
+    r.mac_key AS user_mac,
+    r.source_user_type,
+    CASE
+      WHEN r.ip_num IS NULL THEN 'UNKNOWN'
+      WHEN ar.rule_id IS NOT NULL THEN ar.access_type
+      WHEN ars.default_access_type IN ('CABLE', 'FTTH', 'OTHER') THEN ars.default_access_type
+      ELSE 'UNKNOWN'
     END AS user_type,
+    r.analysis_ip_key AS local_ip_address,
+    NULLIF(TRIM(r.server_ip), '') AS server_ip,
+    CASE
+      WHEN r.ip_num IS NULL THEN 'UNAVAILABLE_IP'
+      WHEN ar.rule_id IS NOT NULL THEN 'IP_RULE'
+      WHEN ars.default_access_type IN ('CABLE', 'FTTH', 'OTHER') THEN 'RULE_SET_OTHERS'
+      ELSE 'UNMATCHED'
+    END AS access_type_source,
+    CASE
+      WHEN r.ip_num IS NULL THEN 'LOW'
+      WHEN ar.rule_id IS NOT NULL THEN 'HIGH'
+      WHEN ars.default_access_type IN ('CABLE', 'FTTH', 'OTHER') THEN 'HIGH'
+      ELSE 'LOW'
+    END AS access_type_confidence,
+    ar.rule_id AS access_rule_id,
+    b.access_rule_set_version,
     COALESCE(NULLIF(TRIM(m.standard_app_name), ''), NULLIF(TRIM(r.application_protocol), ''), 'UNKNOWN_APP') AS app_name,
     COALESCE(NULLIF(TRIM(m.app_category), ''), 'game') AS app_category,
     r.parsed_stat_time AS stat_time,
@@ -95,6 +120,9 @@ WITH params AS (
     NULLIF(TRIM(r.pon), '') AS pon
   FROM parsed r
   LEFT JOIN dim_app_mapping m ON m.raw_app_name = r.application_protocol
+  LEFT JOIN meta_import_batch b ON b.import_batch_id = r.import_batch_id
+  LEFT JOIN meta_access_rule_set ars ON ars.rule_set_id = b.access_rule_set_id
+  LEFT JOIN dim_access_ip_range ar ON ar.rule_set_id = b.access_rule_set_id AND ar.enabled = 1 AND r.ip_num BETWEEN ar.start_ip_num AND ar.end_ip_num
 )
 SELECT
   import_batch_id,
@@ -102,7 +130,14 @@ SELECT
   key_confidence,
   user_account,
   user_mac,
+  source_user_type,
   user_type,
+  local_ip_address,
+  server_ip,
+  access_type_source,
+  access_type_confidence,
+  access_rule_id,
+  access_rule_set_version,
   app_name,
   app_category,
   stat_time,

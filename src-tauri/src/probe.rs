@@ -19,6 +19,16 @@ fn guess_delimiter(bytes: &[u8]) -> u8 {
     }
 }
 
+pub fn detect_delimiter(path: &str) -> Result<u8, String> {
+    let mut file = File::open(path).map_err(|err| format!("file open error: {err}"))?;
+    let mut sample = vec![0_u8; 8192];
+    let read_len = file
+        .read(&mut sample)
+        .map_err(|err| format!("file read error: {err}"))?;
+    sample.truncate(read_len);
+    Ok(guess_delimiter(&sample))
+}
+
 pub fn probe_file(path: String) -> Result<CsvProbeResult, String> {
     let metadata = std::fs::metadata(&path).map_err(|err| format!("file metadata error: {err}"))?;
     let file_name = Path::new(&path)
@@ -26,11 +36,7 @@ pub fn probe_file(path: String) -> Result<CsvProbeResult, String> {
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| path.clone());
 
-    let mut file = File::open(&path).map_err(|err| format!("file open error: {err}"))?;
-    let mut sample = vec![0_u8; 8192];
-    let read_len = file.read(&mut sample).map_err(|err| format!("file read error: {err}"))?;
-    sample.truncate(read_len);
-    let delimiter = guess_delimiter(&sample);
+    let delimiter = detect_delimiter(&path)?;
 
     let mut reader = ReaderBuilder::new()
         .delimiter(delimiter)
@@ -64,4 +70,16 @@ pub fn probe_file(path: String) -> Result<CsvProbeResult, String> {
         headers,
         preview_rows,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::guess_delimiter;
+
+    #[test]
+    fn detects_supported_delimiters_from_a_small_sample() {
+        assert_eq!(guess_delimiter(b"a,b,c\n1,2,3\n"), b',');
+        assert_eq!(guess_delimiter(b"a\tb\tc\n1\t2\t3\n"), b'\t');
+        assert_eq!(guess_delimiter(b"a;b;c\n1;2;3\n"), b';');
+    }
 }

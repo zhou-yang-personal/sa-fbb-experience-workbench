@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
+import { formatLocalDateTime, localTimeZone } from '../../shared/localDateTime';
 import type { ExecutionLogEntry, ExecutionLogStatus } from '../../shared/types';
 
 type LogFilter = 'all' | ExecutionLogStatus;
 
 interface ExecutionLogProps {
   log: ExecutionLogEntry[];
+  compact?: boolean;
 }
 
 function copyText(text: string) {
@@ -17,8 +19,9 @@ function formatEntry(entry: ExecutionLogEntry) {
   const lines = [
     `command: ${entry.command}`,
     `status: ${entry.status}`,
-    `started_at: ${entry.started_at}`,
-    `finished_at: ${entry.finished_at}`,
+    `time_zone: ${localTimeZone()}`,
+    `started_at: ${formatLocalDateTime(entry.started_at)}`,
+    `finished_at: ${formatLocalDateTime(entry.finished_at)}`,
     `duration_ms: ${entry.duration_ms}`,
     `message: ${entry.message}`,
   ];
@@ -26,7 +29,7 @@ function formatEntry(entry: ExecutionLogEntry) {
   return lines.join('\n');
 }
 
-export function ExecutionLog({ log }: ExecutionLogProps) {
+export function ExecutionLog({ log, compact = false }: ExecutionLogProps) {
   const [filter, setFilter] = useState<LogFilter>('all');
   const [keyword, setKeyword] = useState('');
 
@@ -46,28 +49,39 @@ export function ExecutionLog({ log }: ExecutionLogProps) {
 
   return (
     <section className="panel execution-log-panel">
-      <div className="log-header">
+      {!compact && <div className="log-header">
         <div>
           <h2>诊断日志</h2>
-          <p className="muted-row">记录命令、错误、耗时和返回预览。字段映射、质量门禁、ETL 失败都应在这里看到可复制诊断信息。</p>
+          <p className="muted-row">记录命令、错误、耗时和返回预览。字段映射、质量门禁、ETL 失败都应在这里看到可复制诊断信息。时间按本地 PC 时区 {localTimeZone()} 显示。</p>
         </div>
         <div className="log-summary">
+          <span>{localTimeZone()}</span>
           <span>{log.length} total</span>
           <span>{successRows.length} success</span>
           <span>{failedRows.length} failed</span>
         </div>
-      </div>
+      </div>}
+      {compact && <div className="log-summary log-summary-compact">
+        <span>{localTimeZone()}</span>
+        <span>{log.length} 条</span>
+        <span className="log-count-success">成功 {successRows.length}</span>
+        <span className="log-count-failure">失败 {failedRows.length}</span>
+      </div>}
 
       <div className="table-toolbar log-toolbar">
-        <input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Search command / field / error / result" />
-        <select value={filter} onChange={(e) => setFilter(e.target.value as LogFilter)}>
-          <option value="all">All status</option>
-          <option value="success">Success only</option>
-          <option value="failure">Failure only</option>
-        </select>
-        <button type="button" onClick={() => { setFilter('all'); setKeyword(''); }}>清空筛选</button>
-        <button type="button" disabled={!failedRows.length} onClick={() => copyText(failedText)}>复制失败信息</button>
-        <button type="button" disabled={!log.length} onClick={() => copyText(allText)}>复制全部日志</button>
+        <div className="log-toolbar-fields">
+          <input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Search command / field / error / result" />
+          <select value={filter} onChange={(e) => setFilter(e.target.value as LogFilter)}>
+            <option value="all">All status</option>
+            <option value="success">Success only</option>
+            <option value="failure">Failure only</option>
+          </select>
+        </div>
+        <div className="log-toolbar-actions">
+          <button type="button" onClick={() => { setFilter('all'); setKeyword(''); }}>清空筛选</button>
+          <button type="button" disabled={!failedRows.length} onClick={() => copyText(failedText)}>复制失败信息</button>
+          <button type="button" disabled={!log.length} onClick={() => copyText(allText)}>复制全部日志</button>
+        </div>
       </div>
 
       <div className="log-list structured-log-list">
@@ -79,7 +93,7 @@ export function ExecutionLog({ log }: ExecutionLogProps) {
               <button type="button" onClick={() => copyText(formatEntry(entry))}>复制</button>
             </div>
             <div className="log-meta">
-              <span>{entry.started_at}</span>
+              <span title={`UTC: ${entry.started_at}`}>{formatLocalDateTime(entry.started_at)}</span>
               <span>{entry.duration_ms} ms</span>
             </div>
             <pre>{entry.message}</pre>

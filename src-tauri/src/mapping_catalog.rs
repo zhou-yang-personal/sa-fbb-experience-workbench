@@ -4,8 +4,8 @@ use crate::db;
 use crate::models::{MetricCard, MySqlSettings};
 use crate::sql_runner;
 
-pub const APP_VERSION: &str = "1.0.34";
-pub const MAPPING_SEED_VERSION: &str = "1.0.34";
+pub const APP_VERSION: &str = "1.0.59";
+pub const MAPPING_SEED_VERSION: &str = "1.0.59";
 
 const MAP_SEED: &str = include_str!("../../database/seeds/002_default_mapping_seed.sql");
 
@@ -21,6 +21,16 @@ const CRITICAL_ALIASES: &[(&str, &str, &str)] = &[
         "tcp",
         "effective_download_duration_s",
         "Effective Download Duration (s)",
+    ),
+    (
+        "tcp",
+        "throughput_avg_bandwidth_kbps",
+        "Throughput (Average Bandwidth) (kbps)",
+    ),
+    (
+        "tcp",
+        "user_avg_effective_download_rate_kbps",
+        "Users Average Effective Download Rate (kbps)",
     ),
     ("tcp", "user_type", "user_type"),
     ("game", "user_type", "user_type"),
@@ -162,8 +172,20 @@ mod tests {
     }
 
     #[test]
+    fn catalog_seed_contains_customer_tcp_rate_headers() {
+        assert!(MAP_SEED.contains(
+            "('tcp','throughput_avg_bandwidth_kbps','Throughput (Average Bandwidth) (kbps)',0"
+        ));
+        assert!(MAP_SEED.contains(
+            "('tcp','user_avg_effective_download_rate_kbps','Users Average Effective Download Rate (kbps)',0"
+        ));
+    }
+
+    #[test]
     fn critical_aliases_track_universal_video_contract() {
-        assert_eq!(MAPPING_SEED_VERSION, "1.0.34");
-        assert!(CRITICAL_ALIASES.iter().any(|item| *item == ("tcp", "user_account", "subscriber_account")));
+        assert_eq!(MAPPING_SEED_VERSION, "1.0.59");
+        assert!(CRITICAL_ALIASES
+            .iter()
+            .any(|item| *item == ("tcp", "user_account", "subscriber_account")));
     }
 }

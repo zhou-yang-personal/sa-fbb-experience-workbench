@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BatchTableRegistryRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
 import { jobApi } from './jobApi';
 import { mappingApi } from './mappingApi';
@@ -12,6 +12,23 @@ type Props = {
   dataType: string;
 };
 
+type DiagnosticTaskId = 'catalog' | 'mapping' | 'quality' | 'etl' | 'modules' | 'registry';
+type DiagnosticTaskStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped';
+type DiagnosticRunStatus = 'idle' | 'running' | 'stopping' | 'success' | 'partial' | 'stopped';
+
+const diagnosticTasks: { id: DiagnosticTaskId; label: string; hint: string }[] = [
+  { id: 'catalog', label: '映射目录', hint: '检查 Catalog 版本与完整性' },
+  { id: 'mapping', label: '字段映射', hint: '读取当前批次 required 缺失项' },
+  { id: 'quality', label: '质量失败项', hint: '读取已生成的 Quality Gate 结果' },
+  { id: 'etl', label: 'ETL 失败项', hint: '读取当前批次失败步骤' },
+  { id: 'modules', label: '模块深度检查', hint: '较重：更新一次表计数并检查模块' },
+  { id: 'registry', label: 'Registry 快照', hint: '读取深度检查更新后的缓存计数' },
+];
+
+function initialTaskState() {
+  return Object.fromEntries(diagnosticTasks.map((task) => [task.id, 'pending'])) as Record<DiagnosticTaskId, DiagnosticTaskStatus>;
+}
+
 export function SystemDiagnostics({ settings, importBatchId, analysisRunId, dataType }: Props) {
   const [registry, setRegistry] = useState<BatchTableRegistryRow[]>([]);
   const [statusRows, setStatusRows] = useState<ModuleStatusRow[]>([]);
@@ -19,7 +36,20 @@ export function SystemDiagnostics({ settings, importBatchId, analysisRunId, data
   const [catalogHealth, setCatalogHealth] = useState<MetricCard[]>([]);
   const [qualityFailed, setQualityFailed] = useState<MetricCard[]>([]);
   const [etlFailed, setEtlFailed] = useState<MetricCard[]>([]);
-  const [message, setMessage] = useState('等待刷新诊断数据。');
+  const [message, setMessage] = useState('进入本页不会自动查询 MySQL；点击开始后才执行诊断。');
+  const [runStatus, setRunStatus] = useState<DiagnosticRunStatus>('idle');
+  const [taskState, setTaskState] = useState<Record<DiagnosticTaskId, DiagnosticTaskStatus>>(initialTaskState);
+  const [currentTask, setCurrentTask] = useState('');
+  const [errors, setErrors] = useState<string[]>([]);
+  const stopRequestedRef = useRef(false);
+  const runGenerationRef = useRef(0);
+  const contextEffectReadyRef = useRef(false);
+
+  const completedTasks = useMemo(
+    () => Object.values(taskState).filter((status) => ['success', 'failed', 'skipped'].includes(status)).length,
+    [taskState],
+  );
+  const progress = Math.round(completedTasks / diagnosticTasks.length * 100);
 
   function copyText(text: string) {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -32,6 +62,9 @@ export function SystemDiagnostics({ settings, importBatchId, analysisRunId, data
       `batch=${importBatchId || 'missing'}`,
       `analysis_run_id=${analysisRunId || 'missing'}`,
       `data_type=${dataType || 'missing'}`,
+      `diagnostic_status=${runStatus}`,
+      ...diagnosticTasks.map((task) => `task.${task.id}=${taskState[task.id]}`),
+      ...errors.map((error) => `error=${error}`),
       `registry=${registry.length}`,
       `modules=${statusRows.length}`,
       ...catalogHealth.map((item) => `catalog.${item.label}=${item.value}; ${item.hint}`),
@@ -42,51 +75,115 @@ export function SystemDiagnostics({ settings, importBatchId, analysisRunId, data
   }
 
   async function refresh() {
-    const catalog = await workbenchApi.checkImportCatalog(settings);
-    setCatalogHealth(catalog);
+    if (runStatus === 'running' || runStatus === 'stopping') return;
+    const generation = runGenerationRef.current + 1;
+    runGenerationRef.current = generation;
+    stopRequestedRef.current = false;
+    setRunStatus('running');
+    setTaskState(initialTaskState());
+    setErrors([]);
+    setCurrentTask('准备诊断任务');
+    setMessage('诊断任务已启动；各检查串行执行，避免同时压垮本地 MySQL。');
+    const runErrors: string[] = [];
+
+    async function runTask<T>(id: DiagnosticTaskId, action: () => Promise<T>, apply: (value: T) => void) {
+      if (generation !== runGenerationRef.current) return;
+      if (stopRequestedRef.current) {
+        setTaskState((state) => ({ ...state, [id]: 'skipped' }));
+        return;
+      }
+      const task = diagnosticTasks.find((item) => item.id === id);
+      setCurrentTask(task?.label ?? id);
+      setTaskState((state) => ({ ...state, [id]: 'running' }));
+      try {
+        const value = await action();
+        if (generation !== runGenerationRef.current) return;
+        apply(value);
+        setTaskState((state) => ({ ...state, [id]: 'success' }));
+      } catch (error) {
+        if (generation !== runGenerationRef.current) return;
+        const detail = `${task?.label ?? id}: ${error instanceof Error ? error.message : String(error)}`;
+        runErrors.push(detail);
+        setErrors([...runErrors]);
+        setTaskState((state) => ({ ...state, [id]: 'failed' }));
+      }
+    }
+
+    await runTask('catalog', () => workbenchApi.checkImportCatalog(settings), setCatalogHealth);
+    if (generation !== runGenerationRef.current) return;
     if (!importBatchId.trim()) {
-      setRegistry([]);
-      setStatusRows([]);
-      setMappingIssues([]);
-      setQualityFailed([]);
-      setEtlFailed([]);
-      setMessage('Catalog 已刷新；请先选择批次查看 batch 诊断。');
+      setTaskState((state) => ({ ...state, mapping: 'skipped', quality: 'skipped', etl: 'skipped', modules: 'skipped', registry: 'skipped' }));
+      setCurrentTask('');
+      setRunStatus(runErrors.length ? 'partial' : 'success');
+      setMessage('Catalog 检查完成；未选择批次，因此已跳过批次级诊断。');
       return;
     }
-    const [registryRows, status, mapping, quality, etl] = await Promise.all([
-      workbenchApi.batchTableRegistry(settings, importBatchId),
-      workbenchApi.moduleStatus(settings, importBatchId, analysisRunId || undefined),
-      mappingApi.results(settings, importBatchId, dataType),
-      qualityApi.failedResults(settings, importBatchId),
-      jobApi.failedSteps(settings, importBatchId),
-    ]);
-    setRegistry(registryRows);
-    setStatusRows(status);
-    setMappingIssues(mapping.filter((item) => item.value === 'missing_required'));
-    setQualityFailed(quality);
-    setEtlFailed(etl);
-    setMessage(`registry=${registryRows.length}, modules=${status.length}, catalog=${catalog.length}`);
+    await runTask('mapping', () => mappingApi.results(settings, importBatchId, dataType), (rows) => setMappingIssues(rows.filter((item) => item.value === 'missing_required')));
+    await runTask('quality', () => qualityApi.failedResults(settings, importBatchId), setQualityFailed);
+    await runTask('etl', () => jobApi.failedSteps(settings, importBatchId), setEtlFailed);
+    await runTask('modules', () => workbenchApi.moduleStatus(settings, importBatchId, analysisRunId || undefined), setStatusRows);
+    await runTask('registry', () => workbenchApi.cachedBatchTableRegistry(settings, importBatchId), setRegistry);
+    if (generation !== runGenerationRef.current) return;
+
+    const stopped = stopRequestedRef.current;
+    setCurrentTask('');
+    setRunStatus(stopped ? 'stopped' : runErrors.length ? 'partial' : 'success');
+    setMessage(stopped
+      ? '已停止尚未开始的后续检查；正在执行的 MySQL 语句不会被强制中断。'
+      : runErrors.length
+        ? `诊断完成，但有 ${runErrors.length} 个检查失败；请查看任务状态或复制诊断包。`
+        : '诊断完成；表计数在本轮只刷新一次，Registry 使用缓存快照。');
   }
 
   useEffect(() => {
-    void refresh().catch((error) => {
-      setMessage(error instanceof Error ? error.message : String(error));
-    });
-  }, [settings.host, settings.port, settings.database, settings.user, importBatchId, analysisRunId, dataType]);
+    if (!contextEffectReadyRef.current) {
+      contextEffectReadyRef.current = true;
+      return;
+    }
+    runGenerationRef.current += 1;
+    stopRequestedRef.current = true;
+    setRegistry([]);
+    setStatusRows([]);
+    setMappingIssues([]);
+    setCatalogHealth([]);
+    setQualityFailed([]);
+    setEtlFailed([]);
+    setTaskState(initialTaskState());
+    setErrors([]);
+    setCurrentTask('');
+    setRunStatus('idle');
+    setMessage('诊断上下文已变化；不会自动查询，确认后请手动开始。');
+  }, [settings.host, settings.port, settings.database, settings.user, settings.secret, importBatchId, analysisRunId, dataType]);
 
   return (
     <section className="panel form-panel">
       <div className="step-card-head">
         <div>
           <h2>系统诊断</h2>
-          <p className="hero-text">查看 batch table registry、module disabled reason、row count 和批次可用性。</p>
+          <p className="hero-text">查看 batch table registry、module disabled reason、row count 和批次可用性。进入页面不会自动访问数据库。</p>
         </div>
         <div className="action-row">
-          <button type="button" onClick={() => void refresh()}>刷新诊断</button>
+          <button type="button" disabled={runStatus === 'running' || runStatus === 'stopping'} onClick={() => void refresh()}>{runStatus === 'running' || runStatus === 'stopping' ? '诊断执行中…' : '开始诊断任务（较重）'}</button>
+          {(runStatus === 'running' || runStatus === 'stopping') && <button type="button" disabled={runStatus === 'stopping'} onClick={() => { stopRequestedRef.current = true; setRunStatus('stopping'); setMessage('将在当前检查返回后停止后续检查。'); }}>停止后续检查</button>}
           <button type="button" onClick={() => copyText(buildDiagnosticText())}>复制诊断包</button>
         </div>
       </div>
-      <p className="muted-row">{message}</p>
+      <div className={`analytics-task-card task-${runStatus}`} aria-live="polite">
+        <div className="analytics-task-head">
+          <div><span>诊断计划</span><strong>{currentTask || (runStatus === 'idle' ? '等待用户启动' : '任务已结束')}</strong></div>
+          <span className="analytics-task-status">{runStatus} · {progress}%</span>
+        </div>
+        <div className="analytics-task-progress"><span style={{ width: `${progress}%` }} /></div>
+        <div className="analytics-task-plan">
+          {diagnosticTasks.map((task) => {
+            const status = taskState[task.id];
+            const tone = status === 'success' ? 'complete' : status;
+            return <span key={task.id} className={`is-${tone}`} title={task.hint}>{task.label} · {status}</span>;
+          })}
+        </div>
+        <small>{message}</small>
+        {errors.map((error) => <small key={error} className="status-failure-text">{error}</small>)}
+      </div>
       <div className="summary-pills">
         <span className="status-pill">registry {registry.length}</span>
         <span className="status-pill">modules {statusRows.length}</span>

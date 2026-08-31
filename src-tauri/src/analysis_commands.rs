@@ -7,8 +7,8 @@ use mysql::Value;
 use crate::batch_tables;
 use crate::db;
 use crate::models::{
-    ack, BatchListItem, BatchTableRegistryRow, CommandAck, MetricCard, ModuleStatusRow,
-    MySqlSettings,
+    ack, AnalysisRunOption, BatchListItem, BatchTableRegistryRow, CommandAck, MetricCard,
+    ModuleStatusRow, MySqlSettings,
 };
 use crate::sql_runner::escape_sql_literal;
 
@@ -305,11 +305,13 @@ fn fetch_batch_data_type(
     import_batch_id: &str,
 ) -> Result<Option<String>, String> {
     let mut conn = db::conn(settings)?;
-    conn.exec_first(
-        "SELECT data_type FROM meta_import_batch WHERE import_batch_id=? LIMIT 1",
-        (import_batch_id,),
-    )
-    .map_err(|err| format!("failed to query batch data_type: {err}"))
+    let row: Option<mysql::Row> = conn
+        .exec_first(
+            "SELECT data_type FROM meta_import_batch WHERE import_batch_id=? LIMIT 1",
+            (import_batch_id,),
+        )
+        .map_err(|err| format!("failed to query batch data_type: {err}"))?;
+    Ok(row.and_then(|row| row.get::<String, _>(0)))
 }
 
 fn final_lead_readiness_text(
@@ -317,7 +319,6 @@ fn final_lead_readiness_text(
     conn: &mut mysql::PooledConn,
     import_batch_id: &str,
     analysis_run_id: Option<&String>,
-    registry_map: &HashMap<String, (String, i64)>,
 ) -> Result<String, String> {
     let base = "ads_final_marketing_lead_user";
     let physical = batch_tables::resolve_table(settings, import_batch_id, base)?;
@@ -326,24 +327,14 @@ fn final_lead_readiness_text(
             "Final Lead not ready / degraded due to missing CRM/coverage/reachability".to_string(),
         );
     }
-    let registry_rows = registry_map.get(base).map(|(_, rows)| *rows).unwrap_or(0);
-    if registry_rows <= 0 {
+    if !batch_tables::table_has_rows(conn, &physical)? {
         return Ok(
             "Final Lead not generated/degraded due to missing CRM/coverage/reachability"
                 .to_string(),
         );
     }
     if let Some(run_id) = analysis_run_id.filter(|value| !value.trim().is_empty()) {
-        let table = batch_tables::sanitize_identifier(&physical)?;
-        let count: Option<i64> = conn
-            .exec_first(
-                format!("SELECT CAST(COUNT(*) AS SIGNED) FROM `{table}` WHERE analysis_run_id=?"),
-                (run_id,),
-            )
-            .map_err(|err| {
-                format!("failed to check Final Lead analysis_run_id for {physical}: {err}")
-            })?;
-        if count.unwrap_or(0) <= 0 {
+        if !batch_tables::table_has_analysis_run(conn, &physical, run_id)? {
             return Ok(format!(
                 "Final Lead not generated for current analysis_run_id={run_id}; SA Lead remains available"
             ));
@@ -357,89 +348,164 @@ pub fn import_list_batches(
     settings: MySqlSettings,
     data_type: Option<String>,
 ) -> Result<Vec<BatchListItem>, String> {
+    crate::append_runtime_log("command_start import_list_batches");
     let mut conn = db::conn(&settings)?;
-    let sql = if data_type.is_some() {
-        "SELECT b.import_batch_id, COALESCE(b.batch_display_name, ''), b.data_type, b.source_file_name, b.status, CAST(COALESCE(b.total_rows, 0) AS SIGNED), CAST(COALESCE(b.imported_rows, 0) AS SIGNED), (SELECT analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id = b.import_batch_id ORDER BY ar.started_at DESC LIMIT 1) FROM meta_import_batch b WHERE b.data_type = ? ORDER BY b.created_at DESC, b.import_batch_id DESC LIMIT 500"
+    let sql = import_batch_list_sql(data_type.is_some());
+    let result = if let Some(data_type) = data_type {
+        conn.exec_iter(sql, (&data_type,))
     } else {
-        "SELECT b.import_batch_id, COALESCE(b.batch_display_name, ''), b.data_type, b.source_file_name, b.status, CAST(COALESCE(b.total_rows, 0) AS SIGNED), CAST(COALESCE(b.imported_rows, 0) AS SIGNED), (SELECT analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id = b.import_batch_id ORDER BY ar.started_at DESC LIMIT 1) FROM meta_import_batch b ORDER BY b.created_at DESC, b.import_batch_id DESC LIMIT 500"
-    };
-    let rows = if let Some(data_type) = data_type {
-        conn.exec_map(
-            sql,
-            (&data_type,),
-            |(
-                import_batch_id,
-                batch_display_name,
-                data_type,
-                source_file_name,
-                status,
-                total_rows,
-                imported_rows,
-                analysis_run_id,
-            ): (
-                String,
-                String,
-                String,
-                String,
-                String,
-                i64,
-                i64,
-                Option<String>,
-            )| BatchListItem {
-                import_batch_id,
-                batch_display_name: if batch_display_name.trim().is_empty() {
-                    None
-                } else {
-                    Some(batch_display_name)
-                },
-                data_type,
-                source_file_name,
-                status,
-                total_rows: Some(total_rows),
-                imported_rows: Some(imported_rows),
-                analysis_run_id,
-            },
-        )
-    } else {
-        conn.exec_map(
-            sql,
-            (),
-            |(
-                import_batch_id,
-                batch_display_name,
-                data_type,
-                source_file_name,
-                status,
-                total_rows,
-                imported_rows,
-                analysis_run_id,
-            ): (
-                String,
-                String,
-                String,
-                String,
-                String,
-                i64,
-                i64,
-                Option<String>,
-            )| BatchListItem {
-                import_batch_id,
-                batch_display_name: if batch_display_name.trim().is_empty() {
-                    None
-                } else {
-                    Some(batch_display_name)
-                },
-                data_type,
-                source_file_name,
-                status,
-                total_rows: Some(total_rows),
-                imported_rows: Some(imported_rows),
-                analysis_run_id,
-            },
-        )
+        conn.exec_iter(sql, ())
     }
     .map_err(|err| format!("failed to list import batches: {err}"))?;
+    let rows = result
+        .map(|row| {
+            let row = row.map_err(|err| format!("failed to read import batch row: {err}"))?;
+            let batch_display_name = row.get::<String, _>(1).unwrap_or_default();
+            Ok(BatchListItem {
+                import_batch_id: normalized_batch_text(row.get(0), "UNKNOWN_BATCH"),
+                batch_display_name: if batch_display_name.trim().is_empty() {
+                    None
+                } else {
+                    Some(batch_display_name)
+                },
+                data_type: normalized_batch_text(row.get(2), "unknown"),
+                source_file_name: normalized_batch_text(
+                    row.get(3),
+                    "legacy batch (source unknown)",
+                ),
+                status: normalized_batch_text(row.get(4), "unknown"),
+                total_rows: Some(row.get::<i64, _>(5).unwrap_or_default()),
+                imported_rows: Some(row.get::<i64, _>(6).unwrap_or_default()),
+                analysis_run_id: row.get(7),
+                pipeline_run_id: row.get(8),
+                pipeline_status: row.get(9),
+                pipeline_message: row.get(10),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    crate::append_runtime_log(&format!("command_success import_list_batches rows={}", rows.len()));
     Ok(rows)
+}
+
+fn import_batch_list_sql(filtered: bool) -> String {
+    let preferred_run = "(SELECT ar.analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id=b.import_batch_id AND ar.status IN ('success','degraded') ORDER BY COALESCE(ar.finished_at,ar.started_at) DESC,ar.started_at DESC LIMIT 1)";
+    let filter = if filtered {
+        " WHERE b.data_type = ?"
+    } else {
+        ""
+    };
+    format!(
+        "SELECT COALESCE(b.import_batch_id, ''), COALESCE(b.batch_display_name, ''), COALESCE(NULLIF(b.data_type, ''), 'unknown'), COALESCE(NULLIF(b.source_file_name, ''), 'legacy batch (source unknown)'), COALESCE(NULLIF(b.status, ''), 'unknown'), CAST(COALESCE(b.total_rows, 0) AS SIGNED), CAST(COALESCE(b.imported_rows, 0) AS SIGNED), COALESCE({preferred_run}, pr.analysis_run_id, (SELECT analysis_run_id FROM meta_analysis_run ar WHERE ar.import_batch_id=b.import_batch_id ORDER BY ar.started_at DESC LIMIT 1)), pr.pipeline_run_id, pr.status, COALESCE(pr.error_message, pr.message) FROM meta_import_batch b LEFT JOIN meta_pipeline_run pr ON pr.pipeline_run_id=(SELECT pr2.pipeline_run_id FROM meta_pipeline_run pr2 WHERE pr2.import_batch_id=b.import_batch_id ORDER BY pr2.updated_at DESC, pr2.created_at DESC, pr2.pipeline_run_id DESC LIMIT 1){filter} ORDER BY b.created_at DESC, b.import_batch_id DESC LIMIT 500"
+    )
+}
+
+fn normalized_batch_text(value: Option<String>, fallback: &str) -> String {
+    value
+        .filter(|text| !text.trim().is_empty())
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn registered_batch_table(
+    conn: &mut mysql::PooledConn,
+    import_batch_id: &str,
+    base_table_name: &str,
+) -> Result<Option<String>, String> {
+    let row: Option<mysql::Row> = conn
+        .exec_first(
+            "SELECT physical_table_name FROM meta_batch_table_registry WHERE import_batch_id=? AND base_table_name=? LIMIT 1",
+            (import_batch_id, base_table_name),
+        )
+        .map_err(|err| format!("failed to resolve registered {base_table_name}: {err}"))?;
+    let table = row
+        .and_then(|row| row.get::<String, _>(0))
+        .filter(|table| !table.trim().is_empty());
+    match table {
+        Some(table) if batch_tables::table_exists(conn, &table)? => {
+            Ok(Some(batch_tables::sanitize_identifier(&table)?))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn run_ready_expression(table: Option<&String>) -> String {
+    table
+        .map(|table| format!("(r.status IN ('success','degraded') AND EXISTS(SELECT 1 FROM `{table}` ready WHERE ready.analysis_run_id=r.analysis_run_id LIMIT 1))"))
+        .unwrap_or_else(|| "0".to_string())
+}
+
+#[tauri::command]
+pub fn analysis_list_runs(
+    settings: MySqlSettings,
+    import_batch_id: String,
+) -> Result<Vec<AnalysisRunOption>, String> {
+    crate::append_runtime_log("command_start analysis_list_runs");
+    let mut conn = db::conn(&settings)?;
+    batch_tables::ensure_registry_tables(&mut conn)?;
+    let period = registered_batch_table(
+        &mut conn,
+        &import_batch_id,
+        "dws_user_app_period_experience_v2",
+    )?;
+    let app_ads = registered_batch_table(
+        &mut conn,
+        &import_batch_id,
+        "ads_app_experience_v2",
+    )?;
+    let hourly = registered_batch_table(
+        &mut conn,
+        &import_batch_id,
+        "dws_user_app_hourly_experience_v2",
+    )?;
+    let hourly_ads = registered_batch_table(
+        &mut conn,
+        &import_batch_id,
+        "ads_app_hourly_experience_v2",
+    )?;
+    let policy_binding_available = batch_tables::table_exists(
+        &mut conn,
+        "meta_analysis_run_policy_binding",
+    )?;
+    let policy_join = if policy_binding_available {
+        "LEFT JOIN meta_analysis_run_policy_binding binding ON binding.analysis_run_id=r.analysis_run_id"
+    } else {
+        ""
+    };
+    let policy_id = if policy_binding_available { "binding.experience_policy_id" } else { "NULL" };
+    let policy_version = if policy_binding_available { "CAST(binding.experience_policy_version AS SIGNED)" } else { "NULL" };
+    let hourly_ready = format!(
+        "({} AND {})",
+        run_ready_expression(hourly.as_ref()),
+        run_ready_expression(hourly_ads.as_ref())
+    );
+    let sql = format!(
+        "SELECT r.analysis_run_id,r.import_batch_id,r.run_type,r.status,DATE_FORMAT(r.started_at,'%Y-%m-%d %H:%i:%s'),DATE_FORMAT(r.finished_at,'%Y-%m-%d %H:%i:%s'),r.message,EXISTS(SELECT 1 FROM meta_pipeline_run pipeline WHERE pipeline.analysis_run_id=r.analysis_run_id AND pipeline.import_batch_id=r.import_batch_id LIMIT 1),{}, {}, {hourly_ready},{policy_id},{policy_version} FROM meta_analysis_run r {policy_join} WHERE r.import_batch_id=? ORDER BY CASE WHEN r.status IN ('success','degraded') THEN 0 WHEN r.status='running' THEN 1 ELSE 2 END,COALESCE(r.finished_at,r.started_at) DESC,r.analysis_run_id DESC LIMIT 100",
+        run_ready_expression(period.as_ref()),
+        run_ready_expression(app_ads.as_ref()),
+    );
+    let rows = conn
+        .exec_iter(sql, (&import_batch_id,))
+        .map_err(|err| format!("failed to list analysis runs for batch: {err}"))?;
+    let runs = rows.map(|row| {
+        let row = row.map_err(|err| format!("failed to decode analysis run option: {err}"))?;
+        Ok(AnalysisRunOption {
+            analysis_run_id: row.get(0).unwrap_or_default(),
+            import_batch_id: row.get(1).unwrap_or_default(),
+            run_type: row.get(2).unwrap_or_default(),
+            status: row.get(3).unwrap_or_default(),
+            started_at: row.get(4),
+            finished_at: row.get(5),
+            message: row.get(6),
+            pipeline_linked: row.get::<i8, _>(7).unwrap_or_default() != 0,
+            v2_period_ready: row.get::<i8, _>(8).unwrap_or_default() != 0,
+            v2_app_ads_ready: row.get::<i8, _>(9).unwrap_or_default() != 0,
+            v2_hourly_ready: row.get::<i8, _>(10).unwrap_or_default() != 0,
+            experience_policy_id: row.get(11),
+            experience_policy_version: row.get(12),
+        })
+    })
+    .collect::<Result<Vec<_>, String>>()?;
+    crate::append_runtime_log(&format!("command_success analysis_list_runs rows={}", runs.len()));
+    Ok(runs)
 }
 
 #[tauri::command]
@@ -448,11 +514,8 @@ pub fn analysis_prepare_batch_tables(
     import_batch_id: String,
 ) -> Result<Vec<MetricCard>, String> {
     let metrics = batch_tables::ensure_batch_tables(&settings, &import_batch_id)?;
-    let mut registry_metrics = batch_tables::refresh_registry_counts(&settings, &import_batch_id)?;
-    let mut combined = Vec::with_capacity(metrics.len() + registry_metrics.len());
-    combined.extend(metrics);
-    combined.append(&mut registry_metrics);
-    Ok(combined)
+    batch_tables::refresh_registry_estimates(&settings, &import_batch_id)?;
+    Ok(metrics)
 }
 
 #[tauri::command]
@@ -460,24 +523,48 @@ pub fn batch_get_table_registry(
     settings: MySqlSettings,
     import_batch_id: String,
 ) -> Result<Vec<BatchTableRegistryRow>, String> {
-    let mut conn = db::conn(&settings)?;
     batch_tables::ensure_batch_tables(&settings, &import_batch_id)?;
-    let _ = batch_tables::refresh_registry_counts(&settings, &import_batch_id);
-    conn.exec_map(
-        "SELECT import_batch_id, layer, data_type, logical_table_name, base_table_name, physical_table_name, CAST(row_count AS SIGNED), status FROM meta_batch_table_registry WHERE import_batch_id=? ORDER BY layer, logical_table_name",
-        (&import_batch_id,),
-        |(import_batch_id, layer, data_type, logical_table_name, base_table_name, physical_table_name, row_count, status): (String, String, String, String, String, String, i64, String)| BatchTableRegistryRow {
-            import_batch_id,
-            layer,
-            data_type,
-            logical_table_name,
-            base_table_name,
-            physical_table_name,
-            row_count,
-            status,
-        },
-    )
-    .map_err(|err| format!("failed to query batch table registry: {err}"))
+    let _ = batch_tables::refresh_registry_estimates(&settings, &import_batch_id);
+    let mut conn = db::conn(&settings)?;
+    query_batch_table_registry(&mut conn, &import_batch_id)
+}
+
+#[tauri::command]
+pub fn batch_get_table_registry_cached(
+    settings: MySqlSettings,
+    import_batch_id: String,
+) -> Result<Vec<BatchTableRegistryRow>, String> {
+    let mut conn = db::conn(&settings)?;
+    if !batch_tables::table_exists(&mut conn, "meta_batch_table_registry")? {
+        return Ok(Vec::new());
+    }
+    query_batch_table_registry(&mut conn, &import_batch_id)
+}
+
+fn query_batch_table_registry(
+    conn: &mut mysql::PooledConn,
+    import_batch_id: &str,
+) -> Result<Vec<BatchTableRegistryRow>, String> {
+    let rows = conn
+        .exec_iter(
+            "SELECT import_batch_id, layer, data_type, logical_table_name, base_table_name, physical_table_name, CAST(COALESCE(row_count, 0) AS SIGNED), status FROM meta_batch_table_registry WHERE import_batch_id=? ORDER BY layer, logical_table_name",
+            (import_batch_id,),
+        )
+        .map_err(|err| format!("failed to query batch table registry: {err}"))?;
+    rows.map(|row| {
+        let row = row.map_err(|err| format!("failed to decode batch table registry row: {err}"))?;
+        Ok(BatchTableRegistryRow {
+            import_batch_id: normalized_batch_text(row.get(0), import_batch_id),
+            layer: normalized_batch_text(row.get(1), "unknown"),
+            data_type: normalized_batch_text(row.get(2), "unknown"),
+            logical_table_name: normalized_batch_text(row.get(3), "unknown"),
+            base_table_name: normalized_batch_text(row.get(4), "unknown"),
+            physical_table_name: normalized_batch_text(row.get(5), "unknown"),
+            row_count: row.get::<i64, _>(6).unwrap_or_default(),
+            status: normalized_batch_text(row.get(7), "unknown"),
+        })
+    })
+    .collect()
 }
 
 #[tauri::command]
@@ -489,7 +576,10 @@ pub fn analysis_get_module_status(
     let batch_data_type =
         fetch_batch_data_type(&settings, &import_batch_id)?.unwrap_or_else(|| "mixed".to_string());
     batch_tables::ensure_batch_tables(&settings, &import_batch_id)?;
-    let registry_rows = batch_get_table_registry(settings.clone(), import_batch_id.clone())?;
+    let _ = batch_tables::refresh_registry_estimates(&settings, &import_batch_id);
+    let mut registry_conn = db::conn(&settings)?;
+    let registry_rows = query_batch_table_registry(&mut registry_conn, &import_batch_id)?;
+    drop(registry_conn);
     let registry_map: HashMap<String, (String, i64)> = registry_rows
         .iter()
         .map(|row| {
@@ -516,10 +606,9 @@ pub fn analysis_get_module_status(
         let mut empty_run_tables: Vec<String> = Vec::new();
         for (base, physical) in spec.required_tables.iter().zip(table_names.iter()) {
             let exists = batch_tables::table_exists(&mut conn, physical)?;
-            let rows = registry_map.get(*base).map(|(_, rows)| *rows).unwrap_or(0);
             if !exists {
                 missing_tables.push(format!("{base}->{physical}"));
-            } else if rows <= 0 {
+            } else if !batch_tables::table_has_rows(&mut conn, physical)? {
                 empty_tables.push(format!("{base}->{physical}"));
             }
         }
@@ -534,10 +623,7 @@ pub fn analysis_get_module_status(
             {
                 let physical = batch_tables::resolve_table(&settings, &import_batch_id, base)?;
                 if batch_tables::table_exists(&mut conn, &physical)? {
-                    let table = batch_tables::sanitize_identifier(&physical)?;
-                    let count: Option<i64> = conn.exec_first(format!("SELECT CAST(COUNT(*) AS SIGNED) FROM `{table}` WHERE analysis_run_id=?"), (run_id,))
-                        .map_err(|err| format!("failed to check analysis_run_id for {physical}: {err}"))?;
-                    if count.unwrap_or(0) <= 0 {
+                    if !batch_tables::table_has_analysis_run(&mut conn, &physical, run_id)? {
                         empty_run_tables.push(format!("{base}->{physical}"));
                     }
                 }
@@ -590,7 +676,6 @@ pub fn analysis_get_module_status(
                 &mut conn,
                 &import_batch_id,
                 analysis_run_id.as_ref(),
-                &registry_map,
             )?)
         } else {
             None
@@ -675,7 +760,7 @@ pub fn analysis_get_module_metrics(
 ) -> Result<Vec<MetricCard>, String> {
     let statuses =
         analysis_get_module_status(settings.clone(), import_batch_id.clone(), analysis_run_id)?;
-    let registry = batch_get_table_registry(settings, import_batch_id.clone())?;
+    let registry = batch_get_table_registry_cached(settings, import_batch_id.clone())?;
     let enabled = statuses.iter().filter(|row| row.enabled).count();
     let disabled = statuses.len().saturating_sub(enabled);
     let mut metrics = vec![
@@ -848,7 +933,7 @@ fn value_to_csv(value: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{field_checks, module_spec};
+    use super::{field_checks, import_batch_list_sql, module_spec, normalized_batch_text};
 
     #[test]
     fn migration_lead_requires_sa_lead_table_only() {
@@ -872,5 +957,30 @@ mod tests {
         assert_eq!(fields, vec!["lead_type"]);
         assert!(tables.contains(&"ads_migration_lead_user"));
         assert!(!tables.contains(&"ads_final_marketing_lead_user"));
+    }
+
+    #[test]
+    fn batch_list_query_guards_legacy_nullable_text_columns() {
+        let sql = import_batch_list_sql(false);
+
+        assert!(sql.contains("COALESCE(NULLIF(b.data_type, ''), 'unknown')"));
+        assert!(sql
+            .contains("COALESCE(NULLIF(b.source_file_name, ''), 'legacy batch (source unknown)')"));
+        assert!(sql.contains("COALESCE(NULLIF(b.status, ''), 'unknown')"));
+        assert!(!sql.contains("WHERE b.data_type = ?"));
+        assert!(import_batch_list_sql(true).contains("WHERE b.data_type = ?"));
+    }
+
+    #[test]
+    fn batch_text_decoder_falls_back_for_null_and_blank_values() {
+        assert_eq!(normalized_batch_text(None, "unknown"), "unknown");
+        assert_eq!(
+            normalized_batch_text(Some("  ".to_string()), "unknown"),
+            "unknown"
+        );
+        assert_eq!(
+            normalized_batch_text(Some("success".to_string()), "unknown"),
+            "success"
+        );
     }
 }

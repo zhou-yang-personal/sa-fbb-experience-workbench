@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS meta_import_batch (
   source_file_path TEXT NULL,
   source_file_size_bytes BIGINT NULL,
   source_file_hash VARCHAR(128) NULL,
+  access_rule_set_id VARCHAR(64) NULL,
+  access_rule_set_version BIGINT NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'pending',
   total_rows BIGINT NULL,
   imported_rows BIGINT NULL,
@@ -168,7 +170,14 @@ CREATE TABLE IF NOT EXISTS dwd_tcp_detail_clean (
   key_confidence VARCHAR(64) NOT NULL,
   user_account VARCHAR(255) NULL,
   user_mac VARCHAR(255) NULL,
+  source_user_type VARCHAR(32) NULL,
   user_type VARCHAR(32) NULL,
+  local_ip_address VARCHAR(255) NULL,
+  server_ip TEXT NULL,
+  access_type_source VARCHAR(32) NOT NULL DEFAULT 'UNMATCHED',
+  access_type_confidence VARCHAR(32) NOT NULL DEFAULT 'LOW',
+  access_rule_id VARCHAR(64) NULL,
+  access_rule_set_version BIGINT NULL,
   app_name VARCHAR(255) NULL,
   app_category VARCHAR(64) NULL,
   stat_time DATETIME NULL,
@@ -187,7 +196,8 @@ CREATE TABLE IF NOT EXISTS dwd_tcp_detail_clean (
   pon VARCHAR(255) NULL,
   data_quality_flag VARCHAR(64) NOT NULL DEFAULT 'OK',
   INDEX ix_batch_user_time (import_batch_id, user_key, stat_time),
-  INDEX ix_batch_category (import_batch_id, app_category, user_type, stat_date)
+  INDEX ix_batch_category (import_batch_id, app_category, user_type, stat_date),
+  INDEX ix_batch_date_hour (import_batch_id, stat_date, hour_of_day)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS dwd_game_detail_clean (
@@ -197,7 +207,14 @@ CREATE TABLE IF NOT EXISTS dwd_game_detail_clean (
   key_confidence VARCHAR(64) NOT NULL,
   user_account VARCHAR(255) NULL,
   user_mac VARCHAR(255) NULL,
+  source_user_type VARCHAR(32) NULL,
   user_type VARCHAR(32) NULL,
+  local_ip_address VARCHAR(255) NULL,
+  server_ip TEXT NULL,
+  access_type_source VARCHAR(32) NOT NULL DEFAULT 'UNMATCHED',
+  access_type_confidence VARCHAR(32) NOT NULL DEFAULT 'LOW',
+  access_rule_id VARCHAR(64) NULL,
+  access_rule_set_version BIGINT NULL,
   app_name VARCHAR(255) NULL,
   app_category VARCHAR(64) NULL,
   stat_time DATETIME NULL,
@@ -214,7 +231,8 @@ CREATE TABLE IF NOT EXISTS dwd_game_detail_clean (
   pon VARCHAR(255) NULL,
   data_quality_flag VARCHAR(64) NOT NULL DEFAULT 'OK',
   INDEX ix_batch_user_time (import_batch_id, user_key, stat_time),
-  INDEX ix_batch_category (import_batch_id, app_category, user_type, stat_date)
+  INDEX ix_batch_category (import_batch_id, app_category, user_type, stat_date),
+  INDEX ix_batch_date_hour (import_batch_id, stat_date, hour_of_day)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS dws_user_daily_profile (

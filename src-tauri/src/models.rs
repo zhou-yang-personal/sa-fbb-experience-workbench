@@ -46,6 +46,26 @@ pub struct BatchListItem {
     pub total_rows: Option<i64>,
     pub imported_rows: Option<i64>,
     pub analysis_run_id: Option<String>,
+    pub pipeline_run_id: Option<String>,
+    pub pipeline_status: Option<String>,
+    pub pipeline_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AnalysisRunOption {
+    pub analysis_run_id: String,
+    pub import_batch_id: String,
+    pub run_type: String,
+    pub status: String,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+    pub message: Option<String>,
+    pub pipeline_linked: bool,
+    pub v2_period_ready: bool,
+    pub v2_app_ads_ready: bool,
+    pub v2_hourly_ready: bool,
+    pub experience_policy_id: Option<String>,
+    pub experience_policy_version: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -80,6 +100,7 @@ pub struct CreateBatchRequest {
     pub data_type: String,
     pub file_path: String,
     pub batch_display_name: Option<String>,
+    pub access_rule_set_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -92,12 +113,19 @@ pub struct RawLoadRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct DeleteBatchRequest {
+    pub settings: MySqlSettings,
+    pub import_batch_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct ImportCurrentFileRequest {
     pub settings: MySqlSettings,
     pub data_type: String,
     pub file_path: String,
     pub batch_display_name: String,
     pub mode: Option<String>,
+    pub access_rule_set_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -118,6 +146,22 @@ pub struct ImportPipelineStartRequest {
     pub batch_display_name: String,
     pub import_mode: Option<String>,
     pub analysis_run_id: Option<String>,
+    pub access_rule_set_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ImportPipelineResumeRequest {
+    pub settings: MySqlSettings,
+    pub import_batch_id: String,
+    pub analysis_run_id: Option<String>,
+    pub confirm_original_process_stopped: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ImportPipelineRebuildRequest {
+    pub settings: MySqlSettings,
+    pub import_batch_id: String,
+    pub confirm_original_process_stopped: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -208,6 +252,17 @@ pub struct DashboardRequest {
     pub keyword: Option<String>,
     pub sort_by: Option<String>,
     pub min_value: Option<f64>,
+    pub opportunity_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OpportunityExportRequest {
+    pub settings: MySqlSettings,
+    pub import_batch_id: String,
+    pub analysis_run_id: String,
+    pub opportunity_type: Option<String>,
+    pub keyword: Option<String>,
+    pub output_path: String,
 }
 
 impl DashboardRequest {
@@ -234,7 +289,10 @@ impl DashboardRequest {
         if keyword.is_empty() {
             None
         } else {
-            Some(format!("%{}%", keyword.replace('%', "\\%").replace('_', "\\_")))
+            Some(format!(
+                "%{}%",
+                keyword.replace('%', "\\%").replace('_', "\\_")
+            ))
         }
     }
 
