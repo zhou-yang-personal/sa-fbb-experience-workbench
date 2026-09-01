@@ -3,22 +3,32 @@
 ## Current version
 
 ```text
-2.0.0-1
+2.0.0-2
 ```
 
 ## Source-of-truth branch
 
 ```text
-codex/task-duckdb-runtime-poc
+codex/task-duckdb-default-runtime
 ```
 
 ## Current baseline
 
-The 2.0 target runtime is local DuckDB + Parquet; the 1.x MySQL path remains an explicit compatibility path during migration:
+The default 2.0 runtime is local DuckDB + Parquet; the 1.x MySQL path is mounted only after an explicit compatibility-mode switch:
 
 ```text
 CSV + SHA-256 manifest → DuckDB streaming transform → partitioned Parquet DWD → DuckDB DWS/ADS → atomic publish → dashboard/export
 ```
+
+## 2.0.0-2 (Alpha 2) update
+
+- Made DuckDB the actual default runtime instead of a panel inside the MySQL application shell.
+- Added a versioned `context.v2`; old MySQL batch/run identifiers in `context.v1` are not imported into the DuckDB context. Runtime selection is intentionally session-only and every application start returns to DuckDB.
+- Added DuckDB-native batch/run list, Access summary and hourly-result commands and wired the default analysis pages to them.
+- Default DuckDB routes do not mount MySQL analysis, import, rules or diagnostics components. MySQL data is reachable only through an explicit compatibility-mode switch, which clears the active batch/run context.
+- Unmigrated quality, opportunity and full rule pages show an explicit migration boundary and never silently fall back to MySQL.
+- Fresh or non-existent DuckDB workspaces return an empty batch list without creating or querying a MySQL database.
+- `npm run check`, `npm run build` and all 74 release Rust tests passed; the 5 DuckDB-focused tests include empty-workspace isolation and native published-result reads.
 
 ## 2.0.0-1 (Alpha 1) update
 

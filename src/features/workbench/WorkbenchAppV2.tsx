@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { AnalysisErrorBoundary } from './AnalysisErrorBoundary';
 import { AnalysisWorkspace } from './AnalysisWorkspace';
+import { DuckDbAnalysisWorkspace } from './DuckDbAnalysisWorkspace';
+import { DuckDbWorkspacePanel } from './DuckDbWorkspacePanel';
 import { ConfigurationPanel } from './ConfigurationPanel';
 import { ImportPanel } from './ImportPanel';
 import { RunLogDrawer } from './RunLogDrawer';
@@ -41,6 +43,10 @@ export function WorkbenchAppV2() {
   const languageIndex = c.language === 'zh-CN' ? 0 : 1;
 
   function hint() {
+    if (c.runtimeEngine === 'duckdb') {
+      if (activeSection === 'data') return { title: 'DuckDB 本地数据中心', detail: 'CSV 转换、Parquet 明细与聚合结果均写入所选工作区，不连接 MySQL。', tone: 'normal' as const };
+      return { title: 'DuckDB 隔离模式', detail: '仅查询 workspace.duckdb。尚未迁移的模块明确不可用，不会静默回退到 MySQL。', tone: 'normal' as const };
+    }
     if (['panorama', 'quality', 'access', 'opportunities'].includes(activeSection)) {
       if (!hasBatch) return { title: '先选择导入批次', detail: '数据分析以 import_batch_id 为边界。可以先去“数据导入”创建批次，或在分析页下拉选择已有批次。', tone: 'warning' as const };
       return { title: '按需加载当前分析页', detail: '应用不会在启动或切换页面时自动执行大查询。确认批次和 analysis_run_id 后，点击“加载当前看板”再开始任务。', tone: 'normal' as const };
@@ -56,6 +62,12 @@ export function WorkbenchAppV2() {
   }
 
   function renderSection() {
+    if (c.runtimeEngine === 'duckdb') {
+      if (['panorama', 'quality', 'access', 'opportunities'].includes(activeSection)) return <DuckDbAnalysisWorkspace c={c} activeView={activeSection as 'panorama' | 'quality' | 'access' | 'opportunities'} onOpenData={() => setActiveSection('data')} />;
+      if (activeSection === 'data') return <DuckDbWorkspacePanel c={c} onOpenAnalysis={() => setActiveSection('access')} />;
+      if (activeSection === 'config') return <article className="panel form-panel"><span className="step-badge">DuckDB</span><h2>规则配置迁移中</h2><p className="hero-text">当前可在数据中心输入 FTTH IP 范围；完整版本化规则编辑器尚未迁移。本页不会访问 MySQL。</p></article>;
+      return <section className="workbench-section-stack"><article className="panel form-panel"><span className="step-badge">DuckDB</span><h2>本地运行时诊断</h2><p className="hero-text">默认运行时不加载 MySQL 诊断组件。工作区状态可在数据中心检查。</p></article><DuckDbWorkspacePanel c={c} /></section>;
+    }
     if (['panorama', 'quality', 'access', 'opportunities'].includes(activeSection)) return <AnalysisWorkspace c={c} activeView={activeSection as 'panorama' | 'quality' | 'access' | 'opportunities'} onOpenImport={() => setActiveSection('data')} />;
     if (activeSection === 'data') return <ImportPanel {...c} onOpenAnalysis={() => setActiveSection('panorama')} onOpenAccessRules={() => setActiveSection('config')} />;
     if (activeSection === 'config') return <ConfigurationPanel c={c} />;
@@ -67,7 +79,15 @@ export function WorkbenchAppV2() {
   return (
     <main className="app-shell guided-shell product-shell">
       <aside className="sidebar guided-sidebar product-sidebar">
-        <div className="brand"><span>SA FBB Experience Workbench</span><small>v1.0.71</small></div>
+        <div className="brand"><span>SA FBB Experience Workbench</span><small>v2.0.0-2</small></div>
+        <label className="sidebar-language runtime-selector">
+          <span>运行时</span>
+          <select aria-label="Runtime engine" value={c.runtimeEngine} onChange={(event) => c.setRuntimeEngine(event.target.value as 'duckdb' | 'mysql_compat')}>
+            <option value="duckdb">DuckDB（默认）</option>
+            <option value="mysql_compat">MySQL（兼容）</option>
+          </select>
+          <small>{c.runtimeEngine === 'duckdb' ? '本地工作区 · 不查询 MySQL' : '显式兼容模式 · 可查询旧批次'}</small>
+        </label>
         <nav className="product-nav" aria-label="Product navigation">
           {(['primary', 'secondary'] as const).map((group) => <div className="nav-group" key={group}>
             <p>{group === 'primary' ? (languageIndex === 0 ? '分析工作台' : 'Workspace') : (languageIndex === 0 ? '设置与支持' : 'Settings & support')}</p>
@@ -103,7 +123,7 @@ export function WorkbenchAppV2() {
         />
         {c.currentAction && <section className="action-feedback-bar"><span>{nextHint.title}</span><strong>Running: {c.currentAction}</strong></section>}
         <section className="section-shell guided-section-shell">
-          <AnalysisErrorBoundary language={c.language} resetKey={activeSection} onReset={() => setActiveSection('panorama')}>
+          <AnalysisErrorBoundary language={c.language} resetKey={`${c.runtimeEngine}-${activeSection}`} onReset={() => setActiveSection('panorama')}>
             {renderSection()}
           </AnalysisErrorBoundary>
         </section>

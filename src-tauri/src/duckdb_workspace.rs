@@ -64,6 +64,55 @@ pub struct DuckDbPocResult {
     pub metrics: Vec<DuckDbPocMetric>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct DuckDbBatchListItem {
+    pub import_batch_id: String,
+    pub batch_display_name: Option<String>,
+    pub data_type: String,
+    pub source_file_name: String,
+    pub source_rows: u64,
+    pub clean_rows: u64,
+    pub status: String,
+    pub message: Option<String>,
+    pub created_at: String,
+    pub latest_analysis_run_id: Option<String>,
+    pub latest_run_status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DuckDbAnalysisRunItem {
+    pub analysis_run_id: String,
+    pub import_batch_id: String,
+    pub run_type: String,
+    pub implementation_version: String,
+    pub status: String,
+    pub current_step: Option<String>,
+    pub message: Option<String>,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DuckDbAccessSummaryRow {
+    pub access_type: String,
+    pub active_users: u64,
+    pub observation_rows: u64,
+    pub downloaded_gb: Option<f64>,
+    pub avg_effective_download_mbps: Option<f64>,
+    pub avg_rtt_ms: Option<f64>,
+    pub avg_user_loss_pct: Option<f64>,
+    pub avg_network_loss_pct: Option<f64>,
+    pub avg_vmos: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DuckDbAccessHourlyRow {
+    pub stat_date: String,
+    pub hour_of_day: u8,
+    #[serde(flatten)]
+    pub summary: DuckDbAccessSummaryRow,
+}
+
 #[derive(Debug, Serialize)]
 struct SourceManifest {
     import_batch_id: String,
@@ -159,8 +208,10 @@ fn ensure_schema(connection: &Connection) -> Result<(), String> {
               updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
             );
             INSERT INTO meta_workspace
-            SELECT 'LOCAL', '2.0.0-1', current_timestamp, current_timestamp
+            SELECT 'LOCAL', '2.0.0-2', current_timestamp, current_timestamp
             WHERE NOT EXISTS (SELECT 1 FROM meta_workspace WHERE workspace_id = 'LOCAL');
+            UPDATE meta_workspace SET schema_version = '2.0.0-2', updated_at = current_timestamp
+            WHERE workspace_id = 'LOCAL';
 
             CREATE TABLE IF NOT EXISTS meta_import_batch (
               import_batch_id VARCHAR PRIMARY KEY,
@@ -267,6 +318,178 @@ pub fn duckdb_workspace_status(
     settings: DuckDbWorkspaceSettings,
 ) -> Result<DuckDbWorkspaceStatus, String> {
     workspace_status_sync(&settings)
+}
+
+fn open_existing_workspace(
+    settings: &DuckDbWorkspaceSettings,
+) -> Result<Option<(WorkspacePaths, Connection)>, String> {
+    let paths = WorkspacePaths::from_settings(settings)?;
+    if !paths.database.exists() {
+        return Ok(None);
+    }
+    let connection = Connection::open(&paths.database)
+        .map_err(|err| format!("无法读取 DuckDB 工作区 {}: {err}", paths.database.display()))?;
+    Ok(Some((paths, connection)))
+}
+
+#[tauri::command]
+pub fn duckdb_list_batches(
+    settings: DuckDbWorkspaceSettings,
+) -> Result<Vec<DuckDbBatchListItem>, String> {
+    let Some((_, connection)) = open_existing_workspace(&settings)? else {
+        return Ok(Vec::new());
+    };
+    let mut statement = connection.prepare(
+        r#"SELECT b.import_batch_id, b.batch_display_name, b.data_type, b.source_file_name,
+                  CAST(b.source_rows AS BIGINT), CAST(b.clean_rows AS BIGINT), b.status, b.message,
+                  CAST(b.created_at AS VARCHAR),
+                  (SELECT analysis_run_id FROM meta_analysis_run r WHERE r.import_batch_id=b.import_batch_id ORDER BY started_at DESC LIMIT 1),
+                  (SELECT status FROM meta_analysis_run r WHERE r.import_batch_id=b.import_batch_id ORDER BY started_at DESC LIMIT 1)
+           FROM meta_import_batch b ORDER BY b.created_at DESC"#,
+    ).map_err(|err| format!("无法准备 DuckDB 批次查询: {err}"))?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok(DuckDbBatchListItem {
+                import_batch_id: row.get(0)?,
+                batch_display_name: row.get(1)?,
+                data_type: row.get(2)?,
+                source_file_name: row.get(3)?,
+                source_rows: row.get::<_, i64>(4)? as u64,
+                clean_rows: row.get::<_, i64>(5)? as u64,
+                status: row.get(6)?,
+                message: row.get(7)?,
+                created_at: row.get(8)?,
+                latest_analysis_run_id: row.get(9)?,
+                latest_run_status: row.get(10)?,
+            })
+        })
+        .map_err(|err| format!("无法读取 DuckDB 批次: {err}"))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|err| format!("无法解码 DuckDB 批次: {err}"))
+}
+
+#[tauri::command]
+pub fn duckdb_list_analysis_runs(
+    settings: DuckDbWorkspaceSettings,
+    import_batch_id: String,
+) -> Result<Vec<DuckDbAnalysisRunItem>, String> {
+    let Some((_, connection)) = open_existing_workspace(&settings)? else {
+        return Ok(Vec::new());
+    };
+    let mut statement = connection.prepare(
+        "SELECT analysis_run_id, import_batch_id, run_type, implementation_version, status, current_step, message, CAST(started_at AS VARCHAR), CAST(finished_at AS VARCHAR) FROM meta_analysis_run WHERE import_batch_id=? ORDER BY started_at DESC",
+    ).map_err(|err| format!("无法准备 DuckDB 运行查询: {err}"))?;
+    let rows = statement
+        .query_map(params![import_batch_id], |row| {
+            Ok(DuckDbAnalysisRunItem {
+                analysis_run_id: row.get(0)?,
+                import_batch_id: row.get(1)?,
+                run_type: row.get(2)?,
+                implementation_version: row.get(3)?,
+                status: row.get(4)?,
+                current_step: row.get(5)?,
+                message: row.get(6)?,
+                started_at: row.get(7)?,
+                finished_at: row.get(8)?,
+            })
+        })
+        .map_err(|err| format!("无法读取 DuckDB 运行: {err}"))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|err| format!("无法解码 DuckDB 运行: {err}"))
+}
+
+#[tauri::command]
+pub fn duckdb_get_access_summary(
+    settings: DuckDbWorkspaceSettings,
+    import_batch_id: String,
+    analysis_run_id: String,
+) -> Result<Vec<DuckDbAccessSummaryRow>, String> {
+    let Some((_, connection)) = open_existing_workspace(&settings)? else {
+        return Ok(Vec::new());
+    };
+    ensure_published_run(&connection, &import_batch_id, &analysis_run_id)?;
+    query_access_rows(&connection, &import_batch_id, &analysis_run_id)
+}
+
+fn ensure_published_run(
+    connection: &Connection,
+    import_batch_id: &str,
+    analysis_run_id: &str,
+) -> Result<(), String> {
+    let status = connection
+        .query_row(
+            "SELECT status FROM meta_analysis_run WHERE import_batch_id=? AND analysis_run_id=?",
+            params![import_batch_id, analysis_run_id],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|_| "DuckDB 分析运行不存在或不属于当前批次".to_string())?;
+    if status != "success" {
+        return Err(format!("DuckDB 分析运行尚未完整发布：status={status}"));
+    }
+    Ok(())
+}
+
+fn query_access_rows(
+    connection: &Connection,
+    batch_id: &str,
+    run_id: &str,
+) -> Result<Vec<DuckDbAccessSummaryRow>, String> {
+    let mut statement = connection.prepare(
+        "SELECT access_type, CAST(active_users AS BIGINT), CAST(observation_rows AS BIGINT), downloaded_gb, avg_effective_download_mbps, avg_rtt_ms, avg_user_loss_pct, avg_network_loss_pct, avg_vmos FROM ads_access_summary_poc WHERE import_batch_id=? AND analysis_run_id=? ORDER BY access_type",
+    ).map_err(|err| format!("无法准备 DuckDB Access 摘要查询: {err}"))?;
+    let rows = statement
+        .query_map(params![batch_id, run_id], |row| {
+            Ok(DuckDbAccessSummaryRow {
+                access_type: row.get(0)?,
+                active_users: row.get::<_, i64>(1)? as u64,
+                observation_rows: row.get::<_, i64>(2)? as u64,
+                downloaded_gb: row.get(3)?,
+                avg_effective_download_mbps: row.get(4)?,
+                avg_rtt_ms: row.get(5)?,
+                avg_user_loss_pct: row.get(6)?,
+                avg_network_loss_pct: row.get(7)?,
+                avg_vmos: row.get(8)?,
+            })
+        })
+        .map_err(|err| format!("无法读取 DuckDB Access 摘要: {err}"))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|err| format!("无法解码 DuckDB Access 摘要: {err}"))
+}
+
+#[tauri::command]
+pub fn duckdb_get_access_hourly(
+    settings: DuckDbWorkspaceSettings,
+    import_batch_id: String,
+    analysis_run_id: String,
+) -> Result<Vec<DuckDbAccessHourlyRow>, String> {
+    let Some((_, connection)) = open_existing_workspace(&settings)? else {
+        return Ok(Vec::new());
+    };
+    ensure_published_run(&connection, &import_batch_id, &analysis_run_id)?;
+    let mut statement = connection.prepare(
+        "SELECT CAST(stat_date AS VARCHAR), CAST(hour_of_day AS INTEGER), access_type, CAST(active_users AS BIGINT), CAST(observation_rows AS BIGINT), downloaded_gb, avg_effective_download_mbps, avg_rtt_ms, avg_user_loss_pct, avg_network_loss_pct, avg_vmos FROM dws_access_hourly_poc WHERE import_batch_id=? AND analysis_run_id=? ORDER BY stat_date, hour_of_day, access_type",
+    ).map_err(|err| format!("无法准备 DuckDB Access 小时查询: {err}"))?;
+    let rows = statement
+        .query_map(params![import_batch_id, analysis_run_id], |row| {
+            Ok(DuckDbAccessHourlyRow {
+                stat_date: row.get(0)?,
+                hour_of_day: row.get::<_, i32>(1)? as u8,
+                summary: DuckDbAccessSummaryRow {
+                    access_type: row.get(2)?,
+                    active_users: row.get::<_, i64>(3)? as u64,
+                    observation_rows: row.get::<_, i64>(4)? as u64,
+                    downloaded_gb: row.get(5)?,
+                    avg_effective_download_mbps: row.get(6)?,
+                    avg_rtt_ms: row.get(7)?,
+                    avg_user_loss_pct: row.get(8)?,
+                    avg_network_loss_pct: row.get(9)?,
+                    avg_vmos: row.get(10)?,
+                },
+            })
+        })
+        .map_err(|err| format!("无法读取 DuckDB Access 小时结果: {err}"))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|err| format!("无法解码 DuckDB Access 小时结果: {err}"))
 }
 
 fn workspace_status_sync(
@@ -1232,8 +1455,9 @@ fn fmt_optional(value: Option<f64>, precision: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        analyze_csv_sync, duckdb_poc_analyze_csv_blocking, open_workspace, parse_ipv4_range,
-        prepare_run, resolve_column, DuckDbPocRequest, DuckDbWorkspaceSettings,
+        analyze_csv_sync, duckdb_get_access_summary, duckdb_list_batches,
+        duckdb_poc_analyze_csv_blocking, open_workspace, parse_ipv4_range, prepare_run,
+        resolve_column, DuckDbPocRequest, DuckDbWorkspaceSettings,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -1260,6 +1484,20 @@ mod tests {
             parse_ipv4_range("10.0.0.1-10.0.0.2").unwrap(),
             (167_772_161, 167_772_162)
         );
+    }
+
+    #[test]
+    fn missing_workspace_has_empty_duckdb_batch_list() {
+        let root = std::env::temp_dir().join(format!(
+            "sa-fbb-duckdb-empty-test-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let settings = DuckDbWorkspaceSettings {
+            workspace_dir: root.display().to_string(),
+        };
+        let batches = duckdb_list_batches(settings).unwrap();
+        assert!(batches.is_empty());
+        assert!(!root.join("workspace.duckdb").exists());
     }
 
     #[test]
@@ -1317,6 +1555,14 @@ mod tests {
             .unwrap();
         assert_eq!(access_types, 2);
         drop(connection);
+        let summary =
+            duckdb_get_access_summary(settings.clone(), batch_id.to_string(), run_id.to_string())
+                .unwrap();
+        assert_eq!(summary.len(), 2);
+        let batches = duckdb_list_batches(settings).unwrap();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].import_batch_id, batch_id);
+        assert_eq!(batches[0].latest_analysis_run_id.as_deref(), Some(run_id));
         let _ = fs::remove_dir_all(root);
     }
 

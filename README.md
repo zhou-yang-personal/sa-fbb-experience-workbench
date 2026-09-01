@@ -5,7 +5,7 @@ SA FBB Experience Workbench 是一个本地 EXE 数据分析工作台，用于�
 当前版本：
 
 ```text
-2.0.0-1
+2.0.0-2
 ```
 
 ## 1. 核心目标
@@ -30,7 +30,7 @@ CSV 文件选择
 → 用户名单 / 汇总结果导出
 ```
 
-2.0.0-1（Alpha 1）提供第一个可运行纵切：TCP/视频 CSV → 分区 Parquet → Cable/FTTH 小时聚合 → Access 汇总；系统管理页的旧 MySQL 链路仅作为兼容入口保留。Game、完整规则体系、所有既有看板和潜客 ADS 仍在迁移中，不能视为 MySQL 功能已经全部下线。
+2.0.0-2（Alpha 2）把 DuckDB 提升为默认且隔离的产品运行时：默认启动只读取 `workspace.duckdb`，旧 MySQL 批次不会进入 DuckDB 上下文；MySQL 仅在用户显式切换兼容模式后加载。TCP/视频 CSV → 分区 Parquet → Cable/FTTH 小时聚合 → Access 汇总已可在 DuckDB 页面查询。Game、完整规则体系、质差分析与潜客 ADS 仍在迁移中，未迁移页面会明确不可用且不会回退 MySQL。
 
 详细设计见：`docs/design/current-core-design.md`。
 
@@ -46,7 +46,14 @@ CSV 文件选择
 6. Phase 6：CRM、FTTH 覆盖、可触达状态融合，生成最终营销动作。
 7. Phase 7：导出、handoff、changelog、交付检查入口。
 
-## 4. 2.0.0-1（Alpha 1）DuckDB + Parquet 本地运行时预览
+## 4. 2.0.0-2（Alpha 2）DuckDB 默认运行时
+
+- 默认运行时为 DuckDB，每次启动都会回到 DuckDB；MySQL 兼容模式仅当前会话有效。新版使用独立的 `context.v2` 本地上下文，不继承 `context.v1` 中的 MySQL 批次和分析运行。
+- DuckDB 批次、运行、Cable/FTTH 汇总和小时聚合均从当前 `workspace.duckdb` 查询。
+- 默认页面不挂载 MySQL 分析、导入或诊断组件；只有用户显式选择“MySQL（兼容）”才允许访问旧链路。
+- 质差分析、潜客机会和完整规则配置尚未迁移时显示明确边界，不使用旧 MySQL 结果填充页面。
+
+## 4.1 2.0.0-1（Alpha 1）DuckDB + Parquet 本地运行时预览
 
 - 新增 `workspace.duckdb` 本地工作区，无需 MySQL 连接即可初始化和查看状态。
 - 新增 TCP/视频 CSV 纵切：计算 SHA-256、生成 source manifest、写入按日期分区的 Parquet，并聚合日期 × 小时 × 接入类型结果。
@@ -81,7 +88,7 @@ cargo run --release --example duckdb_poc_benchmark -- <workspace-dir> <tcp-csv> 
 - 潜客列表与 CSV 导出按可空类型解码数值和文本；平均下载速率新增 24 小时趋势，缺失说明不再显示 `undefined`。
 - 本版本不会自动启动恢复任务。现有 RAW/CLEAN 可复用；正式恢复仍须由操作者在数据作业中心显式发起并完成结果核验。
 
-## 4.1 1.0.71 潜客明细导出
+## 4.2 1.0.71 潜客明细导出
 
 - 潜客列表新增独立 CSV 导出，不再混入图表 PDF。
 - 导出继承当前机会类型和已执行的 IP / 主 App 搜索条件，并输出筛选后的全部候选，不受页面分页限制。

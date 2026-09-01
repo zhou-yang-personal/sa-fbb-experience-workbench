@@ -1,5 +1,28 @@
 # CHANGELOG-dev
 
+## 2.0.0-2 - 2026-09-01
+
+### Fixed
+
+- Promoted DuckDB from an isolated preview panel to the default application runtime.
+- Stopped restoring legacy MySQL batch/run identifiers by moving the product context to `sa-fbb-experience-workbench.context.v2`.
+- Added an explicit DuckDB/MySQL compatibility switch; changing engines clears the active batch, run and analysis filters. Compatibility mode is session-only, so every application start returns to DuckDB.
+- Prevented default DuckDB routes from mounting MySQL-backed analysis, import, rules and diagnostics components.
+
+### Added
+
+- Added DuckDB-native list queries for batches and runs plus Access summary and hourly results.
+- Added a DuckDB analysis surface for batch selection, Cable/FTTH metrics, comparison bars and bounded hourly evidence.
+- Added explicit unavailable states for quality, opportunity and full rule features that have not yet migrated, with no MySQL fallback.
+
+### Verification
+
+- `npm run check`: passed on 2026-09-01.
+- `npm run build`: passed on 2026-09-01.
+- `cargo test --release --no-fail-fast`: 74 passed, 0 failed on 2026-09-01; existing warnings remain.
+- DuckDB-focused release tests: 5 passed, including empty-workspace isolation, end-to-end CSV publication and native published-result reads.
+- No production MySQL query, ETL, aggregation or customer-data operation was executed.
+
 ## 2.0.0-1 (Alpha 1) - 2026-08-31
 
 ### Architecture preview

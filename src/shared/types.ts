@@ -4,6 +4,7 @@ export type DashboardChartKind = 'bar' | 'radar';
 export type ExecutionLogStatus = 'success' | 'failure';
 export type ActionRunStatus = 'idle' | 'running' | 'success' | 'failure';
 export type PipelineStepStatus = 'not_started' | 'running' | 'success' | 'warning' | 'failed';
+export type RuntimeEngine = 'duckdb' | 'mysql_compat';
 
 export interface MySqlSettings {
   host: string;
@@ -51,6 +52,49 @@ export interface DuckDbPocResult {
   database_path: string;
   parquet_path: string;
   metrics: MetricCard[];
+}
+
+export interface DuckDbBatchListItem {
+  import_batch_id: string;
+  batch_display_name?: string;
+  data_type: string;
+  source_file_name: string;
+  source_rows: number;
+  clean_rows: number;
+  status: string;
+  message?: string;
+  created_at: string;
+  latest_analysis_run_id?: string;
+  latest_run_status?: string;
+}
+
+export interface DuckDbAnalysisRunItem {
+  analysis_run_id: string;
+  import_batch_id: string;
+  run_type: string;
+  implementation_version: string;
+  status: string;
+  current_step?: string;
+  message?: string;
+  started_at: string;
+  finished_at?: string;
+}
+
+export interface DuckDbAccessSummaryRow {
+  access_type: string;
+  active_users: number;
+  observation_rows: number;
+  downloaded_gb?: number;
+  avg_effective_download_mbps?: number;
+  avg_rtt_ms?: number;
+  avg_user_loss_pct?: number;
+  avg_network_loss_pct?: number;
+  avg_vmos?: number;
+}
+
+export interface DuckDbAccessHourlyRow extends DuckDbAccessSummaryRow {
+  stat_date: string;
+  hour_of_day: number;
 }
 
 export interface CommandAck {

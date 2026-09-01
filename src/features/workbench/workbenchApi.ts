@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AccessIpRangeRow, AccessRuleInput, AccessRulePreviewResult, AccessRuleSetRow, AccessRuleValidationResult, AnalysisRunOption, AppExperienceProfileRow, BatchListItem, BatchTableRegistryRow, CommandAck, CsvProbeResult, DashboardOverview, DecisionRuleProfileRow, DuckDbPocRequest, DuckDbPocResult, DuckDbWorkspaceSettings, DuckDbWorkspaceStatus, ExperiencePolicyRow, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, ImportPipelineLogRow, ImportPipelineStartResult, ImportPipelineStatus, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
+import type { AccessIpRangeRow, AccessRuleInput, AccessRulePreviewResult, AccessRuleSetRow, AccessRuleValidationResult, AnalysisRunOption, AppExperienceProfileRow, BatchListItem, BatchTableRegistryRow, CommandAck, CsvProbeResult, DashboardOverview, DecisionRuleProfileRow, DuckDbAccessHourlyRow, DuckDbAccessSummaryRow, DuckDbAnalysisRunItem, DuckDbBatchListItem, DuckDbPocRequest, DuckDbPocResult, DuckDbWorkspaceSettings, DuckDbWorkspaceStatus, ExperiencePolicyRow, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, ImportPipelineLogRow, ImportPipelineStartResult, ImportPipelineStatus, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
 
 function normalizeFilter(value?: string) {
   const normalized = value?.trim();
@@ -25,6 +25,14 @@ export const workbenchApi = {
     invoke<DuckDbWorkspaceStatus>('duckdb_workspace_status', { settings }),
   analyzeCsvWithDuckDb: (req: DuckDbPocRequest) =>
     invoke<DuckDbPocResult>('duckdb_poc_analyze_csv', { req }),
+  listDuckDbBatches: (settings: DuckDbWorkspaceSettings) =>
+    invoke<DuckDbBatchListItem[]>('duckdb_list_batches', { settings }),
+  listDuckDbAnalysisRuns: (settings: DuckDbWorkspaceSettings, importBatchId: string) =>
+    invoke<DuckDbAnalysisRunItem[]>('duckdb_list_analysis_runs', { settings, importBatchId }),
+  duckDbAccessSummary: (settings: DuckDbWorkspaceSettings, importBatchId: string, analysisRunId: string) =>
+    invoke<DuckDbAccessSummaryRow[]>('duckdb_get_access_summary', { settings, importBatchId, analysisRunId }),
+  duckDbAccessHourly: (settings: DuckDbWorkspaceSettings, importBatchId: string, analysisRunId: string) =>
+    invoke<DuckDbAccessHourlyRow[]>('duckdb_get_access_hourly', { settings, importBatchId, analysisRunId }),
   testDb: (settings: MySqlSettings) => invoke<CommandAck>('db_test_connection', { settings }),
   initDb: (settings: MySqlSettings) => invoke<CommandAck>('db_initialize', { settings }),
   accessRuleSets: (settings: MySqlSettings) => invoke<AccessRuleSetRow[]>('access_rule_list_sets', { settings }),

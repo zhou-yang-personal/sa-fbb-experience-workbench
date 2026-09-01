@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
-import type { ActionState, AnalysisContext, AnalysisContextKey, DashboardChartGroup, DashboardOverview, EtlJobStepRow, ExecutionLogEntry, FinalLeadUserRow, ImportBatchResult, ImportDataType, LeadUserRow, MetricCard, MySqlSettings } from '../../shared/types';
+import type { ActionState, AnalysisContext, AnalysisContextKey, DashboardChartGroup, DashboardOverview, EtlJobStepRow, ExecutionLogEntry, FinalLeadUserRow, ImportBatchResult, ImportDataType, LeadUserRow, MetricCard, MySqlSettings, RuntimeEngine } from '../../shared/types';
 import type { UiLanguage } from '../../shared/i18n';
 import { workbenchApi } from './workbenchApi';
 
 const defaultSettings: MySqlSettings = { host: '127.0.0.1', port: 3306, database: 'sa_vbp', user: 'root', secret: '123456', local_infile: true };
-const PERSISTENCE_KEY = 'sa-fbb-experience-workbench.context.v1';
+const PERSISTENCE_KEY = 'sa-fbb-experience-workbench.context.v2';
 const dataTypes: ImportDataType[] = ['tcp', 'game', 'crm', 'coverage', 'reachability'];
 const importModes = ['load_data', 'streaming_insert'] as const;
 
 type ImportMode = typeof importModes[number];
 
 type PersistedWorkbenchContext = {
+  contextEngine?: unknown;
   settings?: Partial<Omit<MySqlSettings, 'secret'>>;
   dataType?: unknown;
   importMode?: unknown;
@@ -25,6 +26,8 @@ type PersistedWorkbenchContext = {
 };
 
 export type WorkbenchController = {
+  runtimeEngine: RuntimeEngine;
+  setRuntimeEngine: (engine: RuntimeEngine) => void;
   settings: MySqlSettings;
   setSettings: Dispatch<SetStateAction<MySqlSettings>>;
   dataType: ImportDataType;
@@ -169,19 +172,21 @@ function safeSettings(value: PersistedWorkbenchContext['settings']): MySqlSettin
 }
 
 const persisted = readPersistedContext();
+const persistedDuckDbContext = persisted.contextEngine === 'duckdb';
 
 export function useWorkbenchController(): WorkbenchController {
+  const [runtimeEngineState, setRuntimeEngineState] = useState<RuntimeEngine>('duckdb');
   const [settings, setSettings] = useState<MySqlSettings>(safeSettings(persisted.settings));
   const [dataType, setDataType] = useState<ImportDataType>(safeDataType(persisted.dataType));
   const [importMode, setImportMode] = useState<ImportMode>(safeImportMode(persisted.importMode));
   const [filePath, setFilePath] = useState(safeString(persisted.filePath));
-  const [importBatchId, setImportBatchId] = useState(safeString(persisted.importBatchId));
-  const [batchDisplayName, setBatchDisplayName] = useState(safeString(persisted.batchDisplayName));
-  const [analysisRunId, setAnalysisRunId] = useState(safeString(persisted.analysisRunId, 'RUN_MANUAL_001'));
+  const [importBatchId, setImportBatchId] = useState(persistedDuckDbContext ? safeString(persisted.importBatchId) : '');
+  const [batchDisplayName, setBatchDisplayName] = useState(persistedDuckDbContext ? safeString(persisted.batchDisplayName) : '');
+  const [analysisRunId, setAnalysisRunId] = useState(persistedDuckDbContext ? safeString(persisted.analysisRunId) : '');
   const [outputPath, setOutputPath] = useState(safeString(persisted.outputPath, 'leads_export.csv'));
   const [exportFinalActions, setExportFinalActions] = useState<string[]>(safeStringArray(persisted.exportFinalActions));
   const [language, setLanguage] = useState<UiLanguage>(safeLanguage(persisted.language));
-  const [analysisContext, setAnalysisContext] = useState<AnalysisContext>(safeAnalysisContext(persisted.analysisContext));
+  const [analysisContext, setAnalysisContext] = useState<AnalysisContext>(persistedDuckDbContext ? safeAnalysisContext(persisted.analysisContext) : {});
   const [analysisContextHistory, setAnalysisContextHistory] = useState<AnalysisContext[]>([]);
   const [log, setLog] = useState<ExecutionLogEntry[]>([]);
   const [batch, setBatch] = useState<ImportBatchResult | null>(null);
@@ -199,8 +204,22 @@ export function useWorkbenchController(): WorkbenchController {
 
   useEffect(() => {
     const { secret: _secret, ...persistableSettings } = settings;
-    writePersistedContext({ settings: persistableSettings, dataType, importMode, filePath, importBatchId, batchDisplayName, analysisRunId, outputPath, exportFinalActions, language, analysisContext });
-  }, [settings, dataType, importMode, filePath, importBatchId, batchDisplayName, analysisRunId, outputPath, exportFinalActions, language, analysisContext]);
+    writePersistedContext({ contextEngine: runtimeEngineState, settings: persistableSettings, dataType, importMode, filePath, importBatchId, batchDisplayName, analysisRunId, outputPath, exportFinalActions, language, analysisContext });
+  }, [runtimeEngineState, settings, dataType, importMode, filePath, importBatchId, batchDisplayName, analysisRunId, outputPath, exportFinalActions, language, analysisContext]);
+
+  function setRuntimeEngine(engine: RuntimeEngine) {
+    if (engine === runtimeEngineState) return;
+    setRuntimeEngineState(engine);
+    setImportBatchId('');
+    setBatchDisplayName('');
+    setAnalysisRunId('');
+    setBatch(null);
+    setAnalysisContext({});
+    setAnalysisContextHistory([]);
+    setLastActionMessage(engine === 'duckdb'
+      ? '已切换到 DuckDB 本地运行时；不会读取 MySQL 批次。'
+      : '已显式进入 MySQL 兼容模式。');
+  }
 
   function updateAnalysisContext(next: AnalysisContext) {
     setAnalysisContextHistory((history) => [...history, analysisContext].slice(-30));
@@ -242,13 +261,14 @@ export function useWorkbenchController(): WorkbenchController {
   function clearPersistedContext() {
     const startedAt = new Date();
     removePersistedContext();
+    setRuntimeEngineState('duckdb');
     setSettings(defaultSettings);
     setDataType('tcp');
     setImportMode('load_data');
     setFilePath('');
     setImportBatchId('');
     setBatchDisplayName('');
-    setAnalysisRunId('RUN_MANUAL_001');
+    setAnalysisRunId('');
     setOutputPath('leads_export.csv');
     setExportFinalActions([]);
     setLanguage('zh-CN');
@@ -335,5 +355,5 @@ export function useWorkbenchController(): WorkbenchController {
     return null;
   }
 
-  return { settings, setSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, batchDisplayName, setBatchDisplayName, analysisRunId, setAnalysisRunId, outputPath, setOutputPath, exportFinalActions, setExportFinalActions, log, batch, setBatch, allMetrics, dashboardCharts, setDashboardCharts, etlSteps, setEtlSteps, leads, setLeads, finalLeads, setFinalLeads, effectiveSettings, actionStates, currentAction, lastActionMessage, runAction, loadMetrics, createBatch, clearPersistedContext, setOverview, language, setLanguage, analysisContext, analysisContextHistory, applyAnalysisContext, removeAnalysisContext, clearAnalysisContext, backAnalysisContext };
+  return { runtimeEngine: runtimeEngineState, setRuntimeEngine, settings, setSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, batchDisplayName, setBatchDisplayName, analysisRunId, setAnalysisRunId, outputPath, setOutputPath, exportFinalActions, setExportFinalActions, log, batch, setBatch, allMetrics, dashboardCharts, setDashboardCharts, etlSteps, setEtlSteps, leads, setLeads, finalLeads, setFinalLeads, effectiveSettings, actionStates, currentAction, lastActionMessage, runAction, loadMetrics, createBatch, clearPersistedContext, setOverview, language, setLanguage, analysisContext, analysisContextHistory, applyAnalysisContext, removeAnalysisContext, clearAnalysisContext, backAnalysisContext };
 }

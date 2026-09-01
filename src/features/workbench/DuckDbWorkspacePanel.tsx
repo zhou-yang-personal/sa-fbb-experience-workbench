@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { DuckDbPocResult, DuckDbWorkspaceStatus } from '../../shared/types';
 import { workbenchApi } from './workbenchApi';
+import type { WorkbenchController } from './useWorkbenchController';
 
 const WORKSPACE_STORAGE_KEY = 'sa-fbb-duckdb-workspace';
 
@@ -13,7 +14,7 @@ function formatInteger(value: number) {
   return new Intl.NumberFormat('zh-CN').format(value);
 }
 
-export function DuckDbWorkspacePanel() {
+export function DuckDbWorkspacePanel({ c, onOpenAnalysis }: { c?: WorkbenchController; onOpenAnalysis?: () => void }) {
   const [workspaceDir, setWorkspaceDir] = useState(defaultWorkspace);
   const [filePath, setFilePath] = useState('');
   const [batchName, setBatchName] = useState('DuckDB 性能验证');
@@ -45,7 +46,18 @@ export function DuckDbWorkspacePanel() {
 
   async function chooseWorkspace() {
     const selected = await open({ directory: true, multiple: false, title: '选择 DuckDB 工作区目录' });
-    if (typeof selected === 'string') setWorkspaceDir(selected);
+    if (typeof selected === 'string') updateWorkspace(selected);
+  }
+
+  function updateWorkspace(next: string) {
+    if (next !== workspaceDir) {
+      c?.setImportBatchId('');
+      c?.setAnalysisRunId('');
+      c?.setBatchDisplayName('');
+      setStatus(undefined);
+      setResult(undefined);
+    }
+    setWorkspaceDir(next);
   }
 
   async function chooseCsv() {
@@ -89,6 +101,9 @@ export function DuckDbWorkspacePanel() {
         ftth_ranges: normalizedRanges,
       });
       setResult(next);
+      c?.setImportBatchId(next.import_batch_id);
+      c?.setAnalysisRunId(next.analysis_run_id);
+      c?.setBatchDisplayName(batchName.trim() || 'DuckDB 批次');
       const nextStatus = await workbenchApi.duckDbWorkspaceStatus({ workspace_dir: workspaceDir.trim() });
       setStatus(nextStatus);
       setMessage(`分析完成，耗时 ${(next.elapsed_ms / 1000).toFixed(1)} 秒。`);
@@ -103,14 +118,14 @@ export function DuckDbWorkspacePanel() {
     <section className="panel form-panel step-card duckdb-workspace-panel">
       <div className="step-card-head">
         <div>
-          <h2>DuckDB + Parquet 本地分析（2.0 预览）</h2>
+          <h2>DuckDB + Parquet 本地数据中心</h2>
           <p className="hero-text">CSV 只作为源证据；清洗明细写入分区 Parquet，小时聚合和发布状态保存在单个 workspace.duckdb。无需安装 MySQL。</p>
         </div>
-        <span className="step-badge">推荐</span>
+        <span className="step-badge">默认运行时</span>
       </div>
 
       <div className="form-grid">
-        <input value={workspaceDir} onChange={(event) => setWorkspaceDir(event.target.value)} placeholder="工作区目录" />
+        <input value={workspaceDir} onChange={(event) => updateWorkspace(event.target.value)} placeholder="工作区目录" />
         <button type="button" onClick={chooseWorkspace} disabled={busy}>选择工作区</button>
         <input value={filePath} onChange={(event) => setFilePath(event.target.value)} placeholder="TCP / 视频 CSV 路径" />
         <button type="button" onClick={chooseCsv} disabled={busy}>选择 CSV</button>
@@ -127,7 +142,8 @@ export function DuckDbWorkspacePanel() {
       </label>
       <div className="primary-action-row">
         <button type="button" onClick={initializeWorkspace} disabled={busy}>初始化 / 检查工作区</button>
-        <button type="button" className="primary" onClick={analyzeCsv} disabled={busy}>{busy ? '处理中…' : '运行 DuckDB 分析 POC'}</button>
+        <button type="button" className="action-button-primary" onClick={analyzeCsv} disabled={busy}>{busy ? '处理中…' : '运行 DuckDB 本地分析'}</button>
+        {result && onOpenAnalysis && <button type="button" onClick={onOpenAnalysis}>查看分析结果</button>}
       </div>
 
       {message && <p className="muted-row">{message}</p>}
