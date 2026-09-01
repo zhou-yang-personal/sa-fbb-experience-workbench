@@ -77,7 +77,7 @@
 
 ## B6. 本项目版本检查
 
-- [ ] 当前版本已确认：`2.0.0-2`（Alpha 2；DuckDB 为默认隔离运行时，使用 MSI 兼容的数字型预发布标识）。
+- [ ] 当前版本已确认：`2.0.0-3`（Alpha 3；CSV 单入口与应用自动管理的 DuckDB 本地存储，使用 MSI 兼容的数字型预发布标识）。
 - [ ] 前端版本文件已同步：`package.json`。
 - [ ] Tauri 版本文件已同步：`src-tauri/tauri.conf.json`。
 - [ ] Rust package 版本文件已同步：`src-tauri/Cargo.toml`。

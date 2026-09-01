@@ -5,7 +5,7 @@ SA FBB Experience Workbench 是一个本地 EXE 数据分析工作台，用于�
 当前版本：
 
 ```text
-2.0.0-2
+2.0.0-3
 ```
 
 ## 1. 核心目标
@@ -30,7 +30,7 @@ CSV 文件选择
 → 用户名单 / 汇总结果导出
 ```
 
-2.0.0-2（Alpha 2）把 DuckDB 提升为默认且隔离的产品运行时：默认启动只读取 `workspace.duckdb`，旧 MySQL 批次不会进入 DuckDB 上下文；MySQL 仅在用户显式切换兼容模式后加载。TCP/视频 CSV → 分区 Parquet → Cable/FTTH 小时聚合 → Access 汇总已可在 DuckDB 页面查询。Game、完整规则体系、质差分析与潜客 ADS 仍在迁移中，未迁移页面会明确不可用且不会回退 MySQL。
+2.0.0-3（Alpha 3）把普通入口收敛为“选择 CSV → 开始本地分析”：程序在系统应用数据目录自动管理 DuckDB、Parquet、临时文件和历史批次，不再要求操作者选择或初始化数据库目录。旧 MySQL 批次不会进入 DuckDB 上下文；MySQL 仅在用户显式切换兼容模式后加载。TCP/视频 CSV → 分区 Parquet → Cable/FTTH 小时聚合 → Access 汇总已可在 DuckDB 页面查询。Game、完整规则体系、质差分析与潜客 ADS 仍在迁移中，未迁移页面会明确不可用且不会回退 MySQL。
 
 详细设计见：`docs/design/current-core-design.md`。
 
@@ -46,10 +46,13 @@ CSV 文件选择
 6. Phase 6：CRM、FTTH 覆盖、可触达状态融合，生成最终营销动作。
 7. Phase 7：导出、handoff、changelog、交付检查入口。
 
-## 4. 2.0.0-2（Alpha 2）DuckDB 默认运行时
+## 4. 2.0.0-3（Alpha 3）CSV 单入口与自动本地存储
 
-- 默认运行时为 DuckDB，每次启动都会回到 DuckDB；MySQL 兼容模式仅当前会话有效。新版使用独立的 `context.v2` 本地上下文，不继承 `context.v1` 中的 MySQL 批次和分析运行。
-- DuckDB 批次、运行、Cable/FTTH 汇总和小时聚合均从当前 `workspace.duckdb` 查询。
+- 默认运行时为 DuckDB，每次启动都会回到 DuckDB；MySQL 兼容模式仅当前会话有效。新版使用独立的 `context.v3` 本地上下文，不继承旧上下文中的数据库目录或 MySQL 批次，也不会自动恢复上次选择的 CSV。
+- 普通用户只选择 CSV 并点击“开始本地分析”；批次名称自动取文件名，Cable/FTTH 规则折叠在高级选项。
+- 启动时只解析系统应用数据目录，不打开 DuckDB；完成本次分析或用户明确点击“刷新历史分析”后，才授权当前会话读取本地历史结果。
+- DuckDB、Parquet、临时文件、批次和运行历史统一放在 Tauri 提供的应用本地数据目录，主界面不要求选择或初始化工作区。
+- DuckDB 批次、运行、Cable/FTTH 汇总和小时聚合均从程序自动管理的本地数据库查询。
 - 默认页面不挂载 MySQL 分析、导入或诊断组件；只有用户显式选择“MySQL（兼容）”才允许访问旧链路。
 - 质差分析、潜客机会和完整规则配置尚未迁移时显示明确边界，不使用旧 MySQL 结果填充页面。
 

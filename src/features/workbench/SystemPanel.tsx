@@ -15,9 +15,9 @@ export function SystemPanel({ c }: { c: WorkbenchController }) {
     <section className="workbench-section-stack system-workspace">
       <article className="panel form-panel">
         <h2>系统管理</h2>
-        <p className="hero-text">管理本地 DuckDB/Parquet 工作区、数据可用性、后台任务和诊断日志；MySQL 仅作为迁移期兼容入口。</p>
+        <p className="hero-text">管理程序自动保存的 DuckDB/Parquet 数据、后台任务和诊断日志；MySQL 仅作为迁移期兼容入口。</p>
       </article>
-      <DuckDbWorkspacePanel />
+      <DuckDbWorkspacePanel c={c} />
       <details className="advanced-actions">
         <summary>兼容模式：旧版 MySQL 工作流</summary>
         <ConnectionPanel settings={c.settings} setSettings={c.setSettings} runAction={c.runAction} clearPersistedContext={c.clearPersistedContext} actionStates={c.actionStates} />

@@ -4,7 +4,7 @@ import type { UiLanguage } from '../../shared/i18n';
 import { workbenchApi } from './workbenchApi';
 
 const defaultSettings: MySqlSettings = { host: '127.0.0.1', port: 3306, database: 'sa_vbp', user: 'root', secret: '123456', local_infile: true };
-const PERSISTENCE_KEY = 'sa-fbb-experience-workbench.context.v2';
+const PERSISTENCE_KEY = 'sa-fbb-experience-workbench.context.v3';
 const dataTypes: ImportDataType[] = ['tcp', 'game', 'crm', 'coverage', 'reachability'];
 const importModes = ['load_data', 'streaming_insert'] as const;
 
@@ -28,6 +28,10 @@ type PersistedWorkbenchContext = {
 export type WorkbenchController = {
   runtimeEngine: RuntimeEngine;
   setRuntimeEngine: (engine: RuntimeEngine) => void;
+  duckDbWorkspaceDir: string;
+  duckDbWorkspaceError: string;
+  duckDbSessionAuthorized: boolean;
+  authorizeDuckDbSession: () => void;
   settings: MySqlSettings;
   setSettings: Dispatch<SetStateAction<MySqlSettings>>;
   dataType: ImportDataType;
@@ -176,10 +180,13 @@ const persistedDuckDbContext = persisted.contextEngine === 'duckdb';
 
 export function useWorkbenchController(): WorkbenchController {
   const [runtimeEngineState, setRuntimeEngineState] = useState<RuntimeEngine>('duckdb');
+  const [duckDbWorkspaceDir, setDuckDbWorkspaceDir] = useState('');
+  const [duckDbWorkspaceError, setDuckDbWorkspaceError] = useState('');
+  const [duckDbSessionAuthorized, setDuckDbSessionAuthorized] = useState(false);
   const [settings, setSettings] = useState<MySqlSettings>(safeSettings(persisted.settings));
   const [dataType, setDataType] = useState<ImportDataType>(safeDataType(persisted.dataType));
   const [importMode, setImportMode] = useState<ImportMode>(safeImportMode(persisted.importMode));
-  const [filePath, setFilePath] = useState(safeString(persisted.filePath));
+  const [filePath, setFilePath] = useState('');
   const [importBatchId, setImportBatchId] = useState(persistedDuckDbContext ? safeString(persisted.importBatchId) : '');
   const [batchDisplayName, setBatchDisplayName] = useState(persistedDuckDbContext ? safeString(persisted.batchDisplayName) : '');
   const [analysisRunId, setAnalysisRunId] = useState(persistedDuckDbContext ? safeString(persisted.analysisRunId) : '');
@@ -203,6 +210,22 @@ export function useWorkbenchController(): WorkbenchController {
   const allMetrics = useMemo(() => overview?.metrics ?? metrics, [overview, metrics]);
 
   useEffect(() => {
+    let cancelled = false;
+    workbenchApi.defaultDuckDbWorkspace()
+      .then((next) => {
+        if (cancelled) return;
+        setDuckDbWorkspaceDir(next.workspace_dir);
+        setDuckDbWorkspaceError('');
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setDuckDbWorkspaceDir('');
+        setDuckDbWorkspaceError(error instanceof Error ? error.message : String(error));
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     const { secret: _secret, ...persistableSettings } = settings;
     writePersistedContext({ contextEngine: runtimeEngineState, settings: persistableSettings, dataType, importMode, filePath, importBatchId, batchDisplayName, analysisRunId, outputPath, exportFinalActions, language, analysisContext });
   }, [runtimeEngineState, settings, dataType, importMode, filePath, importBatchId, batchDisplayName, analysisRunId, outputPath, exportFinalActions, language, analysisContext]);
@@ -214,6 +237,7 @@ export function useWorkbenchController(): WorkbenchController {
     setBatchDisplayName('');
     setAnalysisRunId('');
     setBatch(null);
+    setDuckDbSessionAuthorized(false);
     setAnalysisContext({});
     setAnalysisContextHistory([]);
     setLastActionMessage(engine === 'duckdb'
@@ -275,6 +299,7 @@ export function useWorkbenchController(): WorkbenchController {
     setAnalysisContext({});
     setAnalysisContextHistory([]);
     setBatch(null);
+    setDuckDbSessionAuthorized(false);
     setMetrics([]);
     setOverview(null);
     setDashboardCharts([]);
@@ -355,5 +380,5 @@ export function useWorkbenchController(): WorkbenchController {
     return null;
   }
 
-  return { runtimeEngine: runtimeEngineState, setRuntimeEngine, settings, setSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, batchDisplayName, setBatchDisplayName, analysisRunId, setAnalysisRunId, outputPath, setOutputPath, exportFinalActions, setExportFinalActions, log, batch, setBatch, allMetrics, dashboardCharts, setDashboardCharts, etlSteps, setEtlSteps, leads, setLeads, finalLeads, setFinalLeads, effectiveSettings, actionStates, currentAction, lastActionMessage, runAction, loadMetrics, createBatch, clearPersistedContext, setOverview, language, setLanguage, analysisContext, analysisContextHistory, applyAnalysisContext, removeAnalysisContext, clearAnalysisContext, backAnalysisContext };
+  return { runtimeEngine: runtimeEngineState, setRuntimeEngine, duckDbWorkspaceDir, duckDbWorkspaceError, duckDbSessionAuthorized, authorizeDuckDbSession: () => setDuckDbSessionAuthorized(true), settings, setSettings, dataType, setDataType, importMode, setImportMode, filePath, setFilePath, importBatchId, setImportBatchId, batchDisplayName, setBatchDisplayName, analysisRunId, setAnalysisRunId, outputPath, setOutputPath, exportFinalActions, setExportFinalActions, log, batch, setBatch, allMetrics, dashboardCharts, setDashboardCharts, etlSteps, setEtlSteps, leads, setLeads, finalLeads, setFinalLeads, effectiveSettings, actionStates, currentAction, lastActionMessage, runAction, loadMetrics, createBatch, clearPersistedContext, setOverview, language, setLanguage, analysisContext, analysisContextHistory, applyAnalysisContext, removeAnalysisContext, clearAnalysisContext, backAnalysisContext };
 }

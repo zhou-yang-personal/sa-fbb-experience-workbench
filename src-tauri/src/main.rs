@@ -86,6 +86,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             dashboard_commands::db_test_connection,
             dashboard_commands::db_initialize,
+            duckdb_workspace::duckdb_default_workspace,
             duckdb_workspace::duckdb_workspace_initialize,
             duckdb_workspace::duckdb_workspace_status,
             duckdb_workspace::duckdb_poc_analyze_csv,

@@ -3,7 +3,7 @@
 ## Current version
 
 ```text
-2.0.0-2
+2.0.0-3
 ```
 
 ## Source-of-truth branch
@@ -19,6 +19,16 @@ The default 2.0 runtime is local DuckDB + Parquet; the 1.x MySQL path is mounted
 ```text
 CSV + SHA-256 manifest → DuckDB streaming transform → partitioned Parquet DWD → DuckDB DWS/ADS → atomic publish → dashboard/export
 ```
+
+## 2.0.0-3 (Alpha 3) update
+
+- Replaced the workspace-directory-first UI with a single CSV picker and an explicit “start local analysis” action.
+- Resolve the DuckDB root from Tauri's application-local-data directory; the app now owns `workspace.duckdb`, Parquet datasets, exports and temporary files without a user-selected database path.
+- Derive the batch display name from the selected source file. Cable/FTTH fallback and IP ranges remain available under advanced options.
+- Moved database path and runtime counters into collapsed diagnostics; ordinary pages refer to local analysis history rather than a technical workspace.
+- Advanced the isolated browser context to `context.v3`, so stale file/database context from the transitional UI is not restored.
+- Added a session-only read gate: startup resolves the managed directory but does not open DuckDB, restore the previous CSV path or enumerate history until the user completes an analysis or explicitly refreshes history.
+- `npm run check`, `npm run build` and all 75 release Rust tests passed. The new test verifies that managed runtime storage is placed beneath the operating system application-local-data root.
 
 ## 2.0.0-2 (Alpha 2) update
 

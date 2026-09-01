@@ -10,11 +10,12 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
+use tauri::Manager;
 use uuid::Uuid;
 
 static WORKSPACE_WRITER: OnceLock<Mutex<()>> = OnceLock::new();
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DuckDbWorkspaceSettings {
     pub workspace_dir: String,
 }
@@ -176,6 +177,23 @@ impl WorkspacePaths {
     }
 }
 
+fn default_workspace_root(local_app_data: &Path) -> PathBuf {
+    local_app_data.join("duckdb-runtime")
+}
+
+#[tauri::command]
+pub fn duckdb_default_workspace(app: tauri::AppHandle) -> Result<DuckDbWorkspaceSettings, String> {
+    let local_app_data = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|err| format!("无法确定应用本地数据目录: {err}"))?;
+    Ok(DuckDbWorkspaceSettings {
+        workspace_dir: default_workspace_root(&local_app_data)
+            .display()
+            .to_string(),
+    })
+}
+
 fn open_workspace(
     settings: &DuckDbWorkspaceSettings,
 ) -> Result<(WorkspacePaths, Connection), String> {
@@ -208,9 +226,9 @@ fn ensure_schema(connection: &Connection) -> Result<(), String> {
               updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
             );
             INSERT INTO meta_workspace
-            SELECT 'LOCAL', '2.0.0-2', current_timestamp, current_timestamp
+            SELECT 'LOCAL', '2.0.0-3', current_timestamp, current_timestamp
             WHERE NOT EXISTS (SELECT 1 FROM meta_workspace WHERE workspace_id = 'LOCAL');
-            UPDATE meta_workspace SET schema_version = '2.0.0-2', updated_at = current_timestamp
+            UPDATE meta_workspace SET schema_version = '2.0.0-3', updated_at = current_timestamp
             WHERE workspace_id = 'LOCAL';
 
             CREATE TABLE IF NOT EXISTS meta_import_batch (
@@ -1455,7 +1473,7 @@ fn fmt_optional(value: Option<f64>, precision: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        analyze_csv_sync, duckdb_get_access_summary, duckdb_list_batches,
+        analyze_csv_sync, default_workspace_root, duckdb_get_access_summary, duckdb_list_batches,
         duckdb_poc_analyze_csv_blocking, open_workspace, parse_ipv4_range, prepare_run,
         resolve_column, DuckDbPocRequest, DuckDbWorkspaceSettings,
     };
@@ -1483,6 +1501,15 @@ mod tests {
         assert_eq!(
             parse_ipv4_range("10.0.0.1-10.0.0.2").unwrap(),
             (167_772_161, 167_772_162)
+        );
+    }
+
+    #[test]
+    fn places_managed_workspace_under_local_app_data() {
+        let local_data = std::path::Path::new("local-app-data");
+        assert_eq!(
+            default_workspace_root(local_data),
+            local_data.join("duckdb-runtime")
         );
     }
 

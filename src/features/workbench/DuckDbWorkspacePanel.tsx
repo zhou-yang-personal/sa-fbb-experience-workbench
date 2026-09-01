@@ -4,26 +4,27 @@ import type { DuckDbPocResult, DuckDbWorkspaceStatus } from '../../shared/types'
 import { workbenchApi } from './workbenchApi';
 import type { WorkbenchController } from './useWorkbenchController';
 
-const WORKSPACE_STORAGE_KEY = 'sa-fbb-duckdb-workspace';
-
-function defaultWorkspace() {
-  return localStorage.getItem(WORKSPACE_STORAGE_KEY) || '';
-}
-
 function formatInteger(value: number) {
   return new Intl.NumberFormat('zh-CN').format(value);
 }
 
-export function DuckDbWorkspacePanel({ c, onOpenAnalysis }: { c?: WorkbenchController; onOpenAnalysis?: () => void }) {
-  const [workspaceDir, setWorkspaceDir] = useState(defaultWorkspace);
-  const [filePath, setFilePath] = useState('');
-  const [batchName, setBatchName] = useState('DuckDB 性能验证');
+function fileName(path: string) {
+  return path.split(/[\\/]/).filter(Boolean).pop() || '';
+}
+
+function batchNameFromPath(path: string) {
+  return fileName(path).replace(/\.(csv|txt)$/i, '') || '本地 CSV 分析';
+}
+
+export function DuckDbWorkspacePanel({ c, onOpenAnalysis }: { c: WorkbenchController; onOpenAnalysis?: () => void }) {
   const [defaultAccessType, setDefaultAccessType] = useState<'CABLE' | 'FTTH' | 'OTHER'>('CABLE');
   const [ftthRanges, setFtthRanges] = useState('');
   const [status, setStatus] = useState<DuckDbWorkspaceStatus>();
   const [result, setResult] = useState<DuckDbPocResult>();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const workspaceDir = c.duckDbWorkspaceDir;
+  const filePath = c.filePath;
 
   const normalizedRanges = useMemo(() => ftthRanges
     .split(/[\n,;]/)
@@ -31,7 +32,10 @@ export function DuckDbWorkspacePanel({ c, onOpenAnalysis }: { c?: WorkbenchContr
     .filter(Boolean), [ftthRanges]);
 
   useEffect(() => {
-    if (workspaceDir) localStorage.setItem(WORKSPACE_STORAGE_KEY, workspaceDir);
+    if (!workspaceDir) return;
+    workbenchApi.duckDbWorkspaceStatus({ workspace_dir: workspaceDir })
+      .then(setStatus)
+      .catch((error) => setMessage(error instanceof Error ? error.message : String(error)));
   }, [workspaceDir]);
 
   useEffect(() => {
@@ -44,48 +48,22 @@ export function DuckDbWorkspacePanel({ c, onOpenAnalysis }: { c?: WorkbenchContr
     return () => window.clearInterval(timer);
   }, [busy, workspaceDir]);
 
-  async function chooseWorkspace() {
-    const selected = await open({ directory: true, multiple: false, title: '选择 DuckDB 工作区目录' });
-    if (typeof selected === 'string') updateWorkspace(selected);
-  }
-
-  function updateWorkspace(next: string) {
-    if (next !== workspaceDir) {
-      c?.setImportBatchId('');
-      c?.setAnalysisRunId('');
-      c?.setBatchDisplayName('');
-      setStatus(undefined);
-      setResult(undefined);
-    }
-    setWorkspaceDir(next);
-  }
-
   async function chooseCsv() {
     const selected = await open({ directory: false, multiple: false, filters: [{ name: 'CSV', extensions: ['csv', 'txt'] }], title: '选择 TCP / 视频 CSV' });
-    if (typeof selected === 'string') setFilePath(selected);
-  }
-
-  async function initializeWorkspace() {
-    if (!workspaceDir.trim()) {
-      setMessage('请先选择工作区目录。');
-      return;
-    }
-    setBusy(true);
-    setMessage('正在初始化 workspace.duckdb…');
-    try {
-      const next = await workbenchApi.initializeDuckDbWorkspace({ workspace_dir: workspaceDir.trim() });
-      setStatus(next);
-      setMessage(`工作区已就绪：${next.database_path}`);
-    } catch (error) {
-      setMessage(String(error));
-    } finally {
-      setBusy(false);
+    if (typeof selected === 'string') {
+      c.setFilePath(selected);
+      setResult(undefined);
+      setMessage(`已选择 ${fileName(selected)}；确认高级选项后点击“开始本地分析”。`);
     }
   }
 
   async function analyzeCsv() {
-    if (!workspaceDir.trim() || !filePath.trim()) {
-      setMessage('请先选择工作区和 CSV。');
+    if (!workspaceDir.trim()) {
+      setMessage(c.duckDbWorkspaceError || '程序尚未准备好本地数据目录，请稍后重试。');
+      return;
+    }
+    if (!filePath.trim()) {
+      setMessage('请先选择 CSV 文件。');
       return;
     }
     setBusy(true);
@@ -96,14 +74,15 @@ export function DuckDbWorkspacePanel({ c, onOpenAnalysis }: { c?: WorkbenchContr
         workspace_dir: workspaceDir.trim(),
         file_path: filePath.trim(),
         data_type: 'tcp',
-        batch_display_name: batchName.trim() || undefined,
+        batch_display_name: batchNameFromPath(filePath),
         default_access_type: defaultAccessType,
         ftth_ranges: normalizedRanges,
       });
       setResult(next);
-      c?.setImportBatchId(next.import_batch_id);
-      c?.setAnalysisRunId(next.analysis_run_id);
-      c?.setBatchDisplayName(batchName.trim() || 'DuckDB 批次');
+      c.authorizeDuckDbSession();
+      c.setImportBatchId(next.import_batch_id);
+      c.setAnalysisRunId(next.analysis_run_id);
+      c.setBatchDisplayName(batchNameFromPath(filePath));
       const nextStatus = await workbenchApi.duckDbWorkspaceStatus({ workspace_dir: workspaceDir.trim() });
       setStatus(nextStatus);
       setMessage(`分析完成，耗时 ${(next.elapsed_ms / 1000).toFixed(1)} 秒。`);
@@ -118,43 +97,54 @@ export function DuckDbWorkspacePanel({ c, onOpenAnalysis }: { c?: WorkbenchContr
     <section className="panel form-panel step-card duckdb-workspace-panel">
       <div className="step-card-head">
         <div>
-          <h2>DuckDB + Parquet 本地数据中心</h2>
-          <p className="hero-text">CSV 只作为源证据；清洗明细写入分区 Parquet，小时聚合和发布状态保存在单个 workspace.duckdb。无需安装 MySQL。</p>
+          <h2>选择 CSV 开始本地分析</h2>
+          <p className="hero-text">只需选择 TCP / 视频 CSV。程序会自动管理 DuckDB、分区 Parquet、历史批次和分析结果，无需选择数据库目录，也无需安装 MySQL。</p>
         </div>
         <span className="step-badge">默认运行时</span>
       </div>
 
-      <div className="form-grid">
-        <input value={workspaceDir} onChange={(event) => updateWorkspace(event.target.value)} placeholder="工作区目录" />
-        <button type="button" onClick={chooseWorkspace} disabled={busy}>选择工作区</button>
-        <input value={filePath} onChange={(event) => setFilePath(event.target.value)} placeholder="TCP / 视频 CSV 路径" />
-        <button type="button" onClick={chooseCsv} disabled={busy}>选择 CSV</button>
-        <input value={batchName} onChange={(event) => setBatchName(event.target.value)} placeholder="批次名称" />
-        <select value={defaultAccessType} onChange={(event) => setDefaultAccessType(event.target.value as 'CABLE' | 'FTTH' | 'OTHER')}>
-          <option value="CABLE">未命中规则默认 Cable</option>
-          <option value="FTTH">未命中规则默认 FTTH</option>
-          <option value="OTHER">未命中规则默认 Other</option>
-        </select>
+      <div className="file-picker-card">
+        <div>
+          <span>待分析文件</span>
+          <strong>{filePath ? fileName(filePath) : '尚未选择 CSV'}</strong>
+          <small>{filePath || '支持 .csv 和 .txt；分析不会把整个文件载入内存。'}</small>
+        </div>
+        <button type="button" onClick={chooseCsv} disabled={busy}>选择 CSV 文件</button>
       </div>
-      <label className="field-stack">
-        <span>FTTH IP 范围（可选，每行一个 CIDR、IP 或起止范围）</span>
-        <textarea rows={3} value={ftthRanges} onChange={(event) => setFtthRanges(event.target.value)} placeholder={'10.20.0.0/16\n172.16.1.1-172.16.1.254'} />
-      </label>
+
+      <details className="advanced-actions">
+        <summary>高级选项：Cable / FTTH 识别规则</summary>
+        <div className="form-grid" style={{ marginTop: 12 }}>
+          <select value={defaultAccessType} onChange={(event) => setDefaultAccessType(event.target.value as 'CABLE' | 'FTTH' | 'OTHER')}>
+            <option value="CABLE">未命中规则默认 Cable</option>
+            <option value="FTTH">未命中规则默认 FTTH</option>
+            <option value="OTHER">未命中规则默认 Other</option>
+          </select>
+        </div>
+        <label className="field-stack">
+          <span>FTTH IP 范围（可选，每行一个 CIDR、IP 或起止范围）</span>
+          <textarea rows={3} value={ftthRanges} onChange={(event) => setFtthRanges(event.target.value)} placeholder={'10.20.0.0/16\n172.16.1.1-172.16.1.254'} />
+        </label>
+      </details>
       <div className="primary-action-row">
-        <button type="button" onClick={initializeWorkspace} disabled={busy}>初始化 / 检查工作区</button>
-        <button type="button" className="action-button-primary" onClick={analyzeCsv} disabled={busy}>{busy ? '处理中…' : '运行 DuckDB 本地分析'}</button>
+        <button type="button" className="action-button-primary" onClick={analyzeCsv} disabled={busy || !filePath || !workspaceDir}>{busy ? '处理中…' : '开始本地分析'}</button>
         {result && onOpenAnalysis && <button type="button" onClick={onOpenAnalysis}>查看分析结果</button>}
       </div>
 
+      {!workspaceDir && <p className="muted-row">{c.duckDbWorkspaceError || '正在准备应用本地数据目录…'}</p>}
       {message && <p className="muted-row">{message}</p>}
       {status && (
-        <div className="persistence-grid">
-          <span>DuckDB：{status.duckdb_version || '未初始化'}</span>
-          <span>批次 / 运行：{status.batch_count} / {status.run_count}</span>
-          <span>仍在运行：{status.running_run_count}（正常完成或失败后应为 0）</span>
-          <span>最新步骤：{status.latest_run_step || '—'} · {status.latest_run_status || '—'}</span>
-          {status.latest_run_message && <span>{status.latest_run_message}</span>}
-        </div>
+        <details className="advanced-actions">
+          <summary>存储与运行详情</summary>
+          <div className="persistence-grid">
+            <span>本地数据库：{status.duckdb_version || '首次分析时创建'}</span>
+            <span>历史批次 / 运行：{status.batch_count} / {status.run_count}</span>
+            <span>仍在运行：{status.running_run_count}（正常完成或失败后应为 0）</span>
+            <span>最新步骤：{status.latest_run_step || '—'} · {status.latest_run_status || '—'}</span>
+            <span>内部存储：{status.database_path}</span>
+            {status.latest_run_message && <span>{status.latest_run_message}</span>}
+          </div>
+        </details>
       )}
       {result && (
         <div className="metric-grid compact-metric-grid">

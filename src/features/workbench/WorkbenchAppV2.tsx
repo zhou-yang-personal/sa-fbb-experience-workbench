@@ -44,8 +44,8 @@ export function WorkbenchAppV2() {
 
   function hint() {
     if (c.runtimeEngine === 'duckdb') {
-      if (activeSection === 'data') return { title: 'DuckDB 本地数据中心', detail: 'CSV 转换、Parquet 明细与聚合结果均写入所选工作区，不连接 MySQL。', tone: 'normal' as const };
-      return { title: 'DuckDB 隔离模式', detail: '仅查询 workspace.duckdb。尚未迁移的模块明确不可用，不会静默回退到 MySQL。', tone: 'normal' as const };
+      if (activeSection === 'data') return { title: '选择 CSV 开始分析', detail: 'DuckDB、Parquet 和分析历史由程序自动管理，不需要选择数据库目录，也不连接 MySQL。', tone: 'normal' as const };
+      return { title: 'DuckDB 隔离模式', detail: '仅查询程序自动管理的本地 DuckDB。尚未迁移的模块明确不可用，不会静默回退到 MySQL。', tone: 'normal' as const };
     }
     if (['panorama', 'quality', 'access', 'opportunities'].includes(activeSection)) {
       if (!hasBatch) return { title: '先选择导入批次', detail: '数据分析以 import_batch_id 为边界。可以先去“数据导入”创建批次，或在分析页下拉选择已有批次。', tone: 'warning' as const };
@@ -66,7 +66,7 @@ export function WorkbenchAppV2() {
       if (['panorama', 'quality', 'access', 'opportunities'].includes(activeSection)) return <DuckDbAnalysisWorkspace c={c} activeView={activeSection as 'panorama' | 'quality' | 'access' | 'opportunities'} onOpenData={() => setActiveSection('data')} />;
       if (activeSection === 'data') return <DuckDbWorkspacePanel c={c} onOpenAnalysis={() => setActiveSection('access')} />;
       if (activeSection === 'config') return <article className="panel form-panel"><span className="step-badge">DuckDB</span><h2>规则配置迁移中</h2><p className="hero-text">当前可在数据中心输入 FTTH IP 范围；完整版本化规则编辑器尚未迁移。本页不会访问 MySQL。</p></article>;
-      return <section className="workbench-section-stack"><article className="panel form-panel"><span className="step-badge">DuckDB</span><h2>本地运行时诊断</h2><p className="hero-text">默认运行时不加载 MySQL 诊断组件。工作区状态可在数据中心检查。</p></article><DuckDbWorkspacePanel c={c} /></section>;
+      return <section className="workbench-section-stack"><article className="panel form-panel"><span className="step-badge">DuckDB</span><h2>本地运行时诊断</h2><p className="hero-text">默认运行时不加载 MySQL 诊断组件。内部存储和运行状态可在下方展开查看。</p></article><DuckDbWorkspacePanel c={c} /></section>;
     }
     if (['panorama', 'quality', 'access', 'opportunities'].includes(activeSection)) return <AnalysisWorkspace c={c} activeView={activeSection as 'panorama' | 'quality' | 'access' | 'opportunities'} onOpenImport={() => setActiveSection('data')} />;
     if (activeSection === 'data') return <ImportPanel {...c} onOpenAnalysis={() => setActiveSection('panorama')} onOpenAccessRules={() => setActiveSection('config')} />;
@@ -79,14 +79,14 @@ export function WorkbenchAppV2() {
   return (
     <main className="app-shell guided-shell product-shell">
       <aside className="sidebar guided-sidebar product-sidebar">
-        <div className="brand"><span>SA FBB Experience Workbench</span><small>v2.0.0-2</small></div>
+        <div className="brand"><span>SA FBB Experience Workbench</span><small>v2.0.0-3</small></div>
         <label className="sidebar-language runtime-selector">
           <span>运行时</span>
           <select aria-label="Runtime engine" value={c.runtimeEngine} onChange={(event) => c.setRuntimeEngine(event.target.value as 'duckdb' | 'mysql_compat')}>
             <option value="duckdb">DuckDB（默认）</option>
             <option value="mysql_compat">MySQL（兼容）</option>
           </select>
-          <small>{c.runtimeEngine === 'duckdb' ? '本地工作区 · 不查询 MySQL' : '显式兼容模式 · 可查询旧批次'}</small>
+          <small>{c.runtimeEngine === 'duckdb' ? '自动本地存储 · 不查询 MySQL' : '显式兼容模式 · 可查询旧批次'}</small>
         </label>
         <nav className="product-nav" aria-label="Product navigation">
           {(['primary', 'secondary'] as const).map((group) => <div className="nav-group" key={group}>

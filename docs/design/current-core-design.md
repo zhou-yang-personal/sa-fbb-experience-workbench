@@ -1,8 +1,8 @@
 # SA FBB Experience Workbench｜当前核心架构设计
 
-## 2.0.0-1（Alpha 1）本地列式运行时
+## 2.0.0-3（Alpha 3）本地列式运行时
 
-2.0 目标态不再把 MySQL 当作终端运行依赖。单个 EXE 进程拥有一个本地工作区；DuckDB 负责向量化 CSV/Parquet 扫描、聚合、元数据、checkpoint 和小型发布表，Parquet 负责不可变大明细。React/Rust 不把千万行 CSV 全量装入内存。
+2.0 目标态不再把 MySQL 当作终端运行依赖。普通操作者只选择 CSV，程序在 Tauri 应用本地数据目录自动创建和管理唯一的运行时存储；“工作区”仅是内部架构概念，不是导入前置步骤。DuckDB 负责向量化 CSV/Parquet 扫描、聚合、元数据、checkpoint 和小型发布表，Parquet 负责不可变大明细。React/Rust 不把千万行 CSV 全量装入内存。
 
 ```text
 SA-FBB-Workspace/
@@ -27,6 +27,10 @@ CSV + source manifest (RAW evidence)
 ```
 
 同一工作区只允许一个应用写任务；应用进程内串行写，文件级并发由 DuckDB 锁保护。步骤 checkpoint 必须同时绑定非空 `implementation_version` 与 `source_version`；错误和 panic 都必须把 batch/run/step 收口为 failed。旧 MySQL 代码在迁移期仅用于显式兼容模式，不再作为新用户默认入口，也不做 DuckDB→MySQL 双写。
+
+交互主链固定为“选择 CSV → 可选高级接入规则 → 开始本地分析”。数据库目录、初始化按钮和手工批次命名不出现在普通主流程；批次业务名默认取源文件名。手工导入/导出 DuckDB 存储仅可作为未来高级备份迁移能力，不得阻塞首次分析。
+
+应用启动只允许解析系统应用数据目录，不能因此打开或创建 DuckDB。CSV 路径不跨启动恢复；完成当前分析或用户明确点击“刷新历史分析”后，才在当前会话授权读取本地批次与运行结果。
 
 当前 alpha 只落地 TCP/视频 CSV、源清单、日期分区 Parquet、Cable/FTTH IP 规则、小时聚合和 Access 汇总。Game、完整公共核心、全部看板和潜客发布仍需逐纵切迁移。
 

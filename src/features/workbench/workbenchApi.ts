@@ -19,6 +19,8 @@ function leadQueryRequest(settings: MySqlSettings, analysisRunId: string, params
 }
 
 export const workbenchApi = {
+  defaultDuckDbWorkspace: () =>
+    invoke<DuckDbWorkspaceSettings>('duckdb_default_workspace'),
   initializeDuckDbWorkspace: (settings: DuckDbWorkspaceSettings) =>
     invoke<DuckDbWorkspaceStatus>('duckdb_workspace_initialize', { settings }),
   duckDbWorkspaceStatus: (settings: DuckDbWorkspaceSettings) =>

@@ -1,5 +1,25 @@
 # CHANGELOG-dev
 
+## 2.0.0-3 - 2026-09-01
+
+### Changed
+
+- Replaced the required DuckDB workspace picker and initialization button with a CSV-only primary flow.
+- Resolved the runtime root from the operating system's application-local-data directory and centralized it in the workbench controller.
+- Generated the batch display name from the selected CSV filename and moved Cable/FTTH classification inputs under advanced options.
+- Hid the internal DuckDB path and runtime counters under collapsed diagnostics while keeping them available for support.
+- Advanced persisted UI context to `context.v3`; previous MySQL or manually selected workspace context is not reused.
+- Stopped restoring the previous CSV path and gated local history reads behind a completed analysis or an explicit refresh, preserving zero-database-access startup.
+
+### Verification
+
+- `npm run check`: passed on 2026-09-01.
+- `npm run build`: passed on 2026-09-01.
+- `cargo test --release --no-fail-fast`: 75 passed, 0 failed on 2026-09-01; existing warnings remain.
+- Focused Rust formatting check for `duckdb_workspace.rs` and `git diff --check`: passed.
+- No production MySQL query, ETL, aggregation, customer-data operation or customer CSV read was executed.
+- No dependency version changed; the Cargo lockfile change is limited to the root package version.
+
 ## 2.0.0-2 - 2026-09-01
 
 ### Fixed

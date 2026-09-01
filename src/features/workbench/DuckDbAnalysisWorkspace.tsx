@@ -3,8 +3,6 @@ import type { DuckDbAccessHourlyRow, DuckDbAccessSummaryRow, DuckDbAnalysisRunIt
 import type { WorkbenchController } from './useWorkbenchController';
 import { workbenchApi } from './workbenchApi';
 
-const WORKSPACE_STORAGE_KEY = 'sa-fbb-duckdb-workspace';
-
 type DuckDbView = 'panorama' | 'quality' | 'access' | 'opportunities';
 
 function value(value: number | undefined, digits = 2) {
@@ -18,12 +16,12 @@ export function DuckDbAnalysisWorkspace({ c, activeView, onOpenData }: { c: Work
   const [hourly, setHourly] = useState<DuckDbAccessHourlyRow[]>([]);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const workspaceDir = typeof window === 'undefined' ? '' : window.localStorage.getItem(WORKSPACE_STORAGE_KEY) || '';
+  const workspaceDir = c.duckDbWorkspaceDir;
 
   async function refreshBatches() {
     if (!workspaceDir) {
       setBatches([]);
-      setMessage('尚未选择 DuckDB 工作区。新运行时不会读取旧 MySQL 批次。');
+      setMessage(c.duckDbWorkspaceError || '正在准备应用本地数据目录…');
       return;
     }
     setBusy(true);
@@ -46,7 +44,7 @@ export function DuckDbAnalysisWorkspace({ c, activeView, onOpenData }: { c: Work
           c.setAnalysisRunId(ready?.analysis_run_id || '');
         }
       }
-      setMessage(next.length ? `DuckDB 工作区中有 ${next.length} 个批次。` : '当前 DuckDB 工作区为空；旧 MySQL 批次未导入。');
+      setMessage(next.length ? `已找到 ${next.length} 个本地分析批次。` : '还没有本地分析结果；请前往数据中心选择 CSV。旧 MySQL 批次不会显示在这里。');
     } catch (error) {
       setBatches([]);
       setMessage(error instanceof Error ? error.message : String(error));
@@ -55,7 +53,17 @@ export function DuckDbAnalysisWorkspace({ c, activeView, onOpenData }: { c: Work
     }
   }
 
-  useEffect(() => { void refreshBatches(); }, [workspaceDir]);
+  useEffect(() => {
+    if (c.duckDbSessionAuthorized) void refreshBatches();
+  }, [workspaceDir, c.duckDbSessionAuthorized]);
+
+  function authorizeAndRefresh() {
+    if (c.duckDbSessionAuthorized) {
+      void refreshBatches();
+    } else {
+      c.authorizeDuckDbSession();
+    }
+  }
 
   async function selectBatch(batch: DuckDbBatchListItem) {
     c.setImportBatchId(batch.import_batch_id);
@@ -79,7 +87,7 @@ export function DuckDbAnalysisWorkspace({ c, activeView, onOpenData }: { c: Work
       ]);
       setSummary(nextSummary);
       setHourly(nextHourly);
-      setMessage(nextSummary.length ? '已从 workspace.duckdb 读取 Access 发布结果。' : '该运行没有 Access 发布结果。');
+      setMessage(nextSummary.length ? '已读取本地 DuckDB 发布结果。' : '该运行没有 Access 发布结果。');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -91,7 +99,7 @@ export function DuckDbAnalysisWorkspace({ c, activeView, onOpenData }: { c: Work
 
   if (activeView === 'quality' || activeView === 'opportunities') {
     return <section className="workbench-section-stack">
-      <article className="panel form-panel"><span className="step-badge">DuckDB 2.0.0-2</span><h2>{activeView === 'quality' ? '质差分析' : '潜客机会'}</h2>
+      <article className="panel form-panel"><span className="step-badge">DuckDB 2.0.0-3</span><h2>{activeView === 'quality' ? '质差分析' : '潜客机会'}</h2>
         <p className="hero-text">该模块尚未迁移到 DuckDB 发布契约。为防止混合数据，本页不会回退查询 MySQL。</p>
         <button type="button" onClick={onOpenData}>前往 DuckDB 数据中心</button>
       </article>
@@ -100,10 +108,10 @@ export function DuckDbAnalysisWorkspace({ c, activeView, onOpenData }: { c: Work
 
   return <section className="workbench-section-stack analysis-workspace">
     <article className="panel form-panel">
-      <div className="step-card-head"><div><span className="step-badge">DuckDB 本地运行时</span><h2>{activeView === 'access' ? 'Cable / FTTH' : '全景洞察'}</h2><p className="hero-text">仅显示当前 workspace.duckdb 中的批次和发布结果，不读取 MySQL。</p></div><button type="button" onClick={() => void refreshBatches()} disabled={busy}>刷新 DuckDB 批次</button></div>
+      <div className="step-card-head"><div><span className="step-badge">DuckDB 本地运行时</span><h2>{activeView === 'access' ? 'Cable / FTTH' : '全景洞察'}</h2><p className="hero-text">显示程序自动保存的本地分析历史和发布结果，不读取 MySQL。启动时不会自动打开历史数据库。</p></div><button type="button" onClick={() => void authorizeAndRefresh()} disabled={busy}>刷新历史分析</button></div>
       <div className="form-grid">
         <select value={c.importBatchId} onChange={(event) => { const selected = batches.find((item) => item.import_batch_id === event.target.value); if (selected) void selectBatch(selected); }}>
-          <option value="">{batches.length ? '选择 DuckDB 批次' : 'DuckDB 工作区暂无批次'}</option>
+          <option value="">{batches.length ? '选择本地分析批次' : '暂无本地分析批次'}</option>
           {batches.map((batch) => <option key={batch.import_batch_id} value={batch.import_batch_id}>{batch.batch_display_name || batch.source_file_name} · {batch.status}</option>)}
         </select>
         <select value={c.analysisRunId} disabled={!runs.length} onChange={(event) => c.setAnalysisRunId(event.target.value)}>
