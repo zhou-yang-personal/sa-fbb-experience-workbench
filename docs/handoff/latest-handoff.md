@@ -30,7 +30,8 @@ CSV + SHA-256 manifest → DuckDB streaming transform → partitioned Parquet DW
 - Alpha 1 is encoded as `2.0.0-1`: WiX/MSI only accepts numeric pre-release identifiers and rejected the former `2.0.0-alpha.1` string after the Windows EXE had already compiled.
 - `npm run check`, `npm run build` and `cargo test --release --no-fail-fast` passed; 73 Rust tests passed with existing/example warnings only.
 - The release benchmark harness completed the synthetic TCP fixture end to end: 4 source rows, 3 valid Parquet rows, 3 hourly rows and 2 Access summary rows in about 222 ms. This validates execution shape only, not 3–4 GiB production performance.
-- This alpha supports TCP/video only. Game, full DWS/ADS parity, existing dashboards, opportunities, export parity, Windows package size and real 3–4 GiB performance remain pending. The MSI-compatible version still needs a clean CI packaging rerun.
+- This alpha supports TCP/video only. Game, full DWS/ADS parity, existing dashboards, opportunities, export parity and real 3–4 GiB performance remain pending.
+- GitHub Actions run `33455801324` passed Windows type-checking, release tests, MSI/NSIS/portable-EXE bundling and artifact upload. The compressed artifact is about 39.7 MB; extracted files are a 14.8 MB MSI, 10.2 MB NSIS setup EXE and 44.7 MB portable EXE.
 - No production database query, ETL, aggregation or customer-data operation was executed; verification used only a synthetic temporary workspace under `/tmp`.
 
 ## 1.0.73 update

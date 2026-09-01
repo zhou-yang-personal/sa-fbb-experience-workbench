@@ -23,7 +23,7 @@
 - The release benchmark harness completed the 4-row synthetic TCP fixture in about 222 ms and produced 3 valid Parquet rows, 3 hourly aggregate rows and 2 Cable/FTTH summary rows. This is a functional smoke test, not a real 3–4 GiB benchmark.
 - No production MySQL query, migration, ETL, aggregation or customer file was executed.
 - TCP/video only in this alpha; Game, dashboard/opportunity parity and real 3–4 GiB validation remain pending.
-- The first Windows packaging attempt reached the bundle stage but rejected the former `2.0.0-alpha.1` version; the MSI-compatible version fix requires a clean CI rerun.
+- The first Windows packaging attempt reached the bundle stage but rejected the former `2.0.0-alpha.1` version. The clean `2.0.0-1` rerun then passed Windows tests, MSI/NSIS/portable-EXE bundling and artifact upload in GitHub Actions run `33455801324`.
 
 ## 1.0.73 - 2026-08-31
 
