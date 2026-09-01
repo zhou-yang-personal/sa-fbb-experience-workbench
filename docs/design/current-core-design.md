@@ -1,5 +1,37 @@
 # SA FBB Experience Workbench｜当前核心架构设计
 
+## 2.0.0-alpha.1 本地列式运行时
+
+2.0 目标态不再把 MySQL 当作终端运行依赖。单个 EXE 进程拥有一个本地工作区；DuckDB 负责向量化 CSV/Parquet 扫描、聚合、元数据、checkpoint 和小型发布表，Parquet 负责不可变大明细。React/Rust 不把千万行 CSV 全量装入内存。
+
+```text
+SA-FBB-Workspace/
+├─ workspace.duckdb                 # metadata / checkpoint / DWS / ADS / publish pointer
+├─ datasets/BATCH_xxx/
+│  ├─ source-manifest.json          # path / size / SHA-256 / data type
+│  └─ dwd/data_type=tcp/stat_date=*/data_*.parquet
+├─ exports/
+└─ temp/
+```
+
+目标链路：
+
+```text
+CSV + source manifest (RAW evidence)
+→ DuckDB read_csv 流式类型化与规则映射
+→ 按日期分区的 Parquet DWD
+→ DuckDB 公共小时/周期核心
+→ 小型 DWS/ADS staging
+→ 短事务原子发布
+→ 看板和导出只读已发布结果
+```
+
+同一工作区只允许一个应用写任务；应用进程内串行写，文件级并发由 DuckDB 锁保护。步骤 checkpoint 必须同时绑定非空 `implementation_version` 与 `source_version`；错误和 panic 都必须把 batch/run/step 收口为 failed。旧 MySQL 代码在迁移期仅用于显式兼容模式，不再作为新用户默认入口，也不做 DuckDB→MySQL 双写。
+
+当前 alpha 只落地 TCP/视频 CSV、源清单、日期分区 Parquet、Cable/FTTH IP 规则、小时聚合和 Access 汇总。Game、完整公共核心、全部看板和潜客发布仍需逐纵切迁移。
+
+本文后续 1.x/MySQL 章节保留为兼容实现说明和迁移来源；凡与本节冲突，以 2.0 本地列式运行时为准。诸如“MySQL 为主引擎”或“第一阶段不引入 DuckDB”的旧结论不再适用于新安装目标态。
+
 ## 1.0.73 决策解释与图表口径
 
 App 质差必须先展示唯一 App 的样本状态，再展示触发的实际值、规则阈值、分子和分母；它只证明“使用该 App 的用户出现体验问题”，不能直接宣称 App 服务端是根因。潜客必须按“分析用户 × 机会类型”解释入选条件和 High/Standard 优先级；当前无综合 Opportunity Score，界面和导出不得虚构概率或评分。
@@ -38,7 +70,7 @@ Cable/FTTH 专项先从周期核心生成 `dws_user_access_period_v2`，整体�
 
 本项目定位为 **SA 家宽应用体验数据本地分析工作台**，不是普通 BI。第一阶段目标是把 SA TCP / Game CSV 大文件在本地稳定入库、库内清洗、聚合分析，并输出 Cable-to-Fiber 迁转升套机会名单和统计看板。
 
-核心链路必须采用：
+1.x 兼容链路曾采用：
 
 ```text
 CSV 文件选择
@@ -56,7 +88,7 @@ CSV 文件选择
 
 1. CSV 大文件可能达到几千万行，不允许应用内全量读入内存做清洗。
 2. CSV 只允许读取少量样本用于预览、字段识别和字段映射。
-3. 数据清洗、字段标准化、应用分类、用户画像、体验评分和迁转分层优先在 MySQL 内完成。
+3. 2.0 新链路的数据清洗、字段标准化、应用分类、用户画像、体验评分和迁转分层优先在 DuckDB 内完成；MySQL 约束仅适用于兼容链路。
 4. 看板不得直接扫 RAW 明细大表，必须查询 DWS / ADS 聚合结果。
 5. 当前 SA 数据只能形成“应用体验驱动的迁转升套机会”，正式营销名单需要后续 JOIN CRM、套餐、FTTH 覆盖、合约、欠费、黑名单和可触达状态。
 
@@ -158,7 +190,7 @@ V2 表必须保留分子、分母、样本状态、策略版本和主要证据�
 React / Vite UI
 → Tauri invoke
 → Rust ETL / Query Backend
-→ MySQL Raw / Clean / Aggregate
+→ DuckDB metadata / DWS / ADS + Parquet DWD
 → Dashboard 查询与展示
 ```
 
@@ -176,10 +208,10 @@ React / Vite UI
 |---|---|---|
 | 数据来源 | 政府公开 FBB 市场数据 | SA 单板 TCP / Game 应用体验数据 |
 | 核心目标 | 市场快照、竞争分析、国家维度分析 | Cable-to-Fiber 迁转升套、体验质量、用户机会识别 |
-| 主数据库 | MySQL + DuckDB Runtime | 第一阶段以本地 MySQL 为主 |
+| 主数据库 | MySQL + DuckDB Runtime | 2.0 以本地 DuckDB + Parquet 为主，MySQL 仅兼容 |
 | 数据粒度 | 国家 / 城市 / 运营商 / 技术 / 速率档 | 用户 / 应用 / 小时 / 接入类型 / 网络侧字段 |
 | 看板重点 | 市场份额、速率、城市、竞争 | 应用使用、RTT、PLR、MOS/VMOS、Cable vs FTTH、Lead 分层 |
-| 导入主链路 | Raw → Clean → Aggregate → Runtime | CSV → RAW → CLEAN/DWD → DWS/ADS |
+| 导入主链路 | Raw → Clean → Aggregate → Runtime | CSV + manifest → Parquet DWD → DuckDB DWS/ADS |
 
 第一阶段不强制引入 DuckDB Runtime。只有当后续出现“脱离 MySQL 运行看板”“客户演示便携包”“离线发包分析”等需求时，再评估 MySQL → DuckDB Runtime 发布能力。
 

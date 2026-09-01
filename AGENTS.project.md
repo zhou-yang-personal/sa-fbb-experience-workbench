@@ -7,8 +7,8 @@
 - [ ] 项目名称已确认：`SA FBB Experience Workbench`。
 - [ ] 仓库已确认：`zhou-yang-personal/sa-fbb-experience-workbench`。
 - [ ] 产品定位已确认：基于 SA 家宽应用体验数据的本地 EXE 分析工作台。
-- [ ] 核心用户场景已确认：CSV 大文件原样入库、MySQL 库内清洗、Cable/FTTH 体验对比、迁转升套机会识别、统计分析看板。
-- [ ] 推荐技术栈已确认：`Tauri 2 + React + TypeScript + Vite + ECharts + Rust + MySQL 8.0`。
+- [ ] 核心用户场景已确认：CSV 大文件本地列式处理、Cable/FTTH 体验对比、迁转升套机会识别、统计分析看板。
+- [ ] 推荐技术栈已确认：`Tauri 2 + React + TypeScript + Vite + ECharts + Rust + DuckDB + Parquet`；MySQL 仅作为 2.0 迁移期兼容实现。
 
 ## B1. 当前开发基线检查
 
@@ -43,21 +43,21 @@
 ## B3. 本项目产品方向一致性检查
 
 - [ ] 本项目不是普通 BI，而是 SA 家宽应用体验数据本地分析工作台。
-- [ ] 核心链路必须保持：`CSV 文件选择 → 文件元信息登记 → MySQL RAW 表原样高速导入 → RAW 入库完整性校验 → MySQL 库内清洗/标准化/衍生字段 → CLEAN/DWD → DWS/ADS 聚合 → 看板查询聚合结果`。
+- [ ] 核心链路必须保持：`CSV 文件选择 → 元信息/SHA-256 RAW 证据 → DuckDB 流式标准化 → 分区 Parquet DWD → DuckDB DWS/ADS 与原子发布 → 看板查询聚合结果`。
 - [ ] CSV 大文件不得在应用内做全量内存清洗；只允许读取少量样本用于预览、字段识别和映射。
-- [ ] 大文件导入优先使用 `LOAD DATA LOCAL INFILE`；客户环境禁用时，使用流式分块 INSERT fallback。
+- [ ] 大文件由 DuckDB 直接扫描 CSV 并列式写入 Parquet；不得先逐行复制到通用行存 RAW 表。旧 MySQL `LOAD DATA` 只用于兼容模式。
 - [ ] 看板不得直接扫 RAW 明细表；应查询 DWS / ADS 聚合结果。
 - [ ] 迁转升套逻辑不得把“体验差用户”直接等同于“升套潜客”；必须区分高应用需求、轻度体验承压、网络侧严重异常、家庭侧/Wi-Fi 侧问题。
 - [ ] 当前 SA 数据只能输出“应用体验驱动的迁转升套机会”；正式营销名单需要后续 JOIN CRM、套餐、FTTH 覆盖、可触达状态等数据。
 
 ## B4. 数据处理架构约束
 
-- [ ] RAW 层用于原样承接 CSV，字段可优先用 `VARCHAR / TEXT`，不要在 RAW 阶段强制业务转换。
-- [ ] 每条 RAW 记录必须能追溯 `import_batch_id`、`source_file_name`、必要时的 `source_line_no`。
+- [ ] 原 CSV、源路径、文件大小、SHA-256 和 source manifest 共同构成 RAW 证据；默认不再复制一份行存 RAW 宽表。
+- [ ] 每个 Parquet 数据集必须能追溯 `import_batch_id`、`source_file_name`、来源版本和处理实现版本。
 - [ ] CLEAN / DWD 层用于日期、数值、单位、应用分类、接入类型、用户主键、质量标记和衍生字段标准化。
 - [ ] DWS 层用于用户级、小时级、应用级、接入类型级、网络侧聚类级聚合。
 - [ ] ADS 层用于看板结果和名单结果，前端优先查询 ADS。
-- [ ] 必须保留导入日志、清洗日志、聚合日志和失败重跑能力。
+- [ ] 必须保留导入日志、清洗日志、聚合日志、非空 checkpoint 版本和失败重跑能力；后台 panic 必须收口运行状态。
 - [ ] SQL 参数不使用 `SET @var` 作为主链路，优先使用 CTE 参数块、临时参数表或配置表。
 - [ ] 不提交客户 CSV、数据库导出、运行日志、构建产物或安装包。
 
@@ -65,9 +65,9 @@
 
 第一阶段功能优先级：
 
-1. CSV 原样导入与批次管理。
-2. RAW → CLEAN 清洗任务。
-3. CLEAN → DWS / ADS 聚合任务。
+1. CSV 源证据登记、工作区与批次管理。
+2. CSV → 分区 Parquet DWD 列式清洗任务。
+3. Parquet DWD → DuckDB DWS / ADS 聚合与发布任务。
 4. 总览看板。
 5. 应用分类详情看板。
 6. RTT / PLR / MOS / VMOS 体验质量看板。
@@ -77,7 +77,7 @@
 
 ## B6. 本项目版本检查
 
-- [ ] 当前版本已确认：`1.0.48`。
+- [ ] 当前版本已确认：`2.0.0-alpha.1`。
 - [ ] 前端版本文件已同步：`package.json`。
 - [ ] Tauri 版本文件已同步：`src-tauri/tauri.conf.json`。
 - [ ] Rust package 版本文件已同步：`src-tauri/Cargo.toml`。

@@ -3,22 +3,34 @@
 ## Current version
 
 ```text
-1.0.73
+2.0.0-alpha.1
 ```
 
 ## Source-of-truth branch
 
 ```text
-codex/task-dashboard-ip-segmentation
+codex/task-duckdb-runtime-poc
 ```
 
 ## Current baseline
 
-Raw First MySQL pipeline is preserved:
+The 2.0 target runtime is local DuckDB + Parquet; the 1.x MySQL path remains an explicit compatibility path during migration:
 
 ```text
-CSV → MySQL RAW → CLEAN/DWD → Post-clean Quality Gate → DWS/ADS → SA Lead / Final Lead → Analytics cockpit / export
+CSV + SHA-256 manifest → DuckDB streaming transform → partitioned Parquet DWD → DuckDB DWS/ADS → atomic publish → dashboard/export
 ```
+
+## 2.0.0-alpha.1 update
+
+- Added an embedded DuckDB workspace with versioned batch/run/step metadata and no MySQL connection requirement.
+- Added the first TCP/video vertical slice: source SHA-256 and manifest, header-alias resolution, partitioned Parquet, IP-range Cable/FTTH classification, hourly access aggregation and access summary publication.
+- Added panic/error closure so active batch/run/step state is marked failed instead of remaining stale running.
+- Added a default DuckDB panel in System Management; the previous MySQL connection workflow is folded under compatibility mode.
+- Added the bundled DuckDB/Parquet Rust dependency and generated `src-tauri/Cargo.lock` for reproducible native builds.
+- `npm run check`, `npm run build` and `cargo test --release --no-fail-fast` passed; 73 Rust tests passed with existing/example warnings only.
+- The release benchmark harness completed the synthetic TCP fixture end to end: 4 source rows, 3 valid Parquet rows, 3 hourly rows and 2 Access summary rows in about 222 ms. This validates execution shape only, not 3–4 GiB production performance.
+- This alpha supports TCP/video only. Game, full DWS/ADS parity, existing dashboards, opportunities, export parity, Windows package size and real 3–4 GiB performance remain pending.
+- No production database query, ETL, aggregation or customer-data operation was executed; verification used only a synthetic temporary workspace under `/tmp`.
 
 ## 1.0.73 update
 

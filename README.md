@@ -1,17 +1,17 @@
 # SA FBB Experience Workbench
 
-SA FBB Experience Workbench 是一个本地 EXE 数据分析工作台，用于处理 SA 单板输出的家宽 TCP / Game 应用体验 CSV 数据，完成大文件原样入库、MySQL 库内清洗、聚合分析、Cable/FTTH 体验对比和 Cable-to-Fiber 迁转升套机会识别。
+SA FBB Experience Workbench 是一个本地 EXE 数据分析工作台，用于处理 SA 单板输出的家宽 TCP / Game 应用体验 CSV 数据，完成本地列式清洗、聚合分析、Cable/FTTH 体验对比和 Cable-to-Fiber 迁转升套机会识别。2.0 开始迁移到内嵌 DuckDB + Parquet，不再要求终端用户安装和维护 MySQL。
 
 当前版本：
 
 ```text
-1.0.73
+2.0.0-alpha.1
 ```
 
 ## 1. 核心目标
 
-1. 支持千万级 CSV 文件不经应用内内存清洗，优先原样导入 MySQL RAW 表。
-2. 基于 MySQL 完成 RAW → CLEAN/DWD → DWS/ADS 分层清洗和聚合。
+1. 支持千万级 CSV 文件不经 React/Rust 全量载入内存，由 DuckDB 流式读取并转成分区 Parquet。
+2. 原 CSV 与 SHA-256 清单作为 RAW 证据；Parquet 承载 DWD 明细，DuckDB 承载元数据、checkpoint、DWS/ADS 和发布指针。
 3. 支撑总览、应用分类、体验质量、Cable vs FTTH、迁转升套机会等看板。
 4. 输出可复核、可重跑、可导出的用户级机会名单。
 5. 通过 CRM、FTTH 覆盖、可触达状态完成最终营销名单融合。
@@ -22,15 +22,15 @@ SA FBB Experience Workbench 是一个本地 EXE 数据分析工作台，用于�
 
 ```text
 CSV 文件选择
-→ 文件元信息登记
-→ MySQL RAW 表原样高速导入
-→ MySQL 库内清洗 / 标准化 / 衍生字段
-→ CLEAN / DWD 明细层
-→ CLEAN 与 RAW 入库完整性质量验证
-→ DWS / ADS 聚合与看板结果层
+→ 源文件元信息与 SHA-256 清单登记
+→ DuckDB 流式读取 CSV 并标准化
+→ 分区 Parquet DWD 明细层
+→ DuckDB DWS / ADS 聚合与原子发布
 → CRM / 覆盖 / 触达融合
 → 用户名单 / 汇总结果导出
 ```
+
+2.0.0-alpha.1 提供第一个可运行纵切：TCP/视频 CSV → 分区 Parquet → Cable/FTTH 小时聚合 → Access 汇总；系统管理页的旧 MySQL 链路仅作为兼容入口保留。Game、完整规则体系、所有既有看板和潜客 ADS 仍在迁移中，不能视为 MySQL 功能已经全部下线。
 
 详细设计见：`docs/design/current-core-design.md`。
 
@@ -46,7 +46,23 @@ CSV 文件选择
 6. Phase 6：CRM、FTTH 覆盖、可触达状态融合，生成最终营销动作。
 7. Phase 7：导出、handoff、changelog、交付检查入口。
 
-## 4. 1.0.73 洞察表达与 PDF 修复
+## 4. 2.0.0-alpha.1 DuckDB + Parquet 本地运行时预览
+
+- 新增 `workspace.duckdb` 本地工作区，无需 MySQL 连接即可初始化和查看状态。
+- 新增 TCP/视频 CSV 纵切：计算 SHA-256、生成 source manifest、写入按日期分区的 Parquet，并聚合日期 × 小时 × 接入类型结果。
+- FTTH 支持 CIDR、单 IP 和起止范围；未命中规则的接入类型由用户显式选择。
+- 运行与步骤状态包含非空实现版本和来源版本；错误或后台 panic 会把 step/run/batch 收口为 failed。
+- 系统管理页默认显示 DuckDB 入口，旧 MySQL 流程折叠为兼容模式。
+- 本预览不会迁移旧 MySQL 业务数据，也不会自动触发旧批次聚合。
+
+开发者可用同一后端纵切做可复现性能测试（请使用独立工作区目录）：
+
+```bash
+cd src-tauri
+cargo run --release --example duckdb_poc_benchmark -- <workspace-dir> <tcp-csv> <ftth-cidr,...>
+```
+
+## 4.1 1.0.73 洞察表达与 PDF 修复
 
 - 修复全图表 PDF 前置空白页：打印模式直接折叠交互页面，只保留报告 DOM，并按章节分页。
 - 上行速率改为“当前已识别并映射字段中无法确认”，提示核对 CSV 表头和供应商字段字典，不再武断断言原文件没有该字段。

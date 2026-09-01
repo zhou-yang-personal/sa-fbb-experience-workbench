@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AccessIpRangeRow, AccessRuleInput, AccessRulePreviewResult, AccessRuleSetRow, AccessRuleValidationResult, AnalysisRunOption, AppExperienceProfileRow, BatchListItem, BatchTableRegistryRow, CommandAck, CsvProbeResult, DashboardOverview, DecisionRuleProfileRow, ExperiencePolicyRow, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, ImportPipelineLogRow, ImportPipelineStartResult, ImportPipelineStatus, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
+import type { AccessIpRangeRow, AccessRuleInput, AccessRulePreviewResult, AccessRuleSetRow, AccessRuleValidationResult, AnalysisRunOption, AppExperienceProfileRow, BatchListItem, BatchTableRegistryRow, CommandAck, CsvProbeResult, DashboardOverview, DecisionRuleProfileRow, DuckDbPocRequest, DuckDbPocResult, DuckDbWorkspaceSettings, DuckDbWorkspaceStatus, ExperiencePolicyRow, FinalLeadExportOptions, FinalLeadUserRow, ImportBatchResult, ImportCurrentFileResult, ImportPipelineLogRow, ImportPipelineStartResult, ImportPipelineStatus, LeadQueryParams, LeadUserRow, MetricCard, ModuleStatusRow, MySqlSettings } from '../../shared/types';
 
 function normalizeFilter(value?: string) {
   const normalized = value?.trim();
@@ -19,6 +19,12 @@ function leadQueryRequest(settings: MySqlSettings, analysisRunId: string, params
 }
 
 export const workbenchApi = {
+  initializeDuckDbWorkspace: (settings: DuckDbWorkspaceSettings) =>
+    invoke<DuckDbWorkspaceStatus>('duckdb_workspace_initialize', { settings }),
+  duckDbWorkspaceStatus: (settings: DuckDbWorkspaceSettings) =>
+    invoke<DuckDbWorkspaceStatus>('duckdb_workspace_status', { settings }),
+  analyzeCsvWithDuckDb: (req: DuckDbPocRequest) =>
+    invoke<DuckDbPocResult>('duckdb_poc_analyze_csv', { req }),
   testDb: (settings: MySqlSettings) => invoke<CommandAck>('db_test_connection', { settings }),
   initDb: (settings: MySqlSettings) => invoke<CommandAck>('db_initialize', { settings }),
   accessRuleSets: (settings: MySqlSettings) => invoke<AccessRuleSetRow[]>('access_rule_list_sets', { settings }),

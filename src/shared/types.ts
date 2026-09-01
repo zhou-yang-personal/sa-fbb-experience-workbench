@@ -14,6 +14,45 @@ export interface MySqlSettings {
   local_infile?: boolean;
 }
 
+export interface DuckDbWorkspaceSettings {
+  workspace_dir: string;
+}
+
+export interface DuckDbWorkspaceStatus {
+  workspace_dir: string;
+  database_path: string;
+  initialized: boolean;
+  duckdb_version: string;
+  batch_count: number;
+  run_count: number;
+  running_run_count: number;
+  latest_run_id?: string;
+  latest_run_status?: string;
+  latest_run_step?: string;
+  latest_run_message?: string;
+}
+
+export interface DuckDbPocRequest {
+  workspace_dir: string;
+  file_path: string;
+  data_type: 'tcp';
+  batch_display_name?: string;
+  default_access_type?: 'CABLE' | 'FTTH' | 'OTHER';
+  ftth_ranges?: string[];
+}
+
+export interface DuckDbPocResult {
+  import_batch_id: string;
+  analysis_run_id: string;
+  source_rows: number;
+  clean_rows: number;
+  hourly_rows: number;
+  elapsed_ms: number;
+  database_path: string;
+  parquet_path: string;
+  metrics: MetricCard[];
+}
+
 export interface CommandAck {
   status: string;
   message: string;

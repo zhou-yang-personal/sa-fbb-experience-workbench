@@ -1,5 +1,28 @@
 # CHANGELOG-dev
 
+## 2.0.0-alpha.1 - 2026-08-31
+
+### Architecture preview
+
+- Added an embedded DuckDB workspace and date-partitioned Parquet DWD path as the 2.0 default runtime direction.
+- Added source SHA-256 manifests and non-null implementation/source versions for run and step traceability.
+- Added the TCP/video CSV vertical slice through Cable/FTTH hourly and access-summary publication.
+- Serialized in-process workspace writes and closed batch/run/step state after errors or panics.
+- Kept MySQL as a folded compatibility workflow; no DuckDB-to-MySQL dual write was added.
+
+### UI and dependency
+
+- Added workspace/CSV pickers, FTTH CIDR/range input, runtime status, row counts and elapsed-time output.
+- Added bundled `duckdb` with Parquet support and a Rust lock file; terminal users do not install a separate database.
+
+### Scope and verification
+
+- `npm run check` and `npm run build`: passed on 2026-08-31.
+- `cargo test --release --no-fail-fast`: 73 passed, 0 failed on 2026-08-31; existing and benchmark-only dead-code warnings remain.
+- The release benchmark harness completed the 4-row synthetic TCP fixture in about 222 ms and produced 3 valid Parquet rows, 3 hourly aggregate rows and 2 Cable/FTTH summary rows. This is a functional smoke test, not a real 3–4 GiB benchmark.
+- No production MySQL query, migration, ETL, aggregation or customer file was executed.
+- TCP/video only in this alpha; Game, dashboard/opportunity parity, Windows packaging and real 3–4 GiB validation remain pending.
+
 ## 1.0.73 - 2026-08-31
 
 ### Fixed

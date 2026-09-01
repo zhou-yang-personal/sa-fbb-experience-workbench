@@ -83,6 +83,13 @@
 .product-shell input:focus,
 .product-shell select:focus,
 .product-shell textarea:focus { outline: 3px solid rgba(21, 94, 239, .12); border-color: var(--brand); }
+.duckdb-workspace-panel .field-stack { display: grid; gap: 6px; margin-top: 14px; color: #52606d; font-size: 12px; }
+.duckdb-workspace-panel .compact-metric-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.duckdb-workspace-panel .metric-card { min-width: 0; }
+.duckdb-workspace-panel .metric-card strong,
+.duckdb-workspace-panel .metric-card small { overflow-wrap: anywhere; }
+.duckdb-workspace-panel .persistence-grid { margin-top: 14px; }
+@media(max-width:1000px) { .duckdb-workspace-panel .form-grid { grid-template-columns: 1fr auto; } }
 
 .product-shell .context-bar-shell { position: sticky; top: 0; z-index: 20; margin: 0 0 10px; padding: 6px 8px; background: rgba(238, 241, 245, .96); backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 11px; }
 .product-shell .context-bar { margin: 0; }

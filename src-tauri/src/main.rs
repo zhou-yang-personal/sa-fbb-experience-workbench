@@ -22,6 +22,7 @@ mod dashboard_commands;
 mod dataset_profile_commands;
 mod decision_workspace_commands;
 mod db;
+mod duckdb_workspace;
 mod etl_commands;
 mod experience_policy_commands;
 mod final_fusion;
@@ -85,6 +86,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             dashboard_commands::db_test_connection,
             dashboard_commands::db_initialize,
+            duckdb_workspace::duckdb_workspace_initialize,
+            duckdb_workspace::duckdb_workspace_status,
+            duckdb_workspace::duckdb_poc_analyze_csv,
             access_rule_commands::access_rule_list_sets,
             access_rule_commands::access_rule_get_or_create_draft,
             access_rule_commands::access_rule_list,
