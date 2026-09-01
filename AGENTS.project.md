@@ -77,7 +77,7 @@
 
 ## B6. 本项目版本检查
 
-- [ ] 当前版本已确认：`2.0.0-alpha.1`。
+- [ ] 当前版本已确认：`2.0.0-1`（Alpha 1；使用 MSI 兼容的数字型预发布标识）。
 - [ ] 前端版本文件已同步：`package.json`。
 - [ ] Tauri 版本文件已同步：`src-tauri/tauri.conf.json`。
 - [ ] Rust package 版本文件已同步：`src-tauri/Cargo.toml`。

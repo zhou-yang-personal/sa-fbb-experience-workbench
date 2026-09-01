@@ -159,7 +159,7 @@ fn ensure_schema(connection: &Connection) -> Result<(), String> {
               updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
             );
             INSERT INTO meta_workspace
-            SELECT 'LOCAL', '2.0.0-alpha.1', current_timestamp, current_timestamp
+            SELECT 'LOCAL', '2.0.0-1', current_timestamp, current_timestamp
             WHERE NOT EXISTS (SELECT 1 FROM meta_workspace WHERE workspace_id = 'LOCAL');
 
             CREATE TABLE IF NOT EXISTS meta_import_batch (

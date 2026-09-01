@@ -1,6 +1,6 @@
 # SA FBB Experience Workbench｜当前核心架构设计
 
-## 2.0.0-alpha.1 本地列式运行时
+## 2.0.0-1（Alpha 1）本地列式运行时
 
 2.0 目标态不再把 MySQL 当作终端运行依赖。单个 EXE 进程拥有一个本地工作区；DuckDB 负责向量化 CSV/Parquet 扫描、聚合、元数据、checkpoint 和小型发布表，Parquet 负责不可变大明细。React/Rust 不把千万行 CSV 全量装入内存。
 

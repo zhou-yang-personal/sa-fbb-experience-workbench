@@ -5,7 +5,7 @@ SA FBB Experience Workbench 是一个本地 EXE 数据分析工作台，用于�
 当前版本：
 
 ```text
-2.0.0-alpha.1
+2.0.0-1
 ```
 
 ## 1. 核心目标
@@ -30,7 +30,7 @@ CSV 文件选择
 → 用户名单 / 汇总结果导出
 ```
 
-2.0.0-alpha.1 提供第一个可运行纵切：TCP/视频 CSV → 分区 Parquet → Cable/FTTH 小时聚合 → Access 汇总；系统管理页的旧 MySQL 链路仅作为兼容入口保留。Game、完整规则体系、所有既有看板和潜客 ADS 仍在迁移中，不能视为 MySQL 功能已经全部下线。
+2.0.0-1（Alpha 1）提供第一个可运行纵切：TCP/视频 CSV → 分区 Parquet → Cable/FTTH 小时聚合 → Access 汇总；系统管理页的旧 MySQL 链路仅作为兼容入口保留。Game、完整规则体系、所有既有看板和潜客 ADS 仍在迁移中，不能视为 MySQL 功能已经全部下线。
 
 详细设计见：`docs/design/current-core-design.md`。
 
@@ -46,7 +46,7 @@ CSV 文件选择
 6. Phase 6：CRM、FTTH 覆盖、可触达状态融合，生成最终营销动作。
 7. Phase 7：导出、handoff、changelog、交付检查入口。
 
-## 4. 2.0.0-alpha.1 DuckDB + Parquet 本地运行时预览
+## 4. 2.0.0-1（Alpha 1）DuckDB + Parquet 本地运行时预览
 
 - 新增 `workspace.duckdb` 本地工作区，无需 MySQL 连接即可初始化和查看状态。
 - 新增 TCP/视频 CSV 纵切：计算 SHA-256、生成 source manifest、写入按日期分区的 Parquet，并聚合日期 × 小时 × 接入类型结果。

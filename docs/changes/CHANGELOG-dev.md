@@ -1,6 +1,6 @@
 # CHANGELOG-dev
 
-## 2.0.0-alpha.1 - 2026-08-31
+## 2.0.0-1 (Alpha 1) - 2026-08-31
 
 ### Architecture preview
 
@@ -14,6 +14,7 @@
 
 - Added workspace/CSV pickers, FTTH CIDR/range input, runtime status, row counts and elapsed-time output.
 - Added bundled `duckdb` with Parquet support and a Rust lock file; terminal users do not install a separate database.
+- Uses the numeric pre-release version `2.0.0-1` for Alpha 1 because the Windows WiX/MSI toolchain rejects alphabetic pre-release identifiers such as `alpha.1`.
 
 ### Scope and verification
 
@@ -21,7 +22,8 @@
 - `cargo test --release --no-fail-fast`: 73 passed, 0 failed on 2026-08-31; existing and benchmark-only dead-code warnings remain.
 - The release benchmark harness completed the 4-row synthetic TCP fixture in about 222 ms and produced 3 valid Parquet rows, 3 hourly aggregate rows and 2 Cable/FTTH summary rows. This is a functional smoke test, not a real 3–4 GiB benchmark.
 - No production MySQL query, migration, ETL, aggregation or customer file was executed.
-- TCP/video only in this alpha; Game, dashboard/opportunity parity, Windows packaging and real 3–4 GiB validation remain pending.
+- TCP/video only in this alpha; Game, dashboard/opportunity parity and real 3–4 GiB validation remain pending.
+- The first Windows packaging attempt reached the bundle stage but rejected the former `2.0.0-alpha.1` version; the MSI-compatible version fix requires a clean CI rerun.
 
 ## 1.0.73 - 2026-08-31
 
